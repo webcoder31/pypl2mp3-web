@@ -7,7 +7,7 @@ This file provides a high-level overview of the project and the expected product
 
 ## Documentation Location
 
-The comprehensive project documentation is located in `docs/project/` with the following structure:
+The comprehensive project documentation is located in `doc/project/` with the following structure:
 * `overview/` - Purpose, goals, features, and limitations
 * `technical/` - Architecture, requirements, and dependencies
 * `implementation/` - Core components, command structure, and data flow

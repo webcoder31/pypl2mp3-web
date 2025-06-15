@@ -10,7 +10,7 @@ manage metadata, and much more.
 The program runs from the command line and is designed for a clean and 
 user-friendly experience.
 
-![YLP2MP3 screenshot](/docs/readme/cover.jpg)
+![YLP2MP3 screenshot](/doc/assets/readme-cover.jpg)
 
 ---
 
