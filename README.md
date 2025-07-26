@@ -152,7 +152,7 @@ it therefore only has meaning at the time of command execution.
 - `-r, --repo <path>`: 
   Set playlist repository (default: see [Configuration](#configuration))  
 - `-d, --debug`: 
-  Enable **verbose errors (*)** and logging to file `/repo/path/pypl2mp3.log`
+  Enable **verbose errors (*)** and logging to file `<project_root>/log/pypl2mp3.log`
 - `-D, --deep`:
   Enable deep debug with fully detailed stack trace in log file
 

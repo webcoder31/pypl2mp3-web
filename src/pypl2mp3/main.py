@@ -618,9 +618,9 @@ def main():
         logger.enable_verbose_errors()
 
         # Enable logging to file
-        # NOTE: the log file is created in the repository path
+        # NOTE: the log file is created in the folder "log"  of the project root
         logger.enable_file_handler(
-            log_file=Path(default_repository_path).joinpath("pypl2mp3.log"),
+            log_file=Path(__file__).parents[2].joinpath("log", "pypl2mp3.log"),
             enable_traceback=args.deep
         )
 
