@@ -3,7 +3,7 @@ name = "pypl2mp3"
 version = "0.1.0"
 description = "YouTube playlist MP3 converter"
 authors = [{ name = "Thierry Thiers", email = "webcoder31@gmail.com" }]
-requires-python = "~=3.13"
+requires-python = "~=3.13.0"
 readme = "README.md"
 license = "CeCILL-C"
 dependencies = [
