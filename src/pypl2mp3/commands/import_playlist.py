@@ -436,6 +436,12 @@ async def import_playlist(args: any) -> None:
             video_url = f"https://youtube.com/watch?v={video_id}"
             video = YouTube(video_url)
 
+            # pytubefix fetches video data lazily, on first attribute access.
+            # Read the attributes here so that a network failure is caught
+            # below and skips this video only, instead of escaping this
+            # handler and aborting the whole import.
+            video_author, video_title = video.author, video.title
+
         except Exception as exc:
             # Log YouTube API error, append error to report and skip this video
             logger.error(
@@ -451,9 +457,9 @@ async def import_playlist(args: any) -> None:
 
         # Check if video matches import filter criteria
         counter = count_formatter.format(song_index)
-        song_name = f"{video.author} {video.title}"
+        song_name = f"{video_author} {video_title}"
         song_ref = f"{song_name} [{video.video_id}]"
-        match_score = get_match_score(video.author, video.title, args.keywords)
+        match_score = get_match_score(video_author, video_title, args.keywords)
 
         if match_score < args.match:
 
