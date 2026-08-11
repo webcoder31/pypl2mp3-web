@@ -346,7 +346,7 @@ async def import_playlist(args: any) -> None:
     
     # Retrieve YouTube playlist data and handle potential errors
     try:
-        plst = Playlist(selected_playlist.url, "WEB")
+        plst = Playlist(selected_playlist.url)
         # Check if playlist data is empty
         if not plst or not plst.videos:
             raise ImportPlaylistException(
@@ -434,7 +434,7 @@ async def import_playlist(args: any) -> None:
         # Get video details
         try:
             video_url = f"https://youtube.com/watch?v={video_id}"
-            video = YouTube(video_url, client="WEB")
+            video = YouTube(video_url)
 
         except Exception as exc:
             # Log YouTube API error, append error to report and skip this video

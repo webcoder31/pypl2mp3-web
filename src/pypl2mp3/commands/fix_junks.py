@@ -385,7 +385,7 @@ class JunkSongTagger:
 
         try:
             video_url = f"https://youtube.com/watch?v={song.youtube_id}"
-            metadata = YouTube(video_url, client="WEB")
+            metadata = YouTube(video_url)
 
             cover_art_status = 'Exists' if metadata.thumbnail_url else 'None'
 

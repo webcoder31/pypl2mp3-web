@@ -728,7 +728,7 @@ class SongModel:
                 await pre_fetch_video_info(youtube_id)
 
             video_url = f"https://youtube.com/watch?v={youtube_id}"
-            video = YouTube(video_url, client="WEB")
+            video = YouTube(video_url)
             video_props = SimpleNamespace(
                 youtube_id=video.video_id,
                 artist=video.author,
