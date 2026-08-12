@@ -21,7 +21,20 @@ def test_progress_bar_callback_forwards_percent_to_the_port():
     assert ("stage_progress", "download_audio", 42.0) in progress.events
 
 
-def test_shazam_hooks_report_the_identified_song():
+async def test_pre_shazam_song_hook_reports_stage_started():
+    progress = FakeProgress()
+    kwargs = song_callbacks(progress)
+
+    await kwargs["pre_shazam_song"](None)
+
+    assert (
+        "stage_started",
+        "shazam",
+        "Shazam-ing audio track:",
+    ) in progress.events
+
+
+async def test_shazam_hooks_report_the_identified_song():
     progress = FakeProgress()
     kwargs = song_callbacks(progress)
 
@@ -35,7 +48,7 @@ def test_shazam_hooks_report_the_identified_song():
         },
     )()
 
-    kwargs["post_shazam_song"](song)
+    await kwargs["post_shazam_song"](song)
 
     assert (
         "song_identified",

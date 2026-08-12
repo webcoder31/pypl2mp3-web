@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Projection d'un ProgressPort sur les callbacks de SongModel.
 
-`SongModel.create_from_youtube` attend dix-huit callbacks distincts. Plutôt
+`SongModel.create_from_youtube` attend quinze callbacks distincts. Plutôt
 que d'imposer cette forme aux services, on l'isole ici : écrit une fois,
 utilisé par tous.
 
@@ -40,14 +40,18 @@ def song_callbacks(progress: ProgressPort) -> dict[str, object]:
             callback=_percent_forwarder(progress, stage),
         )
 
-    kwargs["pre_shazam_song"] = lambda _song: progress.stage_started(
-        "shazam", "Shazam-ing audio track:"
-    )
-    kwargs["post_shazam_song"] = lambda song: progress.song_identified(
-        song.shazam_artist,
-        song.shazam_title,
-        float(song.shazam_match_score),
-    )
+    async def pre_shazam_song(_song) -> None:
+        progress.stage_started("shazam", "Shazam-ing audio track:")
+
+    async def post_shazam_song(song) -> None:
+        progress.song_identified(
+            song.shazam_artist,
+            song.shazam_title,
+            float(song.shazam_match_score),
+        )
+
+    kwargs["pre_shazam_song"] = pre_shazam_song
+    kwargs["post_shazam_song"] = post_shazam_song
 
     return kwargs
 
