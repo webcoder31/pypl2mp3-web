@@ -305,6 +305,38 @@ vérifier le site d'appel réel avant de choisir `def` ou `async def`, et écrir
 un test qui exerce le hook **par la même voie que `song.py`** — un test qui
 appelle un hook asynchrone sans `await` ne détecte rien.
 
+### Trois contraintes découvertes en implémentant le plan 1
+
+**1. `use_default_verbosity=False` est obligatoire.** `create_from_youtube`
+réassigne inconditionnellement ses quinze callbacks à ses propres closures
+d'affichage (`song.py:632`) quand `verbose and use_default_verbosity`. Sans ce
+drapeau, les callbacks fournis ne s'exécutent jamais **et** `song.py` imprime des
+barres ANSI sur stdout — inacceptable pour un serveur. L'adaptateur le bake ; ne
+pas le retirer.
+
+**2. Un adaptateur par API cible.** Trois entrées acceptent des hooks, avec des
+jeux de paramètres disjoints : `create_from_youtube` (15), `update_cover_art`
+(5), `shazam_song` (2). Aucune n'a de `**kwargs`, donc un dictionnaire destiné à
+l'une lève `TypeError` sur les autres. `fix_junks` n'appelle que les deux
+dernières.
+
+**3. `stage_done` n'est pas idempotent côté émetteur.** `song.py:1435` et `1440`
+attendent tous deux `post_download_cover_art`, si bien que l'étape pochette
+signale deux fois sa fin. C'est légitime — l'étape s'exécute réellement deux fois
+— donc **les consommateurs doivent tolérer un `stage_done` répété**.
+
+### Point ouvert pour le plan 2 : blocage synchrone dans la boucle d'événements
+
+`song.py:update_progress_bar` anime tout saut de plus de dix points avec un
+`time.sleep(0.01)` par point, **au-dessus** de la répartition vers le callback.
+Jusqu'à ~1 s de blocage synchrone à l'intérieur d'une chaîne asynchrone.
+
+Sans conséquence en CLI, où rien d'autre ne tourne. Pour un serveur web, cela
+gèle la boucle d'événements : plus aucune requête servie, plus aucun message
+WebSocket délivré pendant ce temps. À trancher avant le premier job web —
+`libs/` étant gelé, la réponse sera probablement d'exécuter les téléchargements
+dans un thread de travail plutôt que directement sur la boucle.
+
 ---
 
 ## 8. Cycle de vie des tâches longues
