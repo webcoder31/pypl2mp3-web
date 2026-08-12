@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-"""Projection d'un ProgressPort sur les callbacks de SongModel.
+"""Projection of a ProgressPort onto SongModel's callbacks.
 
-Trois API de `SongModel` acceptent des hooks, et chacune n'accepte que les
-siens : passer à `update_cover_art` le dictionnaire taillé pour
-`create_from_youtube` lève un `TypeError`. D'où un constructeur par API,
-plutôt qu'un dictionnaire unique qui ne conviendrait qu'à la première.
+Three `SongModel` APIs accept hooks, and each accepts only its own: passing
+`update_cover_art` the dictionary cut for `create_from_youtube` raises a
+`TypeError`. Hence one builder per API, rather than a single dictionary that
+would only ever fit the first.
 
-Deux pièges de `libs/song.py` sont neutralisés ici, une fois pour toutes :
+Two traps in `libs/song.py` are neutralized here, once and for all:
 
-- `create_from_youtube` réécrit ses quinze callbacks avec ses propres
-  closures d'affichage tant que `use_default_verbosity` vaut `True` (et les
-  annule tous si `verbose` ne vaut pas `True`). Les deux drapeaux font donc
-  partie du dictionnaire rendu : un appelant ne peut plus les oublier.
-- les hooks `pre_`/`post_` sont attendus (`await`), alors que le callback de
-  progression d'un `ProgressBarInterface` est appelé de façon synchrone au
-  cœur de la boucle de téléchargement. D'où l'asymétrie `async def` / `def`
-  ci-dessous : l'inverser lève `TypeError` à l'exécution seulement.
+- `create_from_youtube` overwrites its fifteen callbacks with its own
+  printing closures as long as `use_default_verbosity` is `True` (and
+  cancels all of them if `verbose` is not `True`). Both flags are therefore
+  part of the returned dictionary: a caller can no longer forget them.
+- the `pre_`/`post_` hooks are awaited (`await`), whereas the progress
+  callback of a `ProgressBarInterface` is called synchronously in the
+  middle of the download loop. Hence the `async def` / `def` asymmetry
+  below: getting it backwards only raises `TypeError` at runtime.
 
-`libs/song.py` n'est pas modifié — c'est délibéré. Ce module fait 1777 lignes
-et porte le téléchargement et le tagging ; y toucher reviendrait à risquer le
-cœur de valeur pour un gain cosmétique.
+`libs/song.py` is left unmodified — that is deliberate. This module is 1777
+lines long and carries the download and tagging logic; touching it would
+risk the core value for a cosmetic gain.
 """
 
 from dataclasses import dataclass
@@ -30,14 +30,14 @@ from pypl2mp3.ports.progress import ProgressPort
 
 @dataclass(frozen=True)
 class _Stage:
-    """Une étape chiffrée : son identité pour le port, ses hooks pour song.py.
+    """A measured stage: its identity for the port, its hooks for song.py.
 
     Attributes:
-        stage: identifiant stable transmis au port.
-        label: libellé lisible, également utilisé par les barres de song.py.
-        pre: nom du paramètre appelé à l'entrée de l'étape.
-        on: nom du paramètre recevant le `ProgressBarInterface`.
-        post: nom du paramètre appelé à la sortie de l'étape.
+        stage: stable identifier passed on to the port.
+        label: human-readable label, also used by song.py's progress bars.
+        pre: name of the parameter called on entering the stage.
+        on: name of the parameter receiving the `ProgressBarInterface`.
+        post: name of the parameter called on leaving the stage.
     """
 
     stage: str
@@ -47,9 +47,9 @@ class _Stage:
     post: str
 
 
-# Les trois étapes exposant une progression chiffrée.
-# Chacune porte son propre identifiant : c'est ce qui permet à une UI de
-# distinguer le téléchargement de l'encodage.
+# The three stages exposing a measured progress.
+# Each carries its own identifier: that is what lets a UI tell the download
+# apart from the encoding.
 _DOWNLOAD_AUDIO = _Stage(
     stage="download_audio",
     label="Streaming audio:",
@@ -74,25 +74,26 @@ _DOWNLOAD_COVER_ART = _Stage(
     post="post_download_cover_art",
 )
 
-# La reconnaissance Shazam n'expose aucun pourcentage : début et fin, rien
-# entre les deux, plus le résultat de l'identification.
+# Shazam recognition exposes no percentage: start and end, nothing in
+# between, plus the identification result.
 _SHAZAM_STAGE = "shazam"
 _SHAZAM_LABEL = "Shazam-ing audio track:"
 
 
 def create_from_youtube_callbacks(progress: ProgressPort) -> dict[str, object]:
-    """Construire les kwargs de `SongModel.create_from_youtube`.
+    """Build the kwargs for `SongModel.create_from_youtube`.
 
-    Le dictionnaire rendu contient aussi `verbose` et `use_default_verbosity`
-    : sans eux, song.py écraserait tous les callbacks et écrirait ses barres
-    de progression sur stdout — rédhibitoire pour un serveur web.
+    The returned dictionary also contains `verbose` and
+    `use_default_verbosity`: without them, song.py would overwrite all the
+    callbacks and print its own progress bars to stdout — a dealbreaker for
+    a web server.
 
     Args:
-        progress: le port qui recevra les événements.
+        progress: the port that will receive the events.
 
     Returns:
-        Un dictionnaire à passer en `**kwargs`. Ses clés sont un
-        sous-ensemble des paramètres de `SongModel.create_from_youtube`.
+        A dictionary to pass as `**kwargs`. Its keys are a subset of
+        `SongModel.create_from_youtube`'s parameters.
     """
 
     kwargs: dict[str, object] = {
@@ -109,41 +110,41 @@ def create_from_youtube_callbacks(progress: ProgressPort) -> dict[str, object]:
 
 
 def update_cover_art_callbacks(progress: ProgressPort) -> dict[str, object]:
-    """Construire les kwargs de `SongModel.update_cover_art`.
+    """Build the kwargs for `SongModel.update_cover_art`.
 
     Args:
-        progress: le port qui recevra les événements.
+        progress: the port that will receive the events.
 
     Returns:
-        Un dictionnaire à passer en `**kwargs`. Ses clés sont un
-        sous-ensemble des paramètres de `SongModel.update_cover_art`.
+        A dictionary to pass as `**kwargs`. Its keys are a subset of
+        `SongModel.update_cover_art`'s parameters.
     """
 
     return _stage_hooks(progress, _DOWNLOAD_COVER_ART)
 
 
 def shazam_song_callbacks(progress: ProgressPort) -> dict[str, object]:
-    """Construire les kwargs de `SongModel.shazam_song`.
+    """Build the kwargs for `SongModel.shazam_song`.
 
     Args:
-        progress: le port qui recevra les événements.
+        progress: the port that will receive the events.
 
     Returns:
-        Un dictionnaire à passer en `**kwargs`. Ses clés sont un
-        sous-ensemble des paramètres de `SongModel.shazam_song`.
+        A dictionary to pass as `**kwargs`. Its keys are a subset of
+        `SongModel.shazam_song`'s parameters.
     """
 
     return _shazam_hooks(progress)
 
 
 def _stage_hooks(progress: ProgressPort, stage: _Stage) -> dict[str, object]:
-    """Encadrer une étape chiffrée : début, progression, fin.
+    """Frame a measured stage: start, progress, end.
 
-    Les hooks `pre_`/`post_` reçoivent des arguments de formes différentes
-    selon l'étape — `(video_props, m4a_path)` pour l'audio,
-    `(video_props, m4a_path, mp3_path)` pour l'encodage, `(song)` pour la
-    pochette. Aucun ne nous sert : seule l'identité de l'étape compte, d'où
-    le `*_args` qui les accepte toutes.
+    The `pre_`/`post_` hooks receive differently shaped arguments depending
+    on the stage — `(video_props, m4a_path)` for audio,
+    `(video_props, m4a_path, mp3_path)` for encoding, `(song)` for the
+    cover art. None of them are of use to us: only the stage's identity
+    matters, hence the `*_args` that accepts them all.
     """
 
     async def stage_started(*_args) -> None:
@@ -163,14 +164,15 @@ def _stage_hooks(progress: ProgressPort, stage: _Stage) -> dict[str, object]:
 
 
 def _shazam_hooks(progress: ProgressPort) -> dict[str, object]:
-    """Encadrer la reconnaissance Shazam et rapporter son résultat."""
+    """Frame Shazam recognition and report its result."""
 
     async def pre_shazam_song(_song) -> None:
         progress.stage_started(_SHAZAM_STAGE, _SHAZAM_LABEL)
 
     async def post_shazam_song(song) -> None:
-        # `or 0` : song.py se protège de la même façon (cf. fix_filename).
-        # Un score absent ferait échouer le hook, donc l'import entier.
+        # `or 0`: song.py guards itself the same way (cf. fix_filename).
+        # A missing score would make the hook fail, and with it the whole
+        # import.
         progress.song_identified(
             song.shazam_artist,
             song.shazam_title,
@@ -185,10 +187,11 @@ def _shazam_hooks(progress: ProgressPort) -> dict[str, object]:
 
 
 def _percent_forwarder(progress: ProgressPort, stage: str):
-    """Adapter la signature `(percentage, label)` attendue par song.py.
+    """Adapt the `(percentage, label)` signature expected by song.py.
 
-    Le libellé est ignoré : le port l'a déjà reçu via `stage_started`, et
-    song.py y injecte la taille du fichier, qui varie d'un appel à l'autre.
+    The label is ignored: the port already received it via `stage_started`,
+    and song.py injects the file size into it, which varies from one call
+    to the next.
     """
 
     def forward(percentage: int, label: str = "") -> None:

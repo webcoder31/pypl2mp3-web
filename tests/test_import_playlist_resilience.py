@@ -1,8 +1,8 @@
-"""Régression : une coupure réseau ne doit pas interrompre tout l'import.
+"""Regression: a network drop must not abort the whole import.
 
-pytubefix charge en différé : le constructeur `YouTube(url)` ne fait aucune
-E/S, la requête part au premier accès d'attribut. Le gestionnaire d'erreur
-doit donc couvrir cet accès, pas seulement la construction.
+pytubefix loads lazily: the `YouTube(url)` constructor performs no I/O, the
+request goes out on the first attribute access. The error handler must
+therefore cover that access, not just the construction.
 """
 
 import http.client
@@ -15,7 +15,7 @@ PLAYLIST_ID = "PLP6XxNg42qDGMg1cR2PPPzwdoAOD1MQ97"
 
 
 class _FakePlaylist:
-    """Playlist minimale : deux vidéos, aucun accès réseau."""
+    """Minimal playlist: two videos, no network access."""
 
     def __init__(self, url, *args, **kwargs):
         self.videos = list(VIDEO_IDS)
@@ -29,7 +29,7 @@ class _FakePlaylist:
 
 
 class _DisconnectingYouTube:
-    """Constructeur silencieux, l'accès paresseux coupe — comme pytubefix."""
+    """Silent constructor, the lazy access drops — just like pytubefix."""
 
     def __init__(self, url, *args, **kwargs):
         self.video_id = url.rsplit("=", 1)[-1]
@@ -42,7 +42,7 @@ class _DisconnectingYouTube:
 
     @property
     def title(self):
-        return "titre"
+        return "title"
 
 
 async def test_network_failure_skips_video_without_aborting_import(
@@ -60,11 +60,11 @@ async def test_network_failure_skips_video_without_aborting_import(
         prompt=False,
     )
 
-    # Ne doit pas lever : chaque vidéo échoue isolément.
+    # Must not raise: each video fails on its own.
     await mod.import_playlist(args)
 
     out = capsys.readouterr().out
     for video_id in VIDEO_IDS:
         assert video_id in out, (
-            f"La vidéo {video_id} devrait figurer au rapport d'échecs"
+            f"Video {video_id} should appear in the failure report"
         )

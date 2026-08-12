@@ -1,8 +1,8 @@
-"""Doublures des ports, pour tester les services sans terminal ni réseau."""
+"""Test doubles for the ports, to test services without terminal or network."""
 
 
 class FakeInteraction:
-    """Répond selon un script prédéfini et consigne les questions posées."""
+    """Answers from a predefined script and records the questions asked."""
 
     def __init__(self, answers: list[str]):
         self._answers = list(answers)
@@ -12,13 +12,13 @@ class FakeInteraction:
         self.asked.append((question, list(options)))
         if not self._answers:
             raise AssertionError(
-                f"Aucune réponse scriptée restante pour : {question!r}"
+                f"No scripted answer left for: {question!r}"
             )
         return self._answers.pop(0)
 
 
 class FakeProgress:
-    """Enregistre les événements reçus, sans rien afficher."""
+    """Records the events received, without displaying anything."""
 
     def __init__(self):
         self.events: list[tuple] = []

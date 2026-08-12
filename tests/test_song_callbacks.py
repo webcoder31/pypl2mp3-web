@@ -1,9 +1,10 @@
-"""Projection du ProgressPort sur les callbacks de SongModel.
+"""Projection of the ProgressPort onto SongModel's callbacks.
 
-Deux niveaux de preuve ici : des tests unitaires sur la forme des
-dictionnaires rendus, et deux tests qui font réellement tourner
-`SongModel.create_from_youtube` (sans réseau ni encodage) pour vérifier que
-les callbacks ne sont pas écrasés en route et que rien n'atteint stdout.
+Two levels of proof here: unit tests on the shape of the returned
+dictionaries, and two tests that actually run
+`SongModel.create_from_youtube` (without network or encoding) to verify
+that the callbacks are not overwritten along the way and that nothing
+reaches stdout.
 """
 
 import inspect
@@ -40,7 +41,7 @@ def _fake_song(
 
 
 # ---------------------------------------------------------------------------
-# Chaque constructeur ne rend que des clés acceptées par SON API
+# Each builder returns only keys accepted by ITS OWN API
 # ---------------------------------------------------------------------------
 
 
@@ -57,15 +58,15 @@ def test_every_returned_key_is_accepted_by_its_own_api(builder, api):
     kwargs = builder(FakeProgress())
     accepted = set(inspect.signature(api).parameters)
 
-    assert kwargs, "un constructeur vide passerait ce test sans rien prouver"
+    assert kwargs, "an empty builder would pass this test without proving anything"
     assert set(kwargs) <= accepted
 
-    # Preuve directe : le splat lèverait TypeError sur une clé inconnue.
+    # Direct proof: the splat would raise TypeError on an unknown key.
     inspect.signature(api).bind_partial(**kwargs)
 
 
 # ---------------------------------------------------------------------------
-# C1 : les drapeaux de verbosité, sans lesquels song.py écrase tout
+# C1: the verbosity flags, without which song.py overwrites everything
 # ---------------------------------------------------------------------------
 
 
@@ -77,7 +78,7 @@ def test_create_from_youtube_callbacks_pin_the_verbosity_flags():
 
 
 class _FakeStream:
-    """Un flux audio rendant compte de sa progression, sans socket."""
+    """An audio stream reporting its own progress, without a socket."""
 
     filesize = 1_000_000
     filesize_mb = 1.0
@@ -86,16 +87,16 @@ class _FakeStream:
         self._video = video
 
     def download(self, output_path, filename):
-        # pytubefix notifie les callbacks enregistrés à chaque bloc reçu.
-        # Paliers de 5 % : au-delà de 10 % d'écart, song.py anime le passage
-        # point par point avec une pause de 10 ms à chaque fois.
+        # pytubefix notifies the registered callbacks on every chunk
+        # received. 5% steps: beyond a 10% gap, song.py animates the
+        # transition point by point with a 10 ms pause each time.
         for bytes_remaining in (950_000, 900_000):
             for callback in self._video.progress_callbacks:
                 callback(self, b"", bytes_remaining)
 
 
 class _FakeYouTube:
-    """Remplace `pytubefix.YouTube` : mêmes attributs, aucun appel réseau."""
+    """Replaces `pytubefix.YouTube`: same attributes, no network call."""
 
     def __init__(self, url: str):
         self.url = url
@@ -113,17 +114,17 @@ class _FakeYouTube:
 
 
 def _refuse_to_encode(*args, **kwargs):
-    """Barrière d'arrêt : l'encodage MP3 est hors sujet pour ce test."""
+    """Stop barrier: MP3 encoding is out of scope for this test."""
 
-    raise RuntimeError("encodage non simulé")
+    raise RuntimeError("encoding not simulated")
 
 
 async def _drive_import(tmp_path, monkeypatch, **kwargs) -> None:
-    """Faire tourner le vrai `create_from_youtube` jusqu'à l'encodage.
+    """Run the real `create_from_youtube` up to the encoding step.
 
-    Le pipeline traverse ainsi la récupération des informations vidéo, le
-    téléchargement audio complet et l'entrée dans l'encodage, puis s'arrête
-    net sur la barrière.
+    The pipeline thus goes through fetching the video info, the full audio
+    download, and entering the encoding step, then stops dead at the
+    barrier.
     """
 
     monkeypatch.setattr(song_module, "YouTube", _FakeYouTube)
@@ -136,11 +137,11 @@ async def _drive_import(tmp_path, monkeypatch, **kwargs) -> None:
 async def test_the_port_receives_events_and_stdout_stays_empty(
     tmp_path, monkeypatch, capsys
 ):
-    """C1 : les callbacks survivent au vrai `create_from_youtube`.
+    """C1: the callbacks survive the real `create_from_youtube`.
 
-    Retirer les deux drapeaux du constructeur fait échouer ce test : song.py
-    remplacerait les callbacks par ses propres closures et le port ne
-    verrait rien passer.
+    Removing the two flags from the builder makes this test fail: song.py
+    would replace the callbacks with its own closures and the port would
+    see nothing come through.
     """
 
     progress = FakeProgress()
@@ -162,11 +163,11 @@ async def test_the_port_receives_events_and_stdout_stays_empty(
 async def test_without_the_flags_song_py_prints_and_the_port_gets_nothing(
     tmp_path, monkeypatch, capsys
 ):
-    """Contre-épreuve du test précédent.
+    """Counter-proof of the previous test.
 
-    Elle établit deux choses : que les prints de song.py sont bien visibles
-    par capsys (sans quoi l'assertion de silence ne prouverait rien), et que
-    ce sont bien les drapeaux qui font la différence.
+    It establishes two things: that song.py's prints are indeed visible to
+    capsys (without which the silence assertion would prove nothing), and
+    that it really is the flags that make the difference.
     """
 
     progress = FakeProgress()
@@ -181,12 +182,12 @@ async def test_without_the_flags_song_py_prints_and_the_port_gets_nothing(
 
 
 # ---------------------------------------------------------------------------
-# I1 : chaque étape s'annonce, progresse, puis se termine
+# I1: each stage announces itself, progresses, then ends
 # ---------------------------------------------------------------------------
 
 
-# Les arguments correspondent à ceux que song.py passe réellement aux hooks :
-# ils diffèrent d'une étape à l'autre.
+# The arguments match what song.py actually passes to the hooks: they
+# differ from one stage to the next.
 _STREAMING_STAGES = [
     (
         "download_audio",
@@ -224,17 +225,17 @@ _STREAMING_STAGES = [
 async def test_each_streaming_stage_frames_itself_with_its_own_identity(
     stage, pre, on, post, hook_args
 ):
-    """Un identifiant faux, partagé ou ignoré fait tomber ce test.
+    """A wrong, shared, or ignored identifier makes this test fail.
 
-    Il vérifie aussi que chaque hook accepte la forme d'arguments que
-    song.py lui passe : une arité fausse ne se verrait qu'en production.
+    It also verifies that each hook accepts the shape of arguments that
+    song.py passes it: a wrong arity would only show up in production.
     """
 
     progress = FakeProgress()
     kwargs = create_from_youtube_callbacks(progress)
 
     await kwargs[pre](*hook_args)
-    kwargs[on].callback(42, label="libellé injecté par song.py")
+    kwargs[on].callback(42, label="label injected by song.py")
     await kwargs[post](*hook_args)
 
     assert progress.events == [
@@ -245,7 +246,7 @@ async def test_each_streaming_stage_frames_itself_with_its_own_identity(
 
 
 def test_the_three_streaming_stages_do_not_share_an_identity():
-    """Sans quoi une UI ne saurait pas quelle barre elle fait avancer."""
+    """Without this, a UI would not know which bar it is advancing."""
 
     progress = FakeProgress()
     kwargs = create_from_youtube_callbacks(progress)
@@ -263,7 +264,7 @@ def test_every_streaming_stage_carries_a_label():
 
     for _stage, _pre, on, _post, _args in _STREAMING_STAGES:
         assert isinstance(kwargs[on], ProgressBarInterface), on
-        assert kwargs[on].label, f"{on} doit porter un libellé"
+        assert kwargs[on].label, f"{on} must carry a label"
 
 
 async def test_update_cover_art_callbacks_frame_the_cover_art_stage():
@@ -283,7 +284,7 @@ async def test_update_cover_art_callbacks_frame_the_cover_art_stage():
 
 
 # ---------------------------------------------------------------------------
-# Shazam : début, résultat, fin
+# Shazam: start, result, end
 # ---------------------------------------------------------------------------
 
 
@@ -307,7 +308,7 @@ async def test_shazam_hooks_frame_the_stage_and_report_the_song(builder):
 
 
 async def test_a_missing_shazam_score_does_not_sink_the_hook():
-    """song.py transforme toute exception de hook en échec d'import."""
+    """song.py turns any hook exception into an import failure."""
 
     progress = FakeProgress()
     kwargs = shazam_song_callbacks(progress)

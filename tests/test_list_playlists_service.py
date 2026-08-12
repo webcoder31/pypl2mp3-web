@@ -7,14 +7,14 @@ from pypl2mp3.services.list_playlists import PlaylistSummary, list_playlists
 
 
 def _forbidden(*args, **kwargs):
-    raise AssertionError("un listing local a tenté un accès réseau")
+    raise AssertionError("a local listing attempted network access")
 
 
 def _block_network(monkeypatch):
-    """Interdire les trois portes d'entrée réseau : connexion bloquante,
-    connexion non bloquante (utilisée par les clients HTTP asynchrones tels
-    qu'aiohttp, déjà présent dans l'arbre de dépendances via shazamio), et
-    résolution DNS seule."""
+    """Forbid the three network entry points: blocking connect,
+    non-blocking connect (used by asynchronous HTTP clients such as
+    aiohttp, already present in the dependency tree via shazamio), and
+    DNS resolution alone."""
 
     monkeypatch.setattr(socket.socket, "connect", _forbidden)
     monkeypatch.setattr(socket.socket, "connect_ex", _forbidden)
@@ -45,13 +45,13 @@ def test_summarizes_songs_and_junks(tmp_path):
     assert isinstance(summary, PlaylistSummary)
     assert summary.playlist_id == "PL0000000000000000000000000000001"
     assert summary.name == "Owner - Alpha"
-    assert summary.total_songs == 4  # les junks comptent dans le total
+    assert summary.total_songs == 4  # junks count towards the total
     assert summary.junk_songs == 1
     assert summary.valid_songs == 3
 
 
 def test_ignores_folders_without_a_bracketed_id(tmp_path):
-    (tmp_path / "pas-une-playlist").mkdir()
+    (tmp_path / "not-a-playlist").mkdir()
     _make_playlist(tmp_path, "Owner - Alpha [PL0000000000000000000000000000001]", 1, 0)
 
     assert len(list_playlists(tmp_path)) == 1
@@ -67,13 +67,13 @@ def test_sorts_playlists_naturally(tmp_path):
 
 
 def test_sorting_ignores_case_and_accents(tmp_path):
-    """Ce que `natural_sort_key` apporte par rapport à un tri brut.
+    """What `natural_sort_key` buys us over a raw sort.
 
-    Le cas précédent (A, B, C) se trie identiquement avec `.sort()` : il ne
-    prouve donc rien sur la clé de tri. Une casse mélangée et une lettre
-    accentuée, si : `.sort()` rendrait Beta, Fabrice, alpha, Émile, l'ordre
-    des points de code, où les majuscules précèdent les minuscules et les
-    caractères accentués finissent en queue de liste.
+    The previous case (A, B, C) sorts identically with `.sort()`: it proves
+    nothing about the sort key, then. Mixed case and an accented letter,
+    however, do: `.sort()` would yield Beta, Fabrice, alpha, Émile, code
+    point order, where uppercase precedes lowercase and accented characters
+    end up at the tail of the list.
     """
 
     labels = (
@@ -96,13 +96,14 @@ def test_sorting_ignores_case_and_accents(tmp_path):
 
 
 def test_the_command_module_does_not_re_export_the_service_function():
-    """Le nom `list_playlists` désignait la commande, qui prend un Namespace.
+    """The name `list_playlists` used to designate the command, which takes
+    a Namespace.
 
-    Le ré-importer tel quel dans la façade le ferait toujours résoudre à
-    l'ancienne adresse publique, mais avec une signature incompatible : un
-    appelant resté sur `commands.list_playlists.list_playlists(args)`
-    échouerait sur un `Path` attendu au lieu d'un `Namespace`. Mieux vaut
-    un AttributeError franc.
+    Re-importing it as-is into the facade would still make it resolve to
+    the old public address, but with an incompatible signature: a caller
+    still relying on `commands.list_playlists.list_playlists(args)` would
+    fail on a `Path` expected instead of a `Namespace`. A plain
+    AttributeError is preferable.
     """
 
     from pypl2mp3.commands import list_playlists as facade
@@ -112,7 +113,7 @@ def test_the_command_module_does_not_re_export_the_service_function():
 
 
 def test_performs_no_network_call(tmp_path, monkeypatch):
-    """Un listing local ne doit jamais toucher au réseau, même indirectement."""
+    """A local listing must never touch the network, even indirectly."""
 
     _block_network(monkeypatch)
     _make_playlist(tmp_path, "Owner - Alpha [PL0000000000000000000000000000001]", 1, 0)
@@ -121,15 +122,15 @@ def test_performs_no_network_call(tmp_path, monkeypatch):
 
 
 def test_the_network_trap_actually_fires(monkeypatch):
-    """Sans cela, le piège est affirmé mais jamais exercé."""
+    """Without this, the trap is asserted but never exercised."""
 
     _block_network(monkeypatch)
 
     with socket.socket() as sock:
-        with pytest.raises(AssertionError, match="accès réseau"):
+        with pytest.raises(AssertionError, match="network access"):
             sock.connect(("127.0.0.1", 9))
-        with pytest.raises(AssertionError, match="accès réseau"):
+        with pytest.raises(AssertionError, match="network access"):
             sock.connect_ex(("127.0.0.1", 9))
 
-    with pytest.raises(AssertionError, match="accès réseau"):
+    with pytest.raises(AssertionError, match="network access"):
         socket.getaddrinfo("example.invalid", 80)

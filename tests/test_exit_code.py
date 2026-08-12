@@ -17,14 +17,15 @@ def test_successful_command_exits_zero(tmp_path):
 
 
 def test_fatal_error_exits_one(tmp_path):
-    # « short » est rejeté par la validation locale du format d'identifiant
-    # (16 à 34 caractères) : l'erreur est fatale sans toucher au réseau.
-    # Un identifiant de la bonne longueur, lui, partirait interroger YouTube.
+    # "short" is rejected by the local validation of the identifier format
+    # (16 to 34 characters): the error is fatal without touching the
+    # network. An identifier of the right length, on the other hand, would
+    # go on to query YouTube.
     result = _run("import", "short", "-r", str(tmp_path))
 
-    # Strictement 1 : un simple échec d'import du module produirait lui aussi
-    # un code non nul, et passerait donc une assertion « != 0 ».
+    # Strictly 1: a plain module import failure would also produce a
+    # non-zero code, and would therefore pass a "!= 0" assertion.
     assert result.returncode == 1, (
-        f"attendu 1, obtenu {result.returncode}\n"
+        f"expected 1, got {result.returncode}\n"
         f"stdout: {result.stdout}\nstderr: {result.stderr}"
     )

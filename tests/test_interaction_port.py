@@ -6,9 +6,9 @@ from tests.doubles import FakeInteraction
 async def test_console_interaction_returns_user_answer(monkeypatch):
     monkeypatch.setattr("builtins.input", lambda _prompt: "YES")
 
-    answer = await ConsoleInteraction().ask("Continuer", ["yes", "no"])
+    answer = await ConsoleInteraction().ask("Continue", ["yes", "no"])
 
-    # prompt_user normalise en minuscules ; le port ne doit pas altérer cela.
+    # prompt_user lowercases the answer; the port must not alter that.
     assert answer == "yes"
 
 
@@ -28,4 +28,4 @@ async def test_fake_interaction_fails_loudly_when_script_runs_out():
     except AssertionError as exc:
         assert "Q" in str(exc)
     else:
-        raise AssertionError("aurait dû lever AssertionError")
+        raise AssertionError("should have raised AssertionError")

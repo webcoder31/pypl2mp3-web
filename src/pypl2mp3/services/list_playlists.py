@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Inventaire des playlists locales.
+"""Inventory of local playlists.
 
-Lecture du système de fichiers exclusivement : aucun appel réseau, jamais.
-Le service ne connaît ni terminal ni navigateur ; il rend des données, la
-façade se charge de les présenter.
+Reads the filesystem exclusively: no network call, ever. The service knows
+neither terminal nor browser; it renders data, the facade takes care of
+presenting it.
 """
 
 import re
@@ -12,13 +12,13 @@ from pathlib import Path
 
 from pypl2mp3.libs.utils import get_song_id_from_filename, natural_sort_key
 
-# Un dossier de playlist se termine par son identifiant entre crochets.
+# A playlist folder ends with its identifier in brackets.
 _PLAYLIST_PATTERN = re.compile(r"^.*\[(.?[^\]]+)\]$")
 
 
 @dataclass(frozen=True)
 class PlaylistSummary:
-    """Ce qu'on sait d'une playlist sans interroger YouTube."""
+    """What we know about a playlist without querying YouTube."""
 
     path: Path
     playlist_id: str
@@ -28,19 +28,19 @@ class PlaylistSummary:
 
     @property
     def valid_songs(self) -> int:
-        """Titres correctement tagués, c'est-à-dire non « junk »."""
+        """Songs correctly tagged, i.e. not "junk"."""
 
         return self.total_songs - self.junk_songs
 
 
 def list_playlists(repository_path: Path) -> list[PlaylistSummary]:
-    """Résumer chaque playlist du dépôt, triée par ordre naturel.
+    """Summarize each playlist in the repository, sorted in natural order.
 
     Args:
-        repository_path: dossier contenant les playlists.
+        repository_path: folder containing the playlists.
 
     Returns:
-        Un résumé par playlist. Liste vide si le dépôt n'en contient aucune.
+        A summary per playlist. Empty list if the repository has none.
     """
 
     paths = [

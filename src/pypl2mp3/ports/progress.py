@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Contrat de signalement d'avancement.
+"""Contract for progress reporting.
 
-Ces méthodes sont synchrones et ne doivent JAMAIS bloquer : elles sont
-appelées depuis les callbacks de `song.py`, au cœur de boucles de
-téléchargement où une attente dégraderait le débit.
+These methods are synchronous and must NEVER block: they are called from
+`song.py`'s callbacks, in the middle of download loops where any wait would
+degrade throughput.
 
-L'asymétrie avec `InteractionPort.ask` (asynchrone) est voulue : signaler un
-avancement n'attend rien, poser une question attend une réponse.
+The asymmetry with `InteractionPort.ask` (asynchronous) is intentional:
+reporting progress waits for nothing, asking a question waits for an
+answer.
 """
 
 from typing import Protocol, runtime_checkable
@@ -14,7 +15,7 @@ from typing import Protocol, runtime_checkable
 
 @runtime_checkable
 class ProgressPort(Protocol):
-    """Signaler l'avancement d'une opération longue."""
+    """Report the progress of a long-running operation."""
 
     def stage_started(self, stage: str, label: str) -> None:
         ...
@@ -30,7 +31,7 @@ class ProgressPort(Protocol):
 
 
 class NullProgress:
-    """N'affiche rien. Pour les appels où l'avancement n'intéresse personne."""
+    """Displays nothing. For calls where nobody cares about progress."""
 
     def stage_started(self, stage: str, label: str) -> None:
         return None
