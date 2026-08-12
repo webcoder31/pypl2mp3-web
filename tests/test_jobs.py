@@ -145,6 +145,33 @@ async def test_a_failed_job_id_can_be_started_again():
     assert second.state is JobState.COMPLETED
 
 
+async def test_a_cancelled_job_id_can_be_started_again():
+    """A cancelled import must be retriable: this is exactly what a user
+    does after cancelling a bad network run."""
+
+    registry = JobRegistry()
+    started = asyncio.Event()
+
+    async def block(job: Job) -> None:
+        started.set()
+        await asyncio.sleep(10)
+
+    async def succeed(job: Job) -> str:
+        return "done"
+
+    registry.start("j1", block)
+    await started.wait()
+
+    assert registry.cancel("j1") is True
+    await wait_for(registry, "j1")
+    assert registry.get("j1").state is JobState.CANCELLED
+
+    second = registry.start("j1", succeed)
+    await wait_for(registry, "j1")
+
+    assert second.state is JobState.COMPLETED
+
+
 async def test_a_cancelled_job_is_marked_cancelled_not_failed():
     registry = JobRegistry()
     started = asyncio.Event()
