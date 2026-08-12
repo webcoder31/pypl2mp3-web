@@ -98,8 +98,13 @@ async def test_the_page_references_no_external_host(tmp_path, monkeypatch):
 
     body = (await _get(create_app(tmp_path), "/")).text
 
+    # Only the HTMX request-verb attributes carry a URL. Other hx-*
+    # attributes (hx-swap, hx-trigger, hx-target, ...) hold behavior
+    # keywords, not references, and would be false positives here.
     references = re.findall(
-        r'(?:src|href|action)\s*=\s*["\']([^"\']*)["\']', body
+        r'(?:src|href|action|hx-(?:get|post|put|patch|delete))'
+        r'\s*=\s*["\']([^"\']*)["\']',
+        body,
     )
     assert references, "no references found — the regex is probably wrong"
 

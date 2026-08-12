@@ -19,7 +19,11 @@
           <tr>
             <td>
               {{ summary.name }}<br>
-              <span class="id">{{ summary.playlist_id }}</span>
+              <span class="id">{{ summary.playlist_id }}</span><br>
+              <button
+                hx-post="/playlists/{{ summary.playlist_id }}/check"
+                hx-swap="none"
+              >Check for new songs</button>
             </td>
             <td class="num">{{ summary.valid_songs }}</td>
             <td class="num {% if summary.junk_songs %}junk{% endif %}">
