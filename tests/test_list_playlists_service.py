@@ -76,9 +76,15 @@ def test_performs_no_network_call(tmp_path, monkeypatch):
 
 
 def test_the_network_trap_actually_fires(monkeypatch):
-    """Sans cela, le test précédent affirme le garde-fou sans l'exercer."""
+    """Sans cela, le piège est affirmé mais jamais exercé."""
 
     _block_network(monkeypatch)
 
+    with socket.socket() as sock:
+        with pytest.raises(AssertionError, match="accès réseau"):
+            sock.connect(("127.0.0.1", 9))
+        with pytest.raises(AssertionError, match="accès réseau"):
+            sock.connect_ex(("127.0.0.1", 9))
+
     with pytest.raises(AssertionError, match="accès réseau"):
-        socket.socket().connect(("127.0.0.1", 9))
+        socket.getaddrinfo("example.invalid", 80)
