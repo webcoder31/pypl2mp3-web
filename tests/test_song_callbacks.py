@@ -77,7 +77,7 @@ def test_create_from_youtube_callbacks_pin_the_verbosity_flags():
 
 
 class _FakeStream:
-    """Un flux audio qui rend compte de sa progression sans ouvrir de socket."""
+    """Un flux audio rendant compte de sa progression, sans socket."""
 
     filesize = 1_000_000
     filesize_mb = 1.0

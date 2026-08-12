@@ -76,7 +76,12 @@ def test_sorting_ignores_case_and_accents(tmp_path):
     caractères accentués finissent en queue de liste.
     """
 
-    labels = ("Owner - Fabrice", "Owner - alpha", "Owner - Émile", "Owner - Beta")
+    labels = (
+        "Owner - Fabrice",
+        "Owner - alpha",
+        "Owner - Émile",
+        "Owner - Beta",
+    )
     for index, label in enumerate(labels):
         _make_playlist(tmp_path, f"{label} [PL{str(index) * 32}]", 1, 0)
 
