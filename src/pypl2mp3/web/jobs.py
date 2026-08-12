@@ -11,10 +11,19 @@ reconnects mid-import can catch up instead of starting blind.
 """
 
 import asyncio
+import logging
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Awaitable, Callable, Optional
+
+# A plain stdlib logger, not the `pypl2mp3.libs.logger` singleton: that
+# singleton is wired for the CLI's colorized, verbosity-flag-driven console
+# output (it doubles as user-facing UI, per its own module docstring), and
+# no module under `ports/`, `services/` or `web/` reaches into it. Using it
+# here would tie this generic infra component to CLI-specific formatting and
+# make every missed event print unconditionally to the server's console.
+logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_EVENTS = 500
 
@@ -107,15 +116,25 @@ class JobRegistry:
         return self._jobs.get(job_id)
 
     def emit(self, job_id: str, event: dict) -> None:
-        """Record an event. Silently ignores unknown jobs.
+        """Record an event. Drops it and logs a warning for an unknown job.
 
         Called from the progress port, possibly from a worker thread, so it
-        must stay cheap and must never raise into the caller.
+        must stay cheap and must never raise into the caller. "Never raise"
+        does not mean "never signal": a mismatch between the id passed to
+        `start()` and the one passed here would otherwise discard every
+        event for the life of the process with nothing observable anywhere.
         """
 
         job = self._jobs.get(job_id)
-        if job is not None:
-            job.append_event(event)
+        if job is None:
+            logger.warning(
+                "emit() called for unknown job id %r; event dropped: %r",
+                job_id,
+                event,
+            )
+            return
+
+        job.append_event(event)
 
     def cancel(self, job_id: str) -> bool:
         job = self._jobs.get(job_id)
@@ -123,15 +142,3 @@ class JobRegistry:
             return False
 
         return job.task.cancel()
-
-    async def wait(self, job_id: str) -> None:
-        """Await a job's completion. Test helper; never used by routes."""
-
-        job = self._jobs.get(job_id)
-        if job is None or job.task is None:
-            return
-
-        try:
-            await job.task
-        except asyncio.CancelledError:
-            pass
