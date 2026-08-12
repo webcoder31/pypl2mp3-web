@@ -54,10 +54,32 @@ def create_app(repository_path: Path) -> FastAPI:
 
     app.state.jobs = JobRegistry()
 
+    def _job_fragment(request, job_id, playlist_id, state, result, error):
+        """Render the self-polling fragment consumed by HTMX.
+
+        `polling` is false for every terminal state, so the returned
+        fragment carries no `hx-trigger` and the browser stops polling on
+        its own — no client-side counter or stop condition needed.
+        """
+
+        return templates.TemplateResponse(
+            request,
+            "job.html",
+            {
+                "job_id": job_id,
+                "playlist_id": playlist_id,
+                "state": state,
+                "result": result,
+                "error": error,
+                "polling": state in ("pending", "running"),
+            },
+        )
+
     @app.post("/playlists/{playlist_id}/check")
-    async def start_check(playlist_id: str) -> dict[str, str]:
+    async def start_check(playlist_id: str, request: Request):
         loop = asyncio.get_running_loop()
         repository_path = app.state.repository_path
+        is_htmx = request.headers.get("HX-Request") is not None
 
         async def work(job) -> dict:
             progress = WebProgress(app.state.jobs, job.job_id, loop)
@@ -75,17 +97,53 @@ def create_app(repository_path: Path) -> FastAPI:
         try:
             job = app.state.jobs.start(f"check:{playlist_id}", work)
         except JobAlreadyRunning:
+            if is_htmx:
+                # HTMX never swaps the DOM on a 4xx response, so a bare 409
+                # here would look exactly like the inert button this task
+                # exists to fix. Report the collision in-band instead.
+                return _job_fragment(
+                    request,
+                    f"check:{playlist_id}",
+                    playlist_id,
+                    "busy",
+                    None,
+                    None,
+                )
             raise HTTPException(
                 status_code=409, detail="already checking this playlist"
+            )
+
+        if is_htmx:
+            return _job_fragment(
+                request,
+                job.job_id,
+                playlist_id,
+                job.state.value,
+                job.result,
+                job.error,
             )
 
         return {"job_id": job.job_id}
 
     @app.get("/jobs/{job_id}")
-    def job_status(job_id: str) -> dict:
+    def job_status(job_id: str, request: Request):
         job = app.state.jobs.get(job_id)
         if job is None:
             raise HTTPException(status_code=404, detail="unknown job")
+
+        if request.headers.get("HX-Request") is not None:
+            # Job ids are minted as f"check:{playlist_id}" by start_check
+            # above; recover the playlist id so the fragment's element id
+            # matches the one the button's hx-target points at.
+            playlist_id = job_id.partition(":")[2] or job_id
+            return _job_fragment(
+                request,
+                job.job_id,
+                playlist_id,
+                job.state.value,
+                job.result,
+                job.error,
+            )
 
         return {
             "state": job.state.value,

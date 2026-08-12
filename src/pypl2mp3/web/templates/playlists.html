@@ -22,8 +22,11 @@
               <span class="id">{{ summary.playlist_id }}</span><br>
               <button
                 hx-post="/playlists/{{ summary.playlist_id }}/check"
-                hx-swap="none"
+                hx-target="#job-{{ summary.playlist_id }}"
+                hx-swap="outerHTML"
+                hx-indicator="#job-{{ summary.playlist_id }}"
               >Check for new songs</button>
+              <div id="job-{{ summary.playlist_id }}" class="job"></div>
             </td>
             <td class="num">{{ summary.valid_songs }}</td>
             <td class="num {% if summary.junk_songs %}junk{% endif %}">

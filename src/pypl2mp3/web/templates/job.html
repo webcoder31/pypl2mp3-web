@@ -1,0 +1,20 @@
+<div id="job-{{ playlist_id }}" class="job"
+     {% if polling %}hx-get="/jobs/{{ job_id }}"
+     hx-trigger="every 1s"
+     hx-swap="outerHTML"{% endif %}>
+  {% if state in ("pending", "running") %}
+    <span class="job-running">Checking…</span>
+  {% elif state == "completed" %}
+    {% if result and result.missing %}
+      <span class="job-new">{{ result.missing | length }} new song(s)</span>
+    {% else %}
+      <span class="job-none">Up to date</span>
+    {% endif %}
+  {% elif state == "failed" %}
+    <span class="job-error">Check failed: {{ error }}</span>
+  {% elif state == "cancelled" %}
+    <span class="job-error">Check cancelled</span>
+  {% elif state == "busy" %}
+    <span class="job-running">Already checking…</span>
+  {% endif %}
+</div>
