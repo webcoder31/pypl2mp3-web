@@ -54,7 +54,9 @@ def create_app(repository_path: Path) -> FastAPI:
 
     app.state.jobs = JobRegistry()
 
-    def _job_fragment(request, job_id, playlist_id, state, result, error):
+    def _job_fragment(
+        request, job_id, playlist_id, state, result, error, elapsed=None
+    ):
         """Render the self-polling fragment consumed by HTMX.
 
         `polling` is false for every terminal state, so the returned
@@ -76,6 +78,10 @@ def create_app(repository_path: Path) -> FastAPI:
                 "state": state,
                 "result": result,
                 "error": error,
+                "elapsed": elapsed,
+                # Rendered verbatim next to the status text. Empty for the
+                # first second so a fast job never flashes " 0s".
+                "tick": f" {elapsed}s" if elapsed else "",
                 "polling": state in ("pending", "running", "busy"),
             },
         )
@@ -106,6 +112,7 @@ def create_app(repository_path: Path) -> FastAPI:
                 # HTMX never swaps the DOM on a 4xx response, so a bare 409
                 # here would look exactly like the inert button this task
                 # exists to fix. Report the collision in-band instead.
+                running = app.state.jobs.get(f"check:{playlist_id}")
                 return _job_fragment(
                     request,
                     f"check:{playlist_id}",
@@ -113,6 +120,7 @@ def create_app(repository_path: Path) -> FastAPI:
                     "busy",
                     None,
                     None,
+                    running.elapsed_seconds if running else None,
                 )
             raise HTTPException(
                 status_code=409, detail="already checking this playlist"
@@ -126,6 +134,7 @@ def create_app(repository_path: Path) -> FastAPI:
                 job.state.value,
                 job.result,
                 job.error,
+                job.elapsed_seconds,
             )
 
         return {"job_id": job.job_id}
@@ -148,6 +157,7 @@ def create_app(repository_path: Path) -> FastAPI:
                 job.state.value,
                 job.result,
                 job.error,
+                job.elapsed_seconds,
             )
 
         return {

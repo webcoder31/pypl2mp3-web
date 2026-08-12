@@ -12,6 +12,7 @@ reconnects mid-import can catch up instead of starting blind.
 
 import asyncio
 import logging
+import time
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
@@ -49,11 +50,26 @@ class Job:
     result: object = None
     error: Optional[str] = None
     max_events: int = DEFAULT_MAX_EVENTS
+    started_at: float = field(default_factory=time.monotonic)
+    finished_at: Optional[float] = None
     _events: deque = field(default_factory=deque, repr=False)
     task: Optional[asyncio.Task] = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         self._events = deque(maxlen=self.max_events)
+
+    @property
+    def elapsed_seconds(self) -> int:
+        """Whole seconds since the job started, frozen once it ends.
+
+        Checking a large playlist can take minutes with nothing to show
+        for it, and a static "Checking…" is indistinguishable from a hung
+        server. This is what makes the wait legible.
+        """
+
+        end = time.monotonic() if self.finished_at is None else self.finished_at
+
+        return int(end - self.started_at)
 
     @property
     def events(self) -> list[dict]:
@@ -111,6 +127,10 @@ class JobRegistry:
             job.error = f"{type(exc).__name__}: {exc}"
         else:
             job.state = JobState.COMPLETED
+        finally:
+            # In a finally so the cancelled path, which re-raises, is
+            # stamped too.
+            job.finished_at = time.monotonic()
 
     def get(self, job_id: str) -> Optional[Job]:
         return self._jobs.get(job_id)
