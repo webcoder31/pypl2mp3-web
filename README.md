@@ -14,6 +14,38 @@ user-friendly experience.
 
 ---
 
+## About this repository
+
+This is `pypl2mp3-web`, the continuation of
+[`webcoder31/pypl2mp3`](https://github.com/webcoder31/pypl2mp3). It was cloned
+from it and keeps its full history; the original repository is now frozen and
+kept as a reference.
+
+**The goal is to add a locally served web interface**, at full parity with the
+eight existing commands — because the part of this tool that benefits most from
+a screen is the one a terminal cannot serve: checking a Shazam match means
+comparing metadata, *seeing* the cover art, and hearing the track.
+
+**Current status: foundations only. There is no web interface yet.**
+
+What exists today is the CLI, unchanged in behaviour, plus the seams the web
+layer will plug into:
+
+- two ports (`InteractionPort`, `ProgressPort`) isolating orchestration from
+  presentation, so both front ends will consume one implementation
+- a services layer, with one command migrated as the reference pattern
+- the project's first test suite
+
+Everything documented below describes the CLI, and all of it works.
+
+The design and the plan are in the repository:
+
+- [Design](docs/superpowers/specs/2026-08-11-web-ui-design.md) — what is being
+  built, which alternatives were rejected, and why
+- [Plan 1 — foundations](docs/superpowers/plans/2026-08-12-foundations.md) — done
+
+---
+
 ## Table of contents
 [Features](#features)&nbsp;&nbsp; 
 [Limitations](#limitations)&nbsp;&nbsp; 
@@ -24,6 +56,7 @@ user-friendly experience.
 [Usage](#usage)&nbsp;&nbsp; 
 [Commands](#commands)&nbsp;&nbsp; 
 [Examples](#examples)&nbsp;&nbsp;
+[Development](#development)&nbsp;&nbsp;
 [Troubleshooting](#troubleshooting)&nbsp;&nbsp; 
 [Thanks](#thanks)&nbsp;&nbsp; 
 
@@ -54,7 +87,12 @@ user-friendly experience.
 
 PYPL2MP3 requires:
 
-- Python ≥ 3.7  
+- **Python 3.13** (`~=3.13.0`, i.e. `>=3.13.0, <3.14`)
+
+  The pin is deliberate and narrow. Under Python 3.14 the locked Pillow has no
+  wheel and is built from source, which fails without libjpeg headers. A
+  `.python-version` file pins the interpreter so `uv` picks the right one
+  automatically.
 
 ### Dependency Manager
 
@@ -70,8 +108,13 @@ PYPL2MP3 requires:
 
 - A Proof of Origin Token (POT) is needed to access YouTube audio / video streams 
   ([details here](https://pytubefix.readthedocs.io/en/latest/user/po_token.html)).  
-- It is automatically generated via **BotGuard** from `pytubefix` version `8.12` 
-  and requires [`Node.js`](https://nodejs.org/en/download) to be installed.  
+- It is automatically generated via **BotGuard**, which needs a Node.js runtime.
+  Since `pytubefix` 10.x that runtime ships as a wheel
+  (`nodejs-wheel-binaries`, ~53 MB) and is installed automatically — expect a
+  slow first `uv sync`.
+- You still need [`Node.js`](https://nodejs.org/en/download) installed
+  system-wide: `pypl2mp3` runs a pre-flight `which node` before `import`, `fix`
+  and `junkize`, and the wheel's binary is not placed on `PATH`.
 
 ---
 
@@ -220,7 +263,7 @@ Options:
 
 ### `fix` – Fix metadata and rename "junk" songs
 ```sh
-pypl2mp3 tag [options]
+pypl2mp3 fix [options]
 ```
 Options:
 - `-l, --list <playlist>`: Specify a particular playlist by its ID, URL or INDEX
@@ -238,7 +281,7 @@ songs and rename the MP3 files accordingly.
 
 ### `junkize` – Remove metadata and make songs "junk"
 ```sh
-pypl2mp3 untag [options]
+pypl2mp3 junkize [options]
 ```
 Options:
 - `-l, --list <playlist>`: Specify a particular playlist by its ID, URL or INDEX
@@ -316,15 +359,53 @@ pypl2mp3 play -l 2 -s "dire straits"
 
 ---
 
+## Development
+
+Run the test suite:
+```sh
+uv run pytest
+```
+
+Tests never touch the network: YouTube and Shazam are stubbed, and the local
+listing tests actively trap `socket.connect`, `socket.connect_ex` and
+`socket.getaddrinfo` to prove it. What that means in practice is that a green
+suite says nothing about whether YouTube still works — only real runs do.
+
+---
+
 ## Troubleshooting
 
-Recent changes to the YouTube API may prevent songs from being uploaded or 
-tagged. You can try updating `pytubefix` to its latest minor version as a 
-temporary workaround while you wait for a fix (also, feel free to file an 
-issue):
+**Import fails or downloads never start.** YouTube changes break `pytubefix`
+regularly, and the symptom is often silent rather than loud — an empty playlist
+or a stream that dies partway rather than a clear error. Update it first:
+
 ```sh
 uv lock --upgrade-package pytubefix
 ```
+
+If that reports nothing to upgrade, check whether a **major** version exists
+beyond the constraint in `pyproject.toml`. A `<10` style upper bound silently
+holds you on a stale line while the fix ships in the next major:
+
+```sh
+curl -s https://pypi.org/pypi/pytubefix/json | python3 -c \
+  "import json,sys; print(json.load(sys.stdin)['info']['version'])"
+```
+
+Widen the constraint in `pyproject.toml` if needed, then `uv sync`.
+
+**Streams fail with `SABRError ... PoToken UNKNOWN/PENDING`.** YouTube is
+refusing the client. Do not pass an explicit `client=` to `pytubefix`; let it
+use its own default, which its maintainers keep aligned with what YouTube
+currently accepts. Forcing `client="WEB"` in particular fails this way while
+playlist listing still appears to work — the download is what breaks.
+
+**A dropped connection aborts a whole import.** It shouldn't; each video fails
+on its own and the run continues. If you see the opposite, that's a bug worth
+filing.
+
+Run any command with `-d` for verbose errors, or `-d -D` to also get a full
+stack trace in `log/pypl2mp3.log`.
 
 ---
 
