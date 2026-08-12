@@ -83,7 +83,13 @@ async def test_htmx_is_served_locally(tmp_path):
 
 
 async def test_the_page_references_no_external_host(tmp_path, monkeypatch):
-    """No CDN: the interface must work offline."""
+    """No CDN: the interface must work offline.
+
+    A blocklist of known CDN hostnames cannot hold — this asserts the
+    opposite, that every reference is a local root-relative path.
+    """
+
+    import re
 
     _block_network(monkeypatch)
     _make_playlist(
@@ -92,5 +98,19 @@ async def test_the_page_references_no_external_host(tmp_path, monkeypatch):
 
     body = (await _get(create_app(tmp_path), "/")).text
 
-    for marker in ("http://", "https://", "//unpkg", "//cdn"):
-        assert marker not in body, f"external reference found: {marker}"
+    references = re.findall(
+        r'(?:src|href|action)\s*=\s*["\']([^"\']*)["\']', body
+    )
+    assert references, "no references found — the regex is probably wrong"
+
+    for reference in references:
+        assert reference.startswith("/"), (
+            f"reference is not root-relative: {reference!r}"
+        )
+        assert not reference.startswith("//"), (
+            f"protocol-relative reference to another host: {reference!r}"
+        )
+
+    # An @import inside the inline stylesheet would bypass the attribute
+    # scan entirely.
+    assert "@import" not in body
