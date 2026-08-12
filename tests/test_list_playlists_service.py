@@ -66,6 +66,30 @@ def test_sorts_playlists_naturally(tmp_path):
     assert names == ["Owner - A", "Owner - B", "Owner - C"]
 
 
+def test_sorting_ignores_case_and_accents(tmp_path):
+    """Ce que `natural_sort_key` apporte par rapport à un tri brut.
+
+    Le cas précédent (A, B, C) se trie identiquement avec `.sort()` : il ne
+    prouve donc rien sur la clé de tri. Une casse mélangée et une lettre
+    accentuée, si : `.sort()` rendrait Beta, Fabrice, alpha, Émile, l'ordre
+    des points de code, où les majuscules précèdent les minuscules et les
+    caractères accentués finissent en queue de liste.
+    """
+
+    labels = ("Owner - Fabrice", "Owner - alpha", "Owner - Émile", "Owner - Beta")
+    for index, label in enumerate(labels):
+        _make_playlist(tmp_path, f"{label} [PL{str(index) * 32}]", 1, 0)
+
+    names = [summary.name for summary in list_playlists(tmp_path)]
+
+    assert names == [
+        "Owner - alpha",
+        "Owner - Beta",
+        "Owner - Émile",
+        "Owner - Fabrice",
+    ]
+
+
 def test_performs_no_network_call(tmp_path, monkeypatch):
     """Un listing local ne doit jamais toucher au réseau, même indirectement."""
 
