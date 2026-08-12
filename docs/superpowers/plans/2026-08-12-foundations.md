@@ -4,7 +4,7 @@
 
 **Goal:** Introduire la couche de ports et de services décrite dans le spec, avec l'infrastructure de tests, et migrer une commande de bout en bout comme motif de référence — sans changer une seule ligne du comportement CLI observable.
 
-**Architecture:** Deux ports (`InteractionPort`, `ProgressPort`) définissent les contrats entre l'orchestration et l'affichage. Les services portent l'orchestration débarrassée de tout `print` ; les modules `commands/` deviennent des façades d'affichage. `libs/` n'est pas touché : un adaptateur projette `ProgressPort` sur les dix-huit callbacks de `song.py`.
+**Architecture:** Deux ports (`InteractionPort`, `ProgressPort`) définissent les contrats entre l'orchestration et l'affichage. Les services portent l'orchestration débarrassée de tout `print` ; les modules `commands/` deviennent des façades d'affichage. `libs/` n'est pas touché : un adaptateur projette `ProgressPort` sur les quinze callbacks de `song.py`.
 
 **Tech Stack:** Python 3.13, pytest + pytest-asyncio, dataclasses, `typing.Protocol`.
 
@@ -468,7 +468,7 @@ git commit -m "feat: add the progress port with null and fake implementations"
 
 ### Task 4: Adaptateur ProgressPort vers les callbacks de song.py
 
-`SongModel.create_from_youtube` accepte dix-huit paramètres de callback (`song.py:514-535`). On ne touche pas à cette signature : `song.py` fait 1777 lignes et porte le cœur de valeur. L'adaptateur absorbe la verrue, une fois pour toutes.
+`SongModel.create_from_youtube` accepte quinze paramètres de callback (`song.py:514-535`). On ne touche pas à cette signature : `song.py` fait 1777 lignes et porte le cœur de valeur. L'adaptateur absorbe la verrue, une fois pour toutes.
 
 **Files:**
 - Create: `src/pypl2mp3/services/__init__.py`
@@ -507,7 +507,20 @@ def test_progress_bar_callback_forwards_percent_to_the_port():
     assert ("stage_progress", "download_audio", 42.0) in progress.events
 
 
-def test_shazam_hooks_report_the_identified_song():
+async def test_pre_shazam_song_hook_reports_stage_started():
+    progress = FakeProgress()
+    kwargs = song_callbacks(progress)
+
+    await kwargs["pre_shazam_song"](object())
+
+    assert (
+        "stage_started",
+        "shazam",
+        "Shazam-ing audio track:",
+    ) in progress.events
+
+
+async def test_shazam_hooks_report_the_identified_song():
     progress = FakeProgress()
     kwargs = song_callbacks(progress)
 
@@ -521,7 +534,7 @@ def test_shazam_hooks_report_the_identified_song():
         },
     )()
 
-    kwargs["post_shazam_song"](song)
+    await kwargs["post_shazam_song"](song)
 
     assert (
         "song_identified",
@@ -561,7 +574,7 @@ Créer `src/pypl2mp3/services/_song_callbacks.py` :
 #!/usr/bin/env python3
 """Projection d'un ProgressPort sur les callbacks de SongModel.
 
-`SongModel.create_from_youtube` attend dix-huit callbacks distincts. Plutôt
+`SongModel.create_from_youtube` attend quinze callbacks distincts. Plutôt
 que d'imposer cette forme aux services, on l'isole ici : écrit une fois,
 utilisé par tous.
 
@@ -600,14 +613,23 @@ def song_callbacks(progress: ProgressPort) -> dict[str, object]:
             callback=_percent_forwarder(progress, stage),
         )
 
-    kwargs["pre_shazam_song"] = lambda _song: progress.stage_started(
-        "shazam", "Shazam-ing audio track:"
-    )
-    kwargs["post_shazam_song"] = lambda song: progress.song_identified(
-        song.shazam_artist,
-        song.shazam_title,
-        float(song.shazam_match_score),
-    )
+    # Ces deux hooks DOIVENT être asynchrones : song.py les attend avec
+    # `await` (l. 1477 et 1595). Des lambdas synchrones provoqueraient
+    # « TypeError: object NoneType can't be used in 'await' expression »
+    # sur chaque chanson. Les trois callbacks de ProgressBarInterface
+    # ci-dessus, eux, sont appelés sans await et restent synchrones.
+    async def pre_shazam_song(_song) -> None:
+        progress.stage_started("shazam", "Shazam-ing audio track:")
+
+    async def post_shazam_song(song) -> None:
+        progress.song_identified(
+            song.shazam_artist,
+            song.shazam_title,
+            float(song.shazam_match_score),
+        )
+
+    kwargs["pre_shazam_song"] = pre_shazam_song
+    kwargs["post_shazam_song"] = post_shazam_song
 
     return kwargs
 

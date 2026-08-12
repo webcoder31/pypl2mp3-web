@@ -93,7 +93,7 @@ Mesuré sur la base de départ. Détermine l'ampleur réelle du travail.
 **Le noyau métier est déjà prêt.** Le couplage à la console est concentré dans les
 modules de commandes, et surtout dans les deux qui portent la valeur.
 
-`song.py:514-535` expose dix-huit points d'accroche (`pre_`/`on_`/`post_` pour la
+`song.py:514-535` expose quinze points d'accroche (`pre_`/`on_`/`post_` pour la
 récupération d'infos, le téléchargement, l'encodage MP3, la pochette et le
 Shazam). Le travail le plus ingrat d'un portage GUI — démêler les `print` du code
 métier — est donc déjà fait dans le domaine.
@@ -170,7 +170,7 @@ services/      orchestration sans affichage
   import_playlist.py  fix_junks.py  junkize_songs.py
   list_playlists.py   list_songs.py  list_junks.py
   browse_videos.py    play_songs.py
-  _song_callbacks.py  adaptateur ProgressPort → les 18 paramètres de song.py
+  _song_callbacks.py  adaptateur ProgressPort → les 15 callbacks de song.py
 
 cli/           façade terminal (les commands/ actuelles, allégées)
   console_interaction.py  console_progress.py  + 8 modules d'affichage
@@ -246,7 +246,7 @@ class ProgressPort(Protocol):
     def song_identified(self, artist: str, title: str, score: float) -> None: ...
 ```
 
-`song.py` **conserve ses dix-huit paramètres**. Un adaptateur unique
+`song.py` **conserve ses quinze paramètres de callback**. Un adaptateur unique
 (`services/_song_callbacks.py`) projette le port sur ces paramètres ; écrit une
 fois, utilisé par tous les services.
 
@@ -266,6 +266,27 @@ une file ; c'est une tâche distincte qui la vide vers le WebSocket.
 
 L'asymétrie est voulue : signaler un avancement n'attend rien, poser une question
 attend une réponse.
+
+### Piège vérifié : les hooks Shazam doivent être asynchrones
+
+Le port est synchrone, mais **les deux hooks Shazam que l'adaptateur fournit à
+`song.py` ne le sont pas**. `song.py` les attend avec `await` :
+
+- `song.py:1477` → `await pre_shazam_song(self)`
+- `song.py:1595` → `await post_shazam_song(self)`
+
+Leur passer une fonction synchrone provoque
+`TypeError: object NoneType can't be used in 'await' expression` **sur chaque
+chanson**. Constaté et reproduit le 2026-08-12 pendant l'implémentation du plan 1.
+
+Les trois callbacks de `ProgressBarInterface` (`on_download_audio`,
+`on_mp3_encode`, `on_download_cover_art`) sont au contraire appelés **sans**
+`await` et doivent rester synchrones.
+
+Règle générale à appliquer pour tout nouveau hook branché sur `song.py` :
+vérifier le site d'appel réel avant de choisir `def` ou `async def`, et écrire
+un test qui exerce le hook **par la même voie que `song.py`** — un test qui
+appelle un hook asynchrone sans `await` ne détecte rien.
 
 ---
 
