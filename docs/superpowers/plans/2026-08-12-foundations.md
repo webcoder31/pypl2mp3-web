@@ -641,7 +641,7 @@ Première migration complète, choisie parce qu'elle est la plus simple : listin
 
 **Files:**
 - Create: `src/pypl2mp3/services/list_playlists.py`
-- Modify: `src/pypl2mp3/commands/list_playlists.py` (réécriture complète, 152 lignes → façade d'affichage)
+- Modify: `src/pypl2mp3/commands/list_playlists.py` (réécriture complète, 152 lignes → façade d'affichage, fonction publique `display_playlists`)
 - Create: `tests/test_list_playlists_service.py`
 
 **Interfaces:**
@@ -833,7 +833,7 @@ from pypl2mp3.services.list_playlists import PlaylistSummary, list_playlists
 init(autoreset=True)
 
 
-def list_playlists_command(args: any) -> None:
+def display_playlists(args: any) -> None:
     """
     Display all playlists in the repository with their song statistics.
 
@@ -894,16 +894,23 @@ def _display_playlists_details(summaries: list[PlaylistSummary]) -> None:
         )
 ```
 
-La fonction est renommée `list_playlists_command` pour ne plus entrer en collision avec le service du même nom.
+La fonction est renommée `display_playlists` pour ne plus entrer en collision avec le service du même nom.
 
 - [ ] **Step 6: Mettre à jour le lanceur dans main.py**
 
 Dans `src/pypl2mp3/main.py`, remplacer le corps de `_run_list_playlists` (lignes 81-82) :
 
 ```python
-    from pypl2mp3.commands.list_playlists import list_playlists_command
-    list_playlists_command(args)
+    from pypl2mp3.commands.list_playlists import display_playlists
+    display_playlists(args)
 ```
+
+**Attention au nom.** Ne pas appeler cette fonction `list_playlists_command` :
+`main.py:312` utilise déjà ce nom pour le sous-parseur `argparse`. Les portées
+diffèrent, donc il n'y aurait pas de collision technique, mais deux entités
+homonymes dans un même fichier nuisent à la lecture. `display_playlists` dit ce
+que fait la façade et la distingue du service `list_playlists`, qui rend des
+données.
 
 - [ ] **Step 7: Vérifier que le comportement observable est inchangé**
 
