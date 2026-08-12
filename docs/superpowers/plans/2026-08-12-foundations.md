@@ -677,9 +677,27 @@ Première migration complète, choisie parce qu'elle est la plus simple : listin
 Créer `tests/test_list_playlists_service.py` :
 
 ```python
+import socket
 from pathlib import Path
 
+import pytest
+
 from pypl2mp3.services.list_playlists import PlaylistSummary, list_playlists
+
+
+def _forbidden(*args, **kwargs):
+    raise AssertionError("un listing local a tenté un accès réseau")
+
+
+def _block_network(monkeypatch):
+    """Interdire les trois portes d'entrée réseau : connexion bloquante,
+    connexion non bloquante (utilisée par les clients HTTP asynchrones tels
+    qu'aiohttp, déjà présent dans l'arbre de dépendances via shazamio), et
+    résolution DNS seule."""
+
+    monkeypatch.setattr(socket.socket, "connect", _forbidden)
+    monkeypatch.setattr(socket.socket, "connect_ex", _forbidden)
+    monkeypatch.setattr(socket, "getaddrinfo", _forbidden)
 
 
 def _make_playlist(repo: Path, name: str, songs: int, junks: int) -> Path:
@@ -730,15 +748,25 @@ def test_sorts_playlists_naturally(tmp_path):
 def test_performs_no_network_call(tmp_path, monkeypatch):
     """Un listing local ne doit jamais toucher au réseau, même indirectement."""
 
-    import socket
-
-    def _forbidden(*args, **kwargs):
-        raise AssertionError("un listing local a tenté un accès réseau")
-
-    monkeypatch.setattr(socket.socket, "connect", _forbidden)
+    _block_network(monkeypatch)
     _make_playlist(tmp_path, "Owner - Alpha [PL0000000000000000000000000000001]", 1, 0)
 
     assert len(list_playlists(tmp_path)) == 1
+
+
+def test_the_network_trap_actually_fires(monkeypatch):
+    """Sans cela, le piège est affirmé mais jamais exercé."""
+
+    _block_network(monkeypatch)
+
+    with socket.socket() as sock:
+        with pytest.raises(AssertionError, match="accès réseau"):
+            sock.connect(("127.0.0.1", 9))
+        with pytest.raises(AssertionError, match="accès réseau"):
+            sock.connect_ex(("127.0.0.1", 9))
+
+    with pytest.raises(AssertionError, match="accès réseau"):
+        socket.getaddrinfo("example.invalid", 80)
 ```
 
 - [ ] **Step 2: Lancer le test pour vérifier qu'il échoue**
@@ -821,7 +849,7 @@ def _summarize(playlist_path: Path) -> PlaylistSummary:
 - [ ] **Step 4: Lancer les tests du service**
 
 Run: `uv run pytest tests/test_list_playlists_service.py -v`
-Expected: 5 PASS
+Expected: 6 PASS
 
 - [ ] **Step 5: Réduire la commande à une façade d'affichage**
 
@@ -942,7 +970,7 @@ Expected: sortie strictement identique à celle d'avant la migration — mêmes 
 - [ ] **Step 8: Lancer toute la suite**
 
 Run: `uv run pytest -v`
-Expected: tous les tests PASS (1 + 3 + 3 + 4 + 5 = 16).
+Expected: tous les tests PASS (18 à ce stade).
 
 - [ ] **Step 9: Commit**
 
@@ -1073,7 +1101,7 @@ Expected: `code = 1`
 - [ ] **Step 7: Lancer toute la suite**
 
 Run: `uv run pytest -v`
-Expected: 18 PASS
+Expected: 20 PASS
 
 - [ ] **Step 8: Commit**
 
