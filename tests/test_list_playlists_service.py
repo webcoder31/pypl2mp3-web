@@ -1,6 +1,24 @@
+import socket
 from pathlib import Path
 
+import pytest
+
 from pypl2mp3.services.list_playlists import PlaylistSummary, list_playlists
+
+
+def _forbidden(*args, **kwargs):
+    raise AssertionError("un listing local a tenté un accès réseau")
+
+
+def _block_network(monkeypatch):
+    """Interdire les trois portes d'entrée réseau : connexion bloquante,
+    connexion non bloquante (utilisée par les clients HTTP asynchrones tels
+    qu'aiohttp, déjà présent dans l'arbre de dépendances via shazamio), et
+    résolution DNS seule."""
+
+    monkeypatch.setattr(socket.socket, "connect", _forbidden)
+    monkeypatch.setattr(socket.socket, "connect_ex", _forbidden)
+    monkeypatch.setattr(socket, "getaddrinfo", _forbidden)
 
 
 def _make_playlist(repo: Path, name: str, songs: int, junks: int) -> Path:
@@ -51,12 +69,16 @@ def test_sorts_playlists_naturally(tmp_path):
 def test_performs_no_network_call(tmp_path, monkeypatch):
     """Un listing local ne doit jamais toucher au réseau, même indirectement."""
 
-    import socket
-
-    def _forbidden(*args, **kwargs):
-        raise AssertionError("un listing local a tenté un accès réseau")
-
-    monkeypatch.setattr(socket.socket, "connect", _forbidden)
+    _block_network(monkeypatch)
     _make_playlist(tmp_path, "Owner - Alpha [PL0000000000000000000000000000001]", 1, 0)
 
     assert len(list_playlists(tmp_path)) == 1
+
+
+def test_the_network_trap_actually_fires(monkeypatch):
+    """Sans cela, le test précédent affirme le garde-fou sans l'exercer."""
+
+    _block_network(monkeypatch)
+
+    with pytest.raises(AssertionError, match="accès réseau"):
+        socket.socket().connect(("127.0.0.1", 9))
