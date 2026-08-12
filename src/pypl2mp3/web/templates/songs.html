@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block heading %}
+  {% if junk_only %}Junk songs{% else %}Songs{% endif %}
+{% endblock %}
+
+{% block content %}
+  <p><a href="/">← All playlists</a></p>
+
+  <form action="/songs" method="get">
+    <input type="hidden" name="playlist" value="{{ playlist }}">
+    <input type="search" name="q" value="{{ query }}"
+           placeholder="Filter by artist or title">
+    <label>
+      <input type="checkbox" name="junk" value="1"
+             {% if junk_only %}checked{% endif %}> junk only
+    </label>
+    <button type="submit">Filter</button>
+  </form>
+
+  {% if not songs %}
+    <p>No songs match.</p>
+  {% else %}
+    <p>{{ songs | length }} song(s)</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Song</th>
+          <th>Playlist</th>
+          <th class="num">Length</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for song in songs %}
+          <tr>
+            <td>
+              {% if song.is_junk %}<span class="junk">⚠</span> {% endif %}
+              {{ song.label }}<br>
+              <span class="id">{{ song.youtube_id }}</span>
+            </td>
+            <td>{{ song.playlist }}</td>
+            <td class="num">{{ song.duration }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+{% endblock %}

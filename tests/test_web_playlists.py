@@ -56,11 +56,18 @@ async def test_inventory_lists_playlists_with_their_counts(
     assert "Owner - Alpha" in body
     assert "PL0000000000000000000000000000001" in body
 
-    # Counts must appear as their own table cells, not merely somewhere in
-    # the page: asserting "4" in body would pass on almost any markup.
+    # Counts must appear as their own table cells, in order, not merely
+    # somewhere in the page: asserting "4" in body would pass on almost any
+    # markup. The tagged and junk counts are wrapped in links to the song
+    # listing, so read each cell's text rather than its immediate contents.
     import re
 
-    cells = re.findall(r'<td class="num[^"]*">\s*([0-9]+)\s*</td>', body)
+    cells = [
+        "".join(re.findall(r"[0-9]+", re.sub(r"<[^>]*>", " ", cell)))
+        for cell in re.findall(
+            r'<td class="num[^"]*">(.*?)</td>', body, re.DOTALL
+        )
+    ]
     assert cells == ["3", "1", "4"], (
         f"expected tagged/junk/total = 3/1/4, got {cells}"
     )

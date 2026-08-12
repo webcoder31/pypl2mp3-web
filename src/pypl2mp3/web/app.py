@@ -17,6 +17,7 @@ from fastapi.templating import Jinja2Templates
 
 from pypl2mp3.services.check_new_songs import check_new_songs
 from pypl2mp3.services.list_playlists import list_playlists
+from pypl2mp3.services.list_songs import DEFAULT_MATCH_THRESHOLD, list_songs
 from pypl2mp3.web.jobs import JobAlreadyRunning, JobRegistry
 from pypl2mp3.web.web_progress import WebProgress
 
@@ -175,6 +176,39 @@ def create_app(repository_path: Path) -> FastAPI:
             {
                 "summaries": list_playlists(app.state.repository_path),
                 "repository": str(app.state.repository_path),
+            },
+        )
+
+    @app.get("/songs", response_class=HTMLResponse)
+    def songs(
+        request: Request,
+        playlist: str = "",
+        q: str = "",
+        junk: int = 0,
+        match: float = DEFAULT_MATCH_THRESHOLD,
+    ) -> HTMLResponse:
+        """List songs, optionally scoped to a playlist and filtered.
+
+        `junk=1` is the `junks` command: the same query with the flag
+        flipped, which is why there is one route rather than two.
+        """
+
+        found = list_songs(
+            app.state.repository_path,
+            junk_only=bool(junk),
+            keywords=q,
+            match_threshold=match,
+            playlist_identifier=playlist or None,
+        )
+
+        return templates.TemplateResponse(
+            request,
+            "songs.html",
+            {
+                "songs": found,
+                "playlist": playlist,
+                "query": q,
+                "junk_only": bool(junk),
             },
         )
 

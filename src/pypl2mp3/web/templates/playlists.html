@@ -28,9 +28,17 @@
               >Check for new songs</button>
               <div id="job-{{ summary.playlist_id }}" class="job"></div>
             </td>
-            <td class="num">{{ summary.valid_songs }}</td>
+            <td class="num">
+              <a href="/songs?playlist={{ summary.playlist_id }}"
+                >{{ summary.valid_songs }}</a>
+            </td>
             <td class="num {% if summary.junk_songs %}junk{% endif %}">
-              {{ summary.junk_songs }}
+              {% if summary.junk_songs %}
+                <a href="/songs?playlist={{ summary.playlist_id }}&amp;junk=1"
+                  >{{ summary.junk_songs }}</a>
+              {% else %}
+                {{ summary.junk_songs }}
+              {% endif %}
             </td>
             <td class="num">{{ summary.total_songs }}</td>
           </tr>
