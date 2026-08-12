@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+"""In-process registry for long-running operations.
+
+No broker and no database: this is a single-user local tool, and the
+filesystem is the source of truth. A job that dies with the server loses
+nothing that a fresh sync cannot recover — already written MP3 files stay
+valid.
+
+Each job keeps a bounded ring of its recent events so a browser that
+reconnects mid-import can catch up instead of starting blind.
+"""
+
+import asyncio
+from collections import deque
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Awaitable, Callable, Optional
+
+DEFAULT_MAX_EVENTS = 500
+
+
+class JobState(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class JobAlreadyRunning(Exception):
+    """A job with this identifier is already active."""
+
+
+@dataclass
+class Job:
+    """One long-running operation and everything observers need from it."""
+
+    job_id: str
+    state: JobState = JobState.PENDING
+    result: object = None
+    error: Optional[str] = None
+    max_events: int = DEFAULT_MAX_EVENTS
+    _events: deque = field(default_factory=deque, repr=False)
+    task: Optional[asyncio.Task] = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        self._events = deque(maxlen=self.max_events)
+
+    @property
+    def events(self) -> list[dict]:
+        return list(self._events)
+
+    def append_event(self, event: dict) -> None:
+        self._events.append(event)
+
+
+class JobRegistry:
+    """Track jobs by identifier for the lifetime of the server process."""
+
+    def __init__(self, max_events: int = DEFAULT_MAX_EVENTS):
+        self._jobs: dict[str, Job] = {}
+        self._max_events = max_events
+
+    def start(
+        self,
+        job_id: str,
+        coro_factory: Callable[[Job], Awaitable[object]],
+    ) -> Job:
+        """Start a job, refusing to run one identifier twice at a time.
+
+        Raises:
+            JobAlreadyRunning: if that identifier is pending or running.
+        """
+
+        existing = self._jobs.get(job_id)
+        if existing is not None and existing.state in {
+            JobState.PENDING,
+            JobState.RUNNING,
+        }:
+            raise JobAlreadyRunning(job_id)
+
+        job = Job(job_id=job_id, max_events=self._max_events)
+        self._jobs[job_id] = job
+        job.task = asyncio.ensure_future(self._run(job, coro_factory))
+
+        return job
+
+    async def _run(
+        self,
+        job: Job,
+        coro_factory: Callable[[Job], Awaitable[object]],
+    ) -> None:
+        job.state = JobState.RUNNING
+        try:
+            job.result = await coro_factory(job)
+        except asyncio.CancelledError:
+            # Partial work is preserved: whatever reached disk stays valid.
+            job.state = JobState.CANCELLED
+            raise
+        except Exception as exc:
+            job.state = JobState.FAILED
+            job.error = f"{type(exc).__name__}: {exc}"
+        else:
+            job.state = JobState.COMPLETED
+
+    def get(self, job_id: str) -> Optional[Job]:
+        return self._jobs.get(job_id)
+
+    def emit(self, job_id: str, event: dict) -> None:
+        """Record an event. Silently ignores unknown jobs.
+
+        Called from the progress port, possibly from a worker thread, so it
+        must stay cheap and must never raise into the caller.
+        """
+
+        job = self._jobs.get(job_id)
+        if job is not None:
+            job.append_event(event)
+
+    def cancel(self, job_id: str) -> bool:
+        job = self._jobs.get(job_id)
+        if job is None or job.task is None or job.task.done():
+            return False
+
+        return job.task.cancel()
+
+    async def wait(self, job_id: str) -> None:
+        """Await a job's completion. Test helper; never used by routes."""
+
+        job = self._jobs.get(job_id)
+        if job is None or job.task is None:
+            return
+
+        try:
+            await job.task
+        except asyncio.CancelledError:
+            pass
