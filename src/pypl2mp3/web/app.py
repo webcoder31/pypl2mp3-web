@@ -59,7 +59,12 @@ def create_app(repository_path: Path) -> FastAPI:
 
         `polling` is false for every terminal state, so the returned
         fragment carries no `hx-trigger` and the browser stops polling on
-        its own — no client-side counter or stop condition needed.
+        its own — no client-side counter or stop condition needed. "busy"
+        (a duplicate click while a job is already running) is *not*
+        terminal: the fragment still carries the id the button targets, so
+        if it did not keep polling, the swap on the second click would
+        replace the live polling element with a dead one and the browser
+        would never learn the job finished.
         """
 
         return templates.TemplateResponse(
@@ -71,7 +76,7 @@ def create_app(repository_path: Path) -> FastAPI:
                 "state": state,
                 "result": result,
                 "error": error,
-                "polling": state in ("pending", "running"),
+                "polling": state in ("pending", "running", "busy"),
             },
         )
 

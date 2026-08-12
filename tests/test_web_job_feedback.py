@@ -1,6 +1,7 @@
 """Clicking the button must show something — including when it fails."""
 
 import asyncio
+import re
 
 import httpx
 import pytest
@@ -84,6 +85,41 @@ async def test_the_button_gets_a_fragment_that_polls_itself(
     assert "hx-trigger" in body
 
 
+async def test_the_fragment_id_matches_what_the_button_targets(
+    tmp_path, monkeypatch
+):
+    """The whole polling swap rests on one id equality — assert it directly.
+
+    The button's hx-target, the id the POST fragment carries, and the id
+    the GET /jobs fragment carries must all name the same element. If any
+    of the three drifts, hx-swap="outerHTML" either swaps the wrong node or
+    detaches the live poller from the document.
+    """
+
+    monkeypatch.setattr(mod, "Playlist", _FakePlaylist)
+    _make_local(tmp_path, [])
+
+    async with _client(create_app(tmp_path)) as client:
+        page = (await client.get("/")).text
+        post_fragment = (
+            await client.post(f"/playlists/{PLAYLIST_ID}/check", headers=HX)
+        ).text
+        get_fragment = (
+            await client.get(f"/jobs/check:{PLAYLIST_ID}", headers=HX)
+        ).text
+
+    target = re.search(r'hx-target="#([^"]+)"', page)
+    post_div = re.search(r'<div id="([^"]+)"', post_fragment)
+    get_div = re.search(r'<div id="([^"]+)"', get_fragment)
+
+    assert target and post_div and get_div, (
+        "expected an hx-target on the page and a <div id=...> in both "
+        f"fragments; got target={target}, post_div={post_div}, "
+        f"get_div={get_div}"
+    )
+    assert target.group(1) == post_div.group(1) == get_div.group(1)
+
+
 async def test_polling_stops_once_the_job_is_done(tmp_path, monkeypatch):
     """Without this, the browser would poll a finished job forever."""
 
@@ -106,7 +142,12 @@ async def test_a_completed_check_reports_what_it_found(tmp_path, monkeypatch):
         await client.post(f"/playlists/{PLAYLIST_ID}/check", headers=HX)
         settled = await _settle(client, f"check:{PLAYLIST_ID}")
 
-    assert "1" in settled
+    # The playlist id itself contains "1", so a bare "1" in settled would
+    # pass no matter what the template rendered. Pin down both the wording
+    # and the count it must report: one of REMOTE_IDS is present locally,
+    # so exactly one is missing.
+    assert "new song(s)" in settled
+    assert "1 new song(s)" in settled
 
 
 async def test_a_failed_check_shows_the_error_rather_than_nothing(
@@ -121,7 +162,10 @@ async def test_a_failed_check_shows_the_error_rather_than_nothing(
         await client.post(f"/playlists/{PLAYLIST_ID}/check", headers=HX)
         settled = await _settle(client, f"check:{PLAYLIST_ID}")
 
-    assert "network down" in settled or "failed" in settled.lower()
+    # The template's own literal "Check failed:" would satisfy a check for
+    # "failed" regardless of whether the actual error ever reached the
+    # page, so the error text itself is the only assertion that proves it.
+    assert "network down" in settled
 
 
 async def test_a_second_click_says_so_instead_of_looking_inert(
@@ -149,5 +193,13 @@ async def test_a_second_click_says_so_instead_of_looking_inert(
 
         assert second.status_code == 200
         assert "already" in second.text.lower()
+
+        # The busy fragment keeps the same id the button targets and gets
+        # swapped in with hx-swap="outerHTML". If it did not also carry
+        # hx-get/hx-trigger, that swap would detach the live poller from
+        # the document and the browser would never learn the job finished
+        # — the exact inert-button failure this feature exists to remove.
+        assert "hx-get" in second.text
+        assert "hx-trigger" in second.text
 
         app.state.jobs.cancel(f"check:{PLAYLIST_ID}")
