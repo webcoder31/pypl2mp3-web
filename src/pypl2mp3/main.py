@@ -154,6 +154,20 @@ def _run_play_songs(args: argparse.Namespace) -> None:
     play_songs(args)
 
 
+def _run_web_ui(args: argparse.Namespace) -> None:
+    """
+    Runner for the "ui" command.
+
+    Args:
+        args: Parsed arguments.
+    """
+
+    from pathlib import Path
+
+    from pypl2mp3.web.app import serve
+    serve(Path(args.repo), args.port)
+
+
 class CliParser(argparse.ArgumentParser):
     """
     Extends Argparse argument parser to define custom error handler
@@ -601,6 +615,25 @@ def main():
     )
 
     play_songs_command.set_defaults(func=_run_play_songs)
+
+
+    # CLI parser for command "ui"
+    web_ui_command = subparsers.add_parser(
+        'ui',
+        parents=[shared_options_parser],
+        help='Serve the web interface locally',
+        description='Serve the web interface locally',
+        epilog=epilog_md,
+        formatter_class=cliParser.formatter_class
+    )
+    web_ui_command.add_argument(
+        "-p", "--port",
+        metavar="port",
+        type=int,
+        default=8731,
+        help="Port to listen on (default: 8731)"
+    )
+    web_ui_command.set_defaults(func=_run_web_ui)
 
 
     # Parse CLI
