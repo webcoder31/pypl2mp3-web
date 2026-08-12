@@ -15,3 +15,22 @@ class FakeInteraction:
                 f"Aucune réponse scriptée restante pour : {question!r}"
             )
         return self._answers.pop(0)
+
+
+class FakeProgress:
+    """Enregistre les événements reçus, sans rien afficher."""
+
+    def __init__(self):
+        self.events: list[tuple] = []
+
+    def stage_started(self, stage: str, label: str) -> None:
+        self.events.append(("stage_started", stage, label))
+
+    def stage_progress(self, stage: str, percent: float) -> None:
+        self.events.append(("stage_progress", stage, percent))
+
+    def stage_done(self, stage: str) -> None:
+        self.events.append(("stage_done", stage))
+
+    def song_identified(self, artist: str, title: str, score: float) -> None:
+        self.events.append(("song_identified", artist, title, score))
