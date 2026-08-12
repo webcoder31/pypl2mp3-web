@@ -170,7 +170,9 @@ services/      orchestration sans affichage
   import_playlist.py  fix_junks.py  junkize_songs.py
   list_playlists.py   list_songs.py  list_junks.py
   browse_videos.py    play_songs.py
-  _song_callbacks.py  adaptateur ProgressPort → les 15 callbacks de song.py
+  _song_callbacks.py  adaptateur ProgressPort → les callbacks de song.py
+                      (un constructeur par API : create_from_youtube,
+                      update_cover_art, shazam_song)
 
 cli/           façade terminal (les commands/ actuelles, allégées)
   console_interaction.py  console_progress.py  + 8 modules d'affichage
@@ -246,13 +248,28 @@ class ProgressPort(Protocol):
     def song_identified(self, artist: str, title: str, score: float) -> None: ...
 ```
 
-`song.py` **conserve ses quinze paramètres de callback**. Un adaptateur unique
+`song.py` **conserve ses paramètres de callback**. Un adaptateur unique
 (`services/_song_callbacks.py`) projette le port sur ces paramètres ; écrit une
 fois, utilisé par tous les services.
 
+Trois API acceptent des hooks, et chacune n'accepte que les siens : d'où un
+constructeur par API, `create_from_youtube_callbacks`,
+`update_cover_art_callbacks` et `shazam_song_callbacks`. Splater le mauvais
+dictionnaire lève un `TypeError`.
+
+**Deux pièges que l'adaptateur neutralise** — les migrations suivantes en
+héritent, elles n'ont rien à refaire :
+
+- `create_from_youtube` réécrit ses quinze callbacks avec ses propres closures
+  d'affichage tant que `use_default_verbosity` vaut `True`, et les annule tous
+  si `verbose` ne vaut pas `True`. Les deux drapeaux sont donc inclus dans le
+  dictionnaire rendu (`verbose=True, use_default_verbosity=False`).
+- les hooks `pre_`/`post_` sont attendus (`await`) ; le callback d'un
+  `ProgressBarInterface`, non. `async def` d'un côté, `def` de l'autre.
+
 **Pourquoi ce sens** : `song.py` fait 1777 lignes et c'est le seul module qui
 télécharge et tague réellement. Y toucher reviendrait à risquer le cœur de valeur
-pour un gain cosmétique. L'adaptateur coûte une trentaine de lignes et isole la
+pour un gain cosmétique. L'adaptateur coûte une centaine de lignes et isole la
 verrue.
 
 Implémentations : `ConsoleProgress` enveloppe la `ProgressBarInterface`

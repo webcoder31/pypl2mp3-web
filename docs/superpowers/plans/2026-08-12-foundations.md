@@ -479,6 +479,12 @@ git commit -m "feat: add the progress port with null and fake implementations"
 - Consumes: `ProgressPort` (Task 3) ; `pypl2mp3.libs.song.ProgressBarInterface`, dataclass de champs `label: str` et `callback: Optional[Callable[[int, str], None]]`.
 - Produces: `song_callbacks(progress: ProgressPort) -> dict[str, object]` — dictionnaire à passer tel quel en `**kwargs` à `SongModel.create_from_youtube`.
 
+> **Corrigé après la revue finale de branche.** Le constructeur unique décrit ci-dessous était faux sur trois points, restés invisibles tant que rien ne l'appelait. État final, à reprendre pour les migrations suivantes :
+>
+> - **Trois constructeurs**, un par API acceptant des hooks : `create_from_youtube_callbacks`, `update_cover_art_callbacks`, `shazam_song_callbacks`. Chacun ne rend que les clés de son API ; splater le mauvais dictionnaire lève `TypeError`. `fix_junks` appelle `update_cover_art` (3 sites) et `shazam_song` (1 site), jamais `create_from_youtube`.
+> - **`verbose=True, use_default_verbosity=False` font partie du dictionnaire de `create_from_youtube`** : sans eux, `song.py:614-723` réassigne les quinze callbacks à ses propres closures d'affichage et écrit ses barres ANSI sur stdout.
+> - **Les hooks `pre_`/`post_` sont câblés** sur `stage_started` / `stage_done`. Le constructeur ne produisait que `stage_progress`, pour des étapes dont le port n'apprenait jamais ni le début ni la fin.
+
 - [ ] **Step 1: Écrire le test**
 
 Créer `tests/test_song_callbacks.py` :
