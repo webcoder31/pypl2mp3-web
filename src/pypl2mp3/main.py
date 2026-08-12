@@ -78,8 +78,8 @@ def _run_list_playlists(args: argparse.Namespace) -> None:
         args: Parsed arguments.
     """
 
-    from pypl2mp3.commands.list_playlists import list_playlists
-    list_playlists(args)
+    from pypl2mp3.commands.list_playlists import display_playlists
+    display_playlists(args)
 
 
 def _run_list_songs(args: argparse.Namespace) -> None:
