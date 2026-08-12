@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block content %}
+  {% if not summaries %}
+    <p>No playlists in this repository.</p>
+  {% else %}
+    <p>{{ summaries | length }} playlist(s) in {{ repository }}</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Playlist</th>
+          <th class="num">Tagged</th>
+          <th class="num">Junk</th>
+          <th class="num">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for summary in summaries %}
+          <tr>
+            <td>
+              {{ summary.name }}<br>
+              <span class="id">{{ summary.playlist_id }}</span>
+            </td>
+            <td class="num">{{ summary.valid_songs }}</td>
+            <td class="num {% if summary.junk_songs %}junk{% endif %}">
+              {{ summary.junk_songs }}
+            </td>
+            <td class="num">{{ summary.total_songs }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+{% endblock %}
