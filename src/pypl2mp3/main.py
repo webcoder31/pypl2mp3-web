@@ -680,6 +680,7 @@ def main():
         _check_required_binaries(["ffmpeg", "ffprobe", "node"])
 
     # Execute appropriate command runner
+    exit_code = 0
     try:
         args.func(args)
     except KeyboardInterrupt:
@@ -687,6 +688,7 @@ def main():
         logger.info(
             f"User interrupted the \"{args.command}\" command execution"
         )
+        exit_code = 130  # shell convention: 128 + SIGINT
     except Exception as error:
         # Catch any unhandled error
         print()
@@ -694,15 +696,18 @@ def main():
             error, 
             f"The \"{args.command}\" command failed due to a critical error"
         )
+        exit_code = 1
 
     # Log end of program execution
     end_time = (datetime.datetime.now()).time().strftime('%H:%M:%S')
     logger.info("PYPL2MP3 finished at " + end_time)
     print(f"\n{Fore.LIGHTGREEN_EX}PYPL2MP3 FINISHED AT {end_time}\n")
 
+    return exit_code
+
 
 # Main entry point
 # This allows the module to be run as a script or imported
 # without executing the main function, to be used in other modules
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
