@@ -121,9 +121,27 @@ c'est interdit.
 le dépôt plutôt que chargés depuis un CDN, pour rester utilisable hors ligne et
 sans dépendance réseau à l'exécution.
 
-**À vérifier avant implémentation** : `anyio` est résolu en 3.7.1 via `shazamio`.
-Starlette accepte `anyio>=3.4,<5`, donc la cohabitation devrait être acquise,
-mais la résolution doit être confirmée par un `uv add` réel avant de s'y engager.
+**Résolution vérifiée le 2026-08-12** (`uv pip compile`, Python 3.13) :
+
+```
+fastapi==0.125.0   starlette==0.50.0   uvicorn==0.52.1
+httpx==0.28.1      jinja2==3.1.6
+anyio==3.7.1       pydantic==1.10.26
+```
+
+Aucun conflit. `anyio` reste en 3.7.1 — Starlette 0.50 l'accepte — et `shazamio`
+est préservé en 0.4.0.1.
+
+**Contrainte à retenir : `pydantic` est maintenu en 1.x par `shazamio`.** FastAPI
+fonctionnera donc sur son chemin de compatibilité pydantic v1. Conséquences :
+
+- Ne pas employer les API pydantic v2 (`model_validate`, `model_dump`,
+  `Annotated`-style validators, `ConfigDict`).
+- Les modèles de requête et de réponse s'écrivent en syntaxe pydantic 1.x
+  (`class Config`, `parse_obj`, `dict()`).
+- Si un besoin exigeait pydantic v2, il faudrait d'abord traiter `shazamio` —
+  hors périmètre, et à mettre en balance avec le fait qu'il porte le cœur de
+  valeur n°2.
 
 ### Réglages par défaut
 

@@ -12,6 +12,11 @@
 
 ## Global Constraints
 
+- **Répertoire de travail : `/Users/thierry/Code/projects/pypl2mp3-web`.** Toutes
+  les commandes et tous les chemins relatifs de ce plan s'y rapportent. Le dossier
+  voisin `/Users/thierry/Code/projects/pypl2mp3` est le **projet gelé** : ne
+  jamais y écrire. Vérifier `pwd` avant la première modification ; si le
+  répertoire courant est le projet gelé, s'y déplacer d'abord.
 - Python requis : `~=3.13.0` (soit `>=3.13.0, <3.14`). Ne pas élargir.
 - `pytubefix>=10.11.0,<11`. Ne pas revenir en 9.x : la 9.x renvoie des playlists vides.
 - **`src/pypl2mp3/libs/` reste inchangé.** Aucune modification de `song.py`, `repository.py`, `logger.py`, `utils.py`, `exceptions.py` dans ce plan.
