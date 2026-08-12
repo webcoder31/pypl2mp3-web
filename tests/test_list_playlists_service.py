@@ -90,6 +90,22 @@ def test_sorting_ignores_case_and_accents(tmp_path):
     ]
 
 
+def test_the_command_module_does_not_re_export_the_service_function():
+    """Le nom `list_playlists` désignait la commande, qui prend un Namespace.
+
+    Le ré-importer tel quel dans la façade le ferait toujours résoudre à
+    l'ancienne adresse publique, mais avec une signature incompatible : un
+    appelant resté sur `commands.list_playlists.list_playlists(args)`
+    échouerait sur un `Path` attendu au lieu d'un `Namespace`. Mieux vaut
+    un AttributeError franc.
+    """
+
+    from pypl2mp3.commands import list_playlists as facade
+
+    assert not hasattr(facade, "list_playlists")
+    assert callable(facade.display_playlists)
+
+
 def test_performs_no_network_call(tmp_path, monkeypatch):
     """Un listing local ne doit jamais toucher au réseau, même indirectement."""
 

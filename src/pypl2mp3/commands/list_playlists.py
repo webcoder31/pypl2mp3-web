@@ -19,7 +19,14 @@ from colorama import Fore, Back, Style, init
 
 # pypl2mp3 libs
 from pypl2mp3.libs.utils import CountFormatter
-from pypl2mp3.services.list_playlists import PlaylistSummary, list_playlists
+# Aliased on purpose: until this module was split, `list_playlists` here was
+# the command taking a Namespace. Re-importing the service under that very
+# name would keep the old public path resolving, but to a function with an
+# incompatible signature.
+from pypl2mp3.services.list_playlists import (
+    PlaylistSummary,
+    list_playlists as get_playlist_summaries,
+)
 
 # Automatically clear style on each print
 init(autoreset=True)
@@ -33,7 +40,7 @@ def display_playlists(args: any) -> None:
         args: Command line arguments containing the repository path (args.repo)
     """
 
-    summaries = list_playlists(Path(args.repo))
+    summaries = get_playlist_summaries(Path(args.repo))
 
     if not summaries:
         print(f"{Back.MAGENTA}{Style.BRIGHT}"
