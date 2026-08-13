@@ -257,3 +257,24 @@ async def test_shazam_without_a_job_is_a_404_not_an_empty_panel(tmp_path):
         assert (
             await client.get("/fragments/shazam/aaaaaaaaaaa")
         ).status_code == 404
+
+
+async def test_the_script_guards_unsaved_edits_before_following_the_player(
+    tmp_path,
+):
+    """A wiring check, not a behaviour check.
+
+    Whether the guard actually holds needs a browser engine. What this
+    catches is the guard being deleted: the panel follows the playing
+    song, so a track ending mid-sentence would otherwise wipe whatever
+    was being typed.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        script = (await client.get("/static/console.js")).text
+
+    assert "/fragments/inspector/" in script, "the panel never follows"
+    assert "if (dirty) return" in script, "no guard on unsaved edits"
+    assert 'event.target.closest("#inspector")' in script, (
+        "nothing marks the panel dirty when you type in it"
+    )
