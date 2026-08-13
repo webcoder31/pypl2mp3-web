@@ -21,7 +21,11 @@
   {% if not songs %}
     <p>No songs match.</p>
   {% else %}
-    <p>{{ songs | length }} song(s)</p>
+    <p>
+      {{ songs | length }} song(s)
+      &middot; <a href="/player?playlist={{ playlist }}&amp;q={{ query }}&amp;junk={{ 1 if junk_only else 0 }}">Play all</a>
+      &middot; <a href="/player?playlist={{ playlist }}&amp;q={{ query }}&amp;junk={{ 1 if junk_only else 0 }}&amp;shuffle=1">Shuffle</a>
+    </p>
     <table>
       <thead>
         <tr>

@@ -7,7 +7,10 @@ passed the wrong flag.
 """
 
 import asyncio
+import json
+import random
 from pathlib import Path
+from urllib.parse import urlencode
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -326,6 +329,57 @@ def create_app(repository_path: Path) -> FastAPI:
                 "playlist": playlist,
                 "query": q,
                 "junk_only": bool(junk),
+            },
+        )
+
+    @app.get("/player", response_class=HTMLResponse)
+    def player(
+        request: Request,
+        playlist: str = "",
+        q: str = "",
+        junk: int = 0,
+        match: float = DEFAULT_MATCH_THRESHOLD,
+        shuffle: int = 0,
+    ) -> HTMLResponse:
+        """Play a whole selection, the way the CLI's `play` does.
+
+        Same filters as the listing, so whatever you are looking at is
+        what you can play. Shuffling happens here rather than in the
+        browser: reloading with shuffle=1 gives a new order, which is
+        what the CLI's -s does on each run.
+        """
+
+        found = list_songs(
+            app.state.repository_path,
+            junk_only=bool(junk),
+            keywords=q,
+            match_threshold=match,
+            playlist_identifier=playlist or None,
+        )
+
+        if shuffle:
+            found = list(found)
+            random.shuffle(found)
+
+        exit_query = urlencode(
+            {k: v for k, v in (("playlist", playlist), ("q", q)) if v}
+            | ({"junk": 1} if junk else {})
+        )
+
+        return templates.TemplateResponse(
+            request,
+            "player.html",
+            {
+                "songs": found,
+                "exit_url": "/songs" + (f"?{exit_query}" if exit_query else ""),
+                # The list and the script must agree on the order, so both
+                # are rendered from this one sequence.
+                "queue_json": json.dumps(
+                    [
+                        {"youtube_id": song.youtube_id, "label": song.label}
+                        for song in found
+                    ]
+                ),
             },
         )
 
