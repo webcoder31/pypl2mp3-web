@@ -1,5 +1,5 @@
-{# Playlist picker. Each entry writes into the filter form's hidden
-   playlist field and resubmits it, so the nav and the search box always
+{# Playlist and artist pickers. Each entry writes into the filter form's
+   hidden field and resubmits it, so the nav and the search box always
    describe the same query. #}
 <ul>
   <li class="{% if not playlist %}current{% endif %}">
@@ -17,6 +17,23 @@
       <span class="count {% if summary.junk_songs %}junk{% endif %}">
         {{ summary.total_songs }}{% if summary.junk_songs %} ⚠{% endif %}
       </span>
+    </li>
+  {% endfor %}
+</ul>
+
+{# Junk songs are left out of this list: their "artist" is whatever
+   YouTube called the channel, which is the noise a preset list exists to
+   avoid. Nearly three quarters of these have a single song, so the whole
+   list is long by nature — hence the box that narrows it. #}
+<h2>Artists — {{ artists | length }}</h2>
+<input type="search" id="artist-filter" placeholder="Narrow this list"
+       autocomplete="off">
+<ul id="artist-list">
+  {% for entry in artists %}
+    <li class="{% if artist == entry.name %}current{% endif %}">
+      <button type="button" data-artist="{{ entry.name }}"
+              title="{{ entry.name }}">{{ entry.name }}</button>
+      <span class="count">{{ entry.song_count }}</span>
     </li>
   {% endfor %}
 </ul>

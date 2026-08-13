@@ -67,7 +67,7 @@ body {
 #player audio { flex: 1; min-width: 0; }
 /* What comes next, the way the CLI previews it: dimmed, secondary to
    the track you are actually hearing. */
-#player-next { flex: 0 1 26rem; overflow: hidden; text-overflow: ellipsis;
+#player-next { flex: 0 1 30rem; overflow: hidden; text-overflow: ellipsis;
                white-space: nowrap; opacity: 0.6; font-size: 0.9em;
                font-variant-numeric: tabular-nums; }
 #player.idle #player-next { opacity: 0.4; }
@@ -160,3 +160,9 @@ tr:hover .row-meta { opacity: 0.9; }
 .proposal { border: 1px solid var(--line); border-radius: 4px;
             padding: 0.4rem 0.6rem; margin: 0.4rem 0; }
 .proposal-value { font-weight: 600; margin: 0.2rem 0; }
+
+/* Artist presets */
+
+#artist-filter { width: 100%; margin: 0 0 0.3rem; font-size: 0.85em; }
+#artist-list { max-height: none; }
+#artist-list li[hidden] { display: none; }

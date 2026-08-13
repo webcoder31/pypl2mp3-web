@@ -317,3 +317,83 @@ async def test_the_bar_previews_what_comes_next_not_what_is_playing(tmp_path):
     assert "move(direction)" in script, (
         "a finishing track always goes forward, so the preview can lie"
     )
+
+
+async def test_the_nav_offers_artist_presets(tmp_path):
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+    _make_song(tmp_path, "IAMX", "Spit It Out", "bbbbbbbbbbb")
+    _make_song(tmp_path, "THE CURE", "A Forest", "ccccccccccc")
+    _make_song(tmp_path, "UNKNOWN", "Something", "ddddddddddd", junk=True)
+
+    async with _client(create_app(tmp_path)) as client:
+        body = (await client.get("/")).text
+
+    presets = re.findall(r'data-artist="([^"]*)"', body)
+    assert presets == ["IAMX", "THE CURE"], presets
+    assert "UNKNOWN" not in presets, "a junk channel name became a preset"
+
+
+async def test_picking_an_artist_filters_the_listing_exactly(tmp_path):
+    """Fuzzy matching is what the search box is for. A preset is a name."""
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+    _make_song(tmp_path, "IAM", "Petit frere", "bbbbbbbbbbb")
+
+    async with _client(create_app(tmp_path)) as client:
+        fragment = (await client.get("/fragments/list?artist=IAM")).text
+
+    assert re.findall(r'data-song-id="(\w+)"', fragment) == ["bbbbbbbbbbb"], (
+        "an exact preset picked up a fuzzy neighbour"
+    )
+
+
+async def test_an_artist_preset_survives_a_reload(tmp_path):
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+    _make_song(tmp_path, "THE CURE", "A Forest", "bbbbbbbbbbb")
+
+    async with _client(create_app(tmp_path)) as client:
+        body = (await client.get("/?artist=IAMX")).text
+
+    assert re.findall(r'data-song-id="(\w+)"', body) == ["aaaaaaaaaaa"]
+    assert 'id="artist-field"' in body and 'value="IAMX"' in body
+
+    # The preset narrows the listing, never the preset list itself.
+    assert re.findall(r'data-artist="([^"]*)"', body) == ["IAMX", "THE CURE"]
+
+
+async def test_the_presets_cover_the_repository_not_the_current_filter(
+    tmp_path,
+):
+    """Filtering must not shrink the list you filter with."""
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+    _make_song(tmp_path, "THE CURE", "A Forest", "bbbbbbbbbbb")
+
+    async with _client(create_app(tmp_path)) as client:
+        body = (await client.get("/?q=kiss&match=45")).text
+
+    assert re.findall(r'data-song-id="(\w+)"', body) == ["aaaaaaaaaaa"]
+    assert re.findall(r'data-artist="([^"]*)"', body) == ["IAMX", "THE CURE"]
+
+
+async def test_an_artist_preset_composes_with_a_playlist(tmp_path):
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+    _make_song(tmp_path, "IAMX", "Spit It Out", "bbbbbbbbbbb", playlist=OTHER)
+
+    async with _client(create_app(tmp_path)) as client:
+        fragment = (
+            await client.get(
+                "/fragments/list?artist=IAMX"
+                "&playlist=PL0000000000000000000000000000002"
+            )
+        ).text
+
+    assert re.findall(r'data-song-id="(\w+)"', fragment) == ["bbbbbbbbbbb"]
+
+
+async def test_the_bar_says_next_before_the_arrow(tmp_path):
+    async with _client(create_app(tmp_path)) as client:
+        script = (await client.get("/static/console.js")).text
+
+    assert '"NEXT →"' in script
+    assert '"NEXT ←"' in script, "the backward preview lost its label"

@@ -24,6 +24,7 @@ from fastapi.templating import Jinja2Templates
 
 from pypl2mp3.libs.song import SongModel
 from pypl2mp3.services.check_new_songs import check_new_songs
+from pypl2mp3.services.list_artists import list_artists
 from pypl2mp3.services.list_playlists import list_playlists
 from pypl2mp3.services.find_song import SongNotFound, find_song_file
 from pypl2mp3.services.fix_junks import apply_fix, propose_fix
@@ -306,10 +307,17 @@ def create_app(repository_path: Path) -> FastAPI:
             "error": job.error,
         }
 
-    def _selection(playlist: str, q: str, junk: int, match: float):
-        """The songs a query selects. Shared by the shell and the fragment."""
+    def _selection(
+        playlist: str, q: str, junk: int, match: float, artist: str = ""
+    ):
+        """The songs a query selects. Shared by the shell and the fragment.
 
-        return list_songs(
+        The artist filter is applied here rather than pushed into
+        list_songs: picking a name off the nav means that name exactly,
+        not the fuzzy scoring the search box wants.
+        """
+
+        songs = list_songs(
             app.state.repository_path,
             junk_only=bool(junk),
             keywords=q,
@@ -317,12 +325,19 @@ def create_app(repository_path: Path) -> FastAPI:
             playlist_identifier=playlist or None,
         )
 
+        if artist:
+            wanted = artist.casefold()
+            songs = [s for s in songs if s.artist.casefold() == wanted]
+
+        return songs
+
     @app.get("/", response_class=HTMLResponse)
     def console(
         request: Request,
         playlist: str = "",
         q: str = "",
         junk: int = 0,
+        artist: str = "",
         match: float = DEFAULT_MATCH_THRESHOLD,
     ) -> HTMLResponse:
         """The whole application, in one page.
@@ -334,15 +349,28 @@ def create_app(repository_path: Path) -> FastAPI:
 
         summaries = list_playlists(app.state.repository_path)
 
+        # The unfiltered set, which the artist presets are grouped from.
+        # A pass over 900 songs costs 1.4s, so when nothing is filtered —
+        # the usual case — the listing reuses this rather than asking
+        # again for the same thing.
+        everything = _selection(playlist, "", 0, match)
+        filtered = (
+            everything
+            if not (q or junk or artist)
+            else _selection(playlist, q, junk, match, artist)
+        )
+
         return templates.TemplateResponse(
             request,
             "console.html",
             {
                 "summaries": summaries,
-                "songs": _selection(playlist, q, junk, match),
+                "artists": list_artists(everything),
+                "songs": filtered,
                 "playlist": playlist,
                 "query": q,
                 "junk_only": bool(junk),
+                "artist": artist,
                 "total_songs": sum(s.total_songs for s in summaries),
                 "total_junk": sum(s.junk_songs for s in summaries),
                 "repository": str(app.state.repository_path),
@@ -355,6 +383,7 @@ def create_app(repository_path: Path) -> FastAPI:
         playlist: str = "",
         q: str = "",
         junk: int = 0,
+        artist: str = "",
         match: float = DEFAULT_MATCH_THRESHOLD,
     ) -> HTMLResponse:
         """The listing on its own, for the console to swap in."""
@@ -362,7 +391,7 @@ def create_app(repository_path: Path) -> FastAPI:
         return templates.TemplateResponse(
             request,
             "_list.html",
-            {"songs": _selection(playlist, q, junk, match)},
+            {"songs": _selection(playlist, q, junk, match, artist)},
         )
 
     def _summary_or_404(youtube_id: str):

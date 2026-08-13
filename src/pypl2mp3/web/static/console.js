@@ -24,6 +24,7 @@
   const toggle = document.querySelector('[data-player-action="toggle"]');
   const filters = document.getElementById("filters");
   const playlistField = document.getElementById("playlist-field");
+  const artistField = document.getElementById("artist-field");
 
   // {id, label, duration, junk} in play order, captured when the queue
   // is set.
@@ -76,7 +77,7 @@
     // can say that nothing else does is what comes next.
     const following =
       queue[(index + direction + queue.length) % queue.length];
-    const arrow = direction < 0 ? "←" : "→";
+    const arrow = direction < 0 ? "NEXT ←" : "NEXT →";
     upNext.textContent = following
       ? arrow +
         "  " +
@@ -178,6 +179,24 @@
       return;
     }
 
+    const artistButton = event.target.closest("#nav button[data-artist]");
+    if (artistButton) {
+      const picked = artistButton.dataset.artist;
+      // Clicking the selected artist again clears it. Without that the
+      // only way out of a preset would be to reload the page.
+      artistField.value = artistField.value === picked ? "" : picked;
+      artistButton.parentElement.parentElement
+        .querySelectorAll("li.current")
+        .forEach(function (li) {
+          li.classList.remove("current");
+        });
+      if (artistField.value) {
+        artistButton.parentElement.classList.add("current");
+      }
+      filters.requestSubmit();
+      return;
+    }
+
     const queueButton = event.target.closest("[data-queue-action]");
     if (queueButton) {
       const entries = queueFromRows();
@@ -272,6 +291,20 @@
     form.title.value = use.dataset.shazamTitle;
     form.cover_art_url.value = use.dataset.shazamCover || "";
     dirty = true;
+  });
+
+  // 450 artists, nearly three quarters of them with a single song. The
+  // list has to be complete to be a preset list, so it needs a way to
+  // be narrowed. Purely local: the names are already in the page.
+  document.addEventListener("input", function (event) {
+    if (event.target.id !== "artist-filter") return;
+
+    const needle = event.target.value.trim().toLowerCase();
+    document
+      .querySelectorAll("#artist-list li")
+      .forEach(function (row) {
+        row.hidden = needle && !row.textContent.toLowerCase().includes(needle);
+      });
   });
 
   // Keep the address bar on the current selection so a reload restores
