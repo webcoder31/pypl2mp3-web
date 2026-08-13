@@ -133,7 +133,7 @@ async def test_check_and_import_do_not_share_an_element_id(
     app = create_app(tmp_path)
 
     async with _client(app) as client:
-        page = (await client.get("/")).text
+        page = (await client.get("/playlists")).text
         check = (
             await client.post(f"/playlists/{PLAYLIST_ID}/check", headers=HX)
         ).text
@@ -176,7 +176,7 @@ async def test_the_import_button_warns_before_a_long_download(tmp_path):
     (folder / "ARTIST - Title [AAAAAAAAAAA].mp3").write_bytes(_MP3_FRAME * 8)
 
     async with _client(create_app(tmp_path)) as client:
-        body = (await client.get("/")).text
+        body = (await client.get("/playlists")).text
 
     import_button = re.search(
         r"<button[^>]*?/import\"(.*?)</button>", body, re.DOTALL

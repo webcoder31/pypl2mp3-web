@@ -49,7 +49,7 @@ async def test_inventory_lists_playlists_with_their_counts(
         tmp_path, "Owner - Alpha [PL0000000000000000000000000000001]", 3, 1
     )
 
-    response = await _get(create_app(tmp_path), "/")
+    response = await _get(create_app(tmp_path), "/playlists")
 
     assert response.status_code == 200
     body = response.text
@@ -76,7 +76,7 @@ async def test_inventory_lists_playlists_with_their_counts(
 async def test_inventory_reports_an_empty_repository(tmp_path, monkeypatch):
     _block_network(monkeypatch)
 
-    response = await _get(create_app(tmp_path), "/")
+    response = await _get(create_app(tmp_path), "/playlists")
 
     assert response.status_code == 200
     assert "No playlists" in response.text
@@ -103,7 +103,7 @@ async def test_the_page_references_no_external_host(tmp_path, monkeypatch):
         tmp_path, "Owner - Alpha [PL0000000000000000000000000000001]", 1, 0
     )
 
-    body = (await _get(create_app(tmp_path), "/")).text
+    body = (await _get(create_app(tmp_path), "/playlists")).text
 
     # Only the HTMX request-verb attributes carry a URL. Other hx-*
     # attributes (hx-swap, hx-trigger, hx-target, ...) hold behavior

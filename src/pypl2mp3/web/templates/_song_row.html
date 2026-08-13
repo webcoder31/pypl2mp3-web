@@ -1,15 +1,19 @@
 {# One song row. Rendered inside the listing, and returned on its own by
-   the junkize route so the row can replace itself in place. #}
-<tr id="song-{{ song.youtube_id }}">
+   the junkize route so the row can replace itself in place.
+
+   The data- attributes are what console.js builds the play queue from:
+   the rows on screen *are* the queue. There used to be an <audio> here,
+   one per row — 915 of them in a full listing, none of which survived
+   leaving the page. The console has a single player instead. #}
+<tr id="song-{{ song.youtube_id }}"
+    data-song-id="{{ song.youtube_id }}"
+    data-label="{{ song.label }}">
   <td>
     {% if song.is_junk %}<span class="junk">⚠</span> {% endif %}
-    {{ song.label }}<br>
+    {{ song.label }}
     <span class="id">{{ song.youtube_id }}</span>
-    <a href="https://youtu.be/{{ song.youtube_id }}"
-       target="_blank" rel="noopener noreferrer"
-       class="video-link">watch</a>
     {% if not song.is_junk %}
-      <button
+      <button type="button"
         hx-post="/songs/{{ song.youtube_id }}/junkize"
         hx-target="#song-{{ song.youtube_id }}"
         hx-swap="outerHTML"
@@ -17,6 +21,8 @@
       >Junkize</button>
     {% endif %}
     {% if song.is_junk %}
+      {# Until the inspector takes this over, the repair screen is still
+         the only way to fix a junk song. #}
       <a href="/songs/{{ song.youtube_id }}/fix" class="fix-link">Fix</a>
     {% endif %}
     {% if fixed %}
@@ -25,11 +31,6 @@
     {% if junkized %}
       <span class="job-new">metadata cleared</span>
     {% endif %}
-    <br>
-    {# preload="none": a listing can hold 900 rows, and preloading each
-       one would read the whole repository off disk on page load. #}
-    <audio controls preload="none" class="player"
-           src="/songs/{{ song.youtube_id }}/audio"></audio>
   </td>
   <td>{{ song.playlist }}</td>
   <td class="num">{{ song.duration }}</td>

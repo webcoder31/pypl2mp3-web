@@ -1,0 +1,22 @@
+{# Playlist picker. Each entry writes into the filter form's hidden
+   playlist field and resubmits it, so the nav and the search box always
+   describe the same query. #}
+<ul>
+  <li class="{% if not playlist %}current{% endif %}">
+    <button type="button" data-playlist="">All</button>
+    <span class="count">{{ total_songs }}</span>
+  </li>
+</ul>
+
+<h2>Playlists</h2>
+<ul>
+  {% for summary in summaries %}
+    <li class="{% if playlist == summary.playlist_id %}current{% endif %}">
+      <button type="button" data-playlist="{{ summary.playlist_id }}"
+              title="{{ summary.name }}">{{ summary.name }}</button>
+      <span class="count {% if summary.junk_songs %}junk{% endif %}">
+        {{ summary.total_songs }}{% if summary.junk_songs %} ⚠{% endif %}
+      </span>
+    </li>
+  {% endfor %}
+</ul>

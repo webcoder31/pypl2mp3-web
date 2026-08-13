@@ -288,7 +288,66 @@ def create_app(repository_path: Path) -> FastAPI:
             "error": job.error,
         }
 
+    def _selection(playlist: str, q: str, junk: int, match: float):
+        """The songs a query selects. Shared by the shell and the fragment."""
+
+        return list_songs(
+            app.state.repository_path,
+            junk_only=bool(junk),
+            keywords=q,
+            match_threshold=match,
+            playlist_identifier=playlist or None,
+        )
+
     @app.get("/", response_class=HTMLResponse)
+    def console(
+        request: Request,
+        playlist: str = "",
+        q: str = "",
+        junk: int = 0,
+        match: float = DEFAULT_MATCH_THRESHOLD,
+    ) -> HTMLResponse:
+        """The whole application, in one page.
+
+        Everything is here: playlists, the listing, the inspector, and a
+        player that outlives every interaction. The query lives in the
+        URL so reloading restores the view.
+        """
+
+        summaries = list_playlists(app.state.repository_path)
+
+        return templates.TemplateResponse(
+            request,
+            "console.html",
+            {
+                "summaries": summaries,
+                "songs": _selection(playlist, q, junk, match),
+                "playlist": playlist,
+                "query": q,
+                "junk_only": bool(junk),
+                "total_songs": sum(s.total_songs for s in summaries),
+                "total_junk": sum(s.junk_songs for s in summaries),
+                "repository": str(app.state.repository_path),
+            },
+        )
+
+    @app.get("/fragments/list", response_class=HTMLResponse)
+    def list_fragment(
+        request: Request,
+        playlist: str = "",
+        q: str = "",
+        junk: int = 0,
+        match: float = DEFAULT_MATCH_THRESHOLD,
+    ) -> HTMLResponse:
+        """The listing on its own, for the console to swap in."""
+
+        return templates.TemplateResponse(
+            request,
+            "_list.html",
+            {"songs": _selection(playlist, q, junk, match)},
+        )
+
+    @app.get("/playlists", response_class=HTMLResponse)
     def inventory(request: Request) -> HTMLResponse:
         return templates.TemplateResponse(
             request,

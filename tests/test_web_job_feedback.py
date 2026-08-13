@@ -100,7 +100,7 @@ async def test_the_fragment_id_matches_what_the_button_targets(
     _make_local(tmp_path, [])
 
     async with _client(create_app(tmp_path)) as client:
-        page = (await client.get("/")).text
+        page = (await client.get("/playlists")).text
         post_fragment = (
             await client.post(f"/playlists/{PLAYLIST_ID}/check", headers=HX)
         ).text

@@ -75,14 +75,17 @@ async def test_a_traversal_attempt_does_not_escape_the_repository(tmp_path):
             assert b"do not serve me" not in response.content, attempt
 
 
-async def test_the_listing_offers_a_player_that_does_not_preload(tmp_path):
-    _make_song(tmp_path, "aaaaaaaaaaa")
+async def test_a_listing_never_ships_one_player_per_row(tmp_path):
+    """It used to: 915 rows, 915 <audio> elements, none of which survived
+    leaving the page. The console has a single player instead, and its
+    guarantees are tested in test_web_console.py."""
+
+    for i in range(4):
+        _make_song(tmp_path, f"vid{i:07d}")
 
     async with _client(create_app(tmp_path)) as client:
         body = (await client.get("/songs")).text
 
-    assert '/songs/aaaaaaaaaaa/audio' in body
-    assert "<audio" in body
-    assert 'preload="none"' in body, (
+    assert body.count("<audio") == 0, (
         "a 900-row listing must not read every file on page load"
     )

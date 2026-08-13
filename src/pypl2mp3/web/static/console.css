@@ -1,0 +1,116 @@
+/* Layout only. The look comes later; this is the skeleton it will dress.
+ *
+ * The one rule that matters here: #player is a grid area of its own, so
+ * no fragment swap can ever contain the <audio> element. A swap that did
+ * would recreate it and cut the sound.
+ */
+
+:root {
+  color-scheme: light dark;
+  --line: rgba(127, 127, 127, 0.28);
+  --dim: rgba(127, 127, 127, 0.1);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  height: 100vh;
+  display: grid;
+  grid-template-columns: 14rem minmax(0, 1fr) 22rem;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "header header header"
+    "nav    list   inspector"
+    "player player player";
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+#header {
+  grid-area: header;
+  border-bottom: 1px solid var(--line);
+  padding: 0.6rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+#nav {
+  grid-area: nav;
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+  padding: 0.6rem;
+}
+
+#list {
+  grid-area: list;
+  overflow-y: auto;
+}
+
+#inspector {
+  grid-area: inspector;
+  border-left: 1px solid var(--line);
+  overflow-y: auto;
+  padding: 0.8rem;
+}
+
+#player {
+  grid-area: player;
+  border-top: 1px solid var(--line);
+  padding: 0.5rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+#player audio { flex: 1; min-width: 0; }
+#player-label { flex: 0 1 22rem; overflow: hidden; text-overflow: ellipsis;
+                white-space: nowrap; }
+#player.idle #player-label { opacity: 0.5; }
+
+/* Navigation */
+
+#nav ul { list-style: none; margin: 0 0 1rem; padding: 0; }
+#nav li { display: flex; justify-content: space-between; gap: 0.5rem; }
+#nav button {
+  all: unset;
+  cursor: pointer;
+  flex: 1;
+  padding: 0.15rem 0.3rem;
+  border-radius: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#nav button:hover { background: var(--dim); }
+#nav li.current button { font-weight: 700; background: var(--dim); }
+#nav .count { font-variant-numeric: tabular-nums; opacity: 0.6;
+              font-size: 0.85em; padding-top: 0.2rem; }
+#nav h2 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em;
+          opacity: 0.6; margin: 0.4rem 0.3rem; }
+
+/* Listing */
+
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 0.3rem 0.6rem; }
+thead th { position: sticky; top: 0; background: Canvas;
+           border-bottom: 1px solid var(--line); font-size: 0.8rem; }
+tbody tr { cursor: pointer; }
+tbody tr:nth-child(odd) { background: var(--dim); }
+tbody tr.selected { outline: 2px solid currentColor; outline-offset: -2px; }
+tbody tr.playing td:first-child::before { content: "▶ "; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.id { font-family: ui-monospace, monospace; font-size: 0.85em; opacity: 0.7; }
+.junk { color: #b26a00; }
+.cover { max-width: 100%; border-radius: 4px; }
+
+/* Jobs */
+
+.job { font-size: 0.85em; min-height: 1.2em; }
+.job-running { opacity: 0.7; }
+.job-new { color: #0a7d3f; font-weight: 600; }
+.job-none { opacity: 0.6; }
+.job-error { color: #b00020; }
+.htmx-request .job, .htmx-request.job { opacity: 0.5; }

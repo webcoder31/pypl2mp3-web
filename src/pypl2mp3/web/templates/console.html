@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PYPL2MP3</title>
+    <script src="/static/htmx.min.js"></script>
+    <link rel="stylesheet" href="/static/console.css">
+  </head>
+  <body>
+    {# data-swap-region marks a region whose contents may be replaced by a
+       fragment. It is the layout's contract with itself: the <audio>
+       element must never end up inside one, or a swap would recreate it
+       and cut the sound. A test reads these attributes, so declaring a
+       new region is enough to have the rule enforced on it. #}
+
+    {# One form holds the whole query. Everything that narrows the listing
+       — the search box, the junk flag, the playlist picked in the nav —
+       is a field of it, so the three can never drift apart. #}
+    <header id="header" data-swap-region>
+      <strong>PYPL2MP3</strong>
+
+      <form id="filters"
+            hx-get="/fragments/list"
+            hx-target="#list"
+            hx-trigger="submit, change">
+        <input type="hidden" name="playlist" id="playlist-field"
+               value="{{ playlist }}">
+        <input type="search" name="q" value="{{ query }}"
+               placeholder="Filter by artist or title">
+        <label>
+          <input type="checkbox" name="junk" value="1"
+                 {% if junk_only %}checked{% endif %}> junk only
+        </label>
+        <button type="submit">Filter</button>
+      </form>
+
+      <span class="id" id="counts">
+        {{ total_songs }} songs · {{ total_junk }} junk
+      </span>
+    </header>
+
+    <nav id="nav" data-swap-region>{% include "_nav.html" %}</nav>
+
+    <main id="list" data-swap-region>{% include "_list.html" %}</main>
+
+    <aside id="inspector" data-swap-region>
+      <p class="job-none">Select a song.</p>
+    </aside>
+
+    {# The player is deliberately not a swap region. #}
+    <footer id="player" class="idle">
+      <button data-player-action="previous" title="Previous (←)">⏮</button>
+      <button data-player-action="toggle" title="Play / pause (space)">▶</button>
+      <button data-player-action="next" title="Next (→)">⏭</button>
+      <span id="player-label">Nothing playing</span>
+      <audio id="audio" controls></audio>
+      <span class="id" id="player-position"></span>
+      <a id="player-video" href="#" target="_blank"
+         rel="noopener noreferrer" title="Watch on YouTube (tab)">video</a>
+    </footer>
+
+    <script src="/static/console.js"></script>
+  </body>
+</html>
