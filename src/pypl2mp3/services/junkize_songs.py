@@ -29,6 +29,7 @@ class JunkizeResult:
     youtube_id: str
     previous_filename: str
     filename: str
+    path: Path
 
 
 def junkize_song(repository_path: Path, youtube_id: str) -> JunkizeResult:
@@ -57,6 +58,7 @@ def junkize_song(repository_path: Path, youtube_id: str) -> JunkizeResult:
         youtube_id=youtube_id,
         previous_filename=previous_filename,
         filename=song.filename,
+        path=song_file.parent / song.filename,
     )
 
 

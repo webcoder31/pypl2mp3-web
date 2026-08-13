@@ -1,0 +1,25 @@
+{# One song row. Rendered inside the listing, and returned on its own by
+   the junkize route so the row can replace itself in place. #}
+<tr id="song-{{ song.youtube_id }}">
+  <td>
+    {% if song.is_junk %}<span class="junk">⚠</span> {% endif %}
+    {{ song.label }}<br>
+    <span class="id">{{ song.youtube_id }}</span>
+    <a href="https://youtu.be/{{ song.youtube_id }}"
+       target="_blank" rel="noopener noreferrer"
+       class="video-link">watch</a>
+    {% if not song.is_junk %}
+      <button
+        hx-post="/songs/{{ song.youtube_id }}/junkize"
+        hx-target="#song-{{ song.youtube_id }}"
+        hx-swap="outerHTML"
+        hx-confirm="Clear this song's metadata and mark it as junk? This cannot be undone."
+      >Junkize</button>
+    {% endif %}
+    {% if junkized %}
+      <span class="job-new">metadata cleared</span>
+    {% endif %}
+  </td>
+  <td>{{ song.playlist }}</td>
+  <td class="num">{{ song.duration }}</td>
+</tr>

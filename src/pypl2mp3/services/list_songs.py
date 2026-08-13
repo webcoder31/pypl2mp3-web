@@ -73,10 +73,16 @@ def list_songs(
 
     # The repository helper returns None rather than [] when it finds
     # nothing; both mean the same thing here.
-    return [_summarize(song) for song in (songs or [])]
+    return [summarize(song) for song in (songs or [])]
 
 
-def _summarize(song: SongModel) -> SongSummary:
+def summarize(song: SongModel) -> SongSummary:
+    """Project a SongModel onto the fields a listing shows.
+
+    Public so callers that already hold a model — after junkizing one, for
+    instance — can render it without going back through the repository.
+    """
+
     return SongSummary(
         path=song.path,
         youtube_id=song.youtube_id or "",

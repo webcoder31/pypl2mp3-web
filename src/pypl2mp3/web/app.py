@@ -17,7 +17,12 @@ from fastapi.templating import Jinja2Templates
 
 from pypl2mp3.services.check_new_songs import check_new_songs
 from pypl2mp3.services.list_playlists import list_playlists
-from pypl2mp3.services.list_songs import DEFAULT_MATCH_THRESHOLD, list_songs
+from pypl2mp3.services.junkize_songs import SongNotFound, junkize_song
+from pypl2mp3.services.list_songs import (
+    DEFAULT_MATCH_THRESHOLD,
+    list_songs,
+    summarize,
+)
 from pypl2mp3.web.jobs import JobAlreadyRunning, JobRegistry
 from pypl2mp3.web.web_progress import WebProgress
 
@@ -211,6 +216,38 @@ def create_app(repository_path: Path) -> FastAPI:
                 "junk_only": bool(junk),
             },
         )
+
+    @app.post("/songs/{youtube_id}/junkize")
+    def junkize(youtube_id: str, request: Request):
+        """Clear one song's metadata and mark it as junk.
+
+        Destructive and not undoable, so the button carries an hx-confirm.
+        The route returns the song's row re-rendered from its new state,
+        which replaces itself in place — the listing shows the outcome
+        without a reload.
+        """
+
+        from pypl2mp3.libs.song import SongModel
+
+        try:
+            result = junkize_song(app.state.repository_path, youtube_id)
+        except SongNotFound:
+            raise HTTPException(status_code=404, detail="unknown song")
+
+        song = summarize(SongModel(result.path))
+
+        if request.headers.get("HX-Request") is not None:
+            return templates.TemplateResponse(
+                request,
+                "_song_row.html",
+                {"song": song, "junkized": True},
+            )
+
+        return {
+            "youtube_id": result.youtube_id,
+            "previous_filename": result.previous_filename,
+            "filename": result.filename,
+        }
 
     return app
 
