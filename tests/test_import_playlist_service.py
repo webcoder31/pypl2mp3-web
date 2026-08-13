@@ -55,6 +55,7 @@ def _make_local(repo: Path, present: list[str]) -> None:
 
 
 def _install_fakes(monkeypatch, create=None):
+    monkeypatch.setattr(mod, "DEFAULT_REQUEST_INTERVAL", 0.0)
     monkeypatch.setattr(mod, "Playlist", _FakePlaylist)
     monkeypatch.setattr(mod, "YouTube", _FakeYouTube)
 
@@ -183,3 +184,157 @@ async def test_a_lazy_attribute_failure_is_attributed_to_its_song(
 
     assert report.imported == []
     assert len(report.failed) == 3, "each song should fail on its own"
+
+
+def test_it_recognises_a_refusal_and_not_a_broken_video():
+    """Backing off is only right when YouTube refused, not when a video is bad."""
+
+    from pytubefix.exceptions import PytubeFixError
+
+    from pypl2mp3.services.import_playlist import looks_rate_limited
+
+    refusals = [
+        Exception("2VuNyY6RLpA This request was detected as a bot."),
+        Exception("HTTP Error 429: Too Many Requests"),
+        PytubeFixError("too many requests"),
+    ]
+    for error in refusals:
+        assert looks_rate_limited(error), error
+
+    others = [
+        RuntimeError("Remote end closed connection without response"),
+        Exception("age restricted, and can't be accessed without logging in"),
+        Exception("Failed to encode audio stream to MP3"),
+    ]
+    for error in others:
+        assert not looks_rate_limited(error), error
+
+
+async def test_it_leaves_a_gap_between_songs(tmp_path, monkeypatch):
+    """Nothing paced YouTube while Shazam was paced 15s; that asymmetry
+    is what got 20 of 34 songs refused."""
+
+    import time as clock
+
+    _install_fakes(monkeypatch)
+    _make_local(tmp_path, [])
+    stamps: list[float] = []
+
+    async def stamped(youtube_id, playlist_path, threshold, **kwargs):
+        stamps.append(clock.monotonic())
+        (playlist_path / f"ARTIST - Title [{youtube_id}].mp3").write_bytes(
+            _MP3_FRAME * 8
+        )
+        return _FakeSong(youtube_id)
+
+    monkeypatch.setattr(mod.SongModel, "create_from_youtube", stamped)
+
+    await import_playlist(
+        tmp_path, PLAYLIST_ID, FakeProgress(), request_interval=0.3
+    )
+
+    assert len(stamps) == 3
+    gaps = [b - a for a, b in zip(stamps, stamps[1:])]
+    assert all(gap >= 0.25 for gap in gaps), f"songs were not spaced: {gaps}"
+
+
+async def test_a_refusal_widens_the_gap(tmp_path, monkeypatch):
+    """Charging on at the same rate after a refusal just collects more."""
+
+    from pypl2mp3.services.import_playlist import _Pacer
+
+    pacer = _Pacer(4.0)
+    assert pacer.interval == 4.0
+
+    pacer.penalise()
+    assert pacer.interval == 8.0
+
+    for _ in range(10):
+        pacer.penalise()
+    assert pacer.interval == 32.0, "the backoff must stay bounded"
+
+
+async def test_an_ordinary_failure_does_not_widen_the_gap(
+    tmp_path, monkeypatch
+):
+    """A broken video is not YouTube telling us to slow down."""
+
+    from pypl2mp3.services.import_playlist import _Pacer
+
+    seen: list[float] = []
+    original = _Pacer.penalise
+
+    def spy(self):
+        seen.append(self.interval)
+        original(self)
+
+    monkeypatch.setattr(_Pacer, "penalise", spy)
+
+    async def broken(youtube_id, playlist_path, threshold, **kwargs):
+        raise RuntimeError("Failed to encode audio stream to MP3")
+
+    _install_fakes(monkeypatch, create=broken)
+    _make_local(tmp_path, [])
+
+    report = await import_playlist(tmp_path, PLAYLIST_ID, FakeProgress())
+
+    assert len(report.failed) == 3
+    assert seen == [], "an encoding failure must not trigger a backoff"
+
+
+def test_the_default_actually_spaces_requests():
+    """Setting the default to zero would silently restore the old behaviour.
+
+    The test above passes an explicit interval, so it proves the mechanism
+    works but says nothing about what an unconfigured import does — which
+    is the only thing the browser ever triggers.
+    """
+
+    from pypl2mp3.services.import_playlist import (
+        DEFAULT_REQUEST_INTERVAL,
+        MAX_REQUEST_INTERVAL,
+    )
+
+    assert DEFAULT_REQUEST_INTERVAL > 0, (
+        "an unpaced import had 20 of 34 songs refused by YouTube"
+    )
+    assert MAX_REQUEST_INTERVAL > DEFAULT_REQUEST_INTERVAL
+
+
+async def test_a_real_refusal_triggers_the_backoff(tmp_path, monkeypatch):
+    """The isolated _Pacer test proves penalise works, not that it is called."""
+
+    from pypl2mp3.services.import_playlist import _Pacer
+
+    widened: list[float] = []
+    original = _Pacer.penalise
+
+    def spy(self):
+        widened.append(self.interval)
+        original(self)
+
+    monkeypatch.setattr(_Pacer, "penalise", spy)
+
+    # penalise() floors at 1s before doubling, so even a tiny starting
+    # interval reaches seconds after two refusals. We are testing that the
+    # backoff fires, not that sleeping works.
+    async def no_wait(_seconds):
+        return None
+
+    monkeypatch.setattr(mod.asyncio, "sleep", no_wait)
+
+    async def refused(youtube_id, playlist_path, threshold, **kwargs):
+        raise Exception(f"{youtube_id} This request was detected as a bot.")
+
+    _install_fakes(monkeypatch, create=refused)
+    _make_local(tmp_path, [])
+
+    report = await import_playlist(
+        tmp_path, PLAYLIST_ID, FakeProgress(), request_interval=0.01
+    )
+
+    assert len(report.failed) == 3
+    assert len(widened) == 3, (
+        "every refusal should widen the gap; got "
+        f"{len(widened)} backoffs for 3 refusals"
+    )
