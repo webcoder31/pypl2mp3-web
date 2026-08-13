@@ -19,6 +19,11 @@
     {% if junkized %}
       <span class="job-new">metadata cleared</span>
     {% endif %}
+    <br>
+    {# preload="none": a listing can hold 900 rows, and preloading each
+       one would read the whole repository off disk on page load. #}
+    <audio controls preload="none" class="player"
+           src="/songs/{{ song.youtube_id }}/audio"></audio>
   </td>
   <td>{{ song.playlist }}</td>
   <td class="num">{{ song.duration }}</td>

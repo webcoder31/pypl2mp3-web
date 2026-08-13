@@ -11,13 +11,14 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from pypl2mp3.services.check_new_songs import check_new_songs
 from pypl2mp3.services.list_playlists import list_playlists
-from pypl2mp3.services.junkize_songs import SongNotFound, junkize_song
+from pypl2mp3.services.find_song import SongNotFound, find_song_file
+from pypl2mp3.services.junkize_songs import junkize_song
 from pypl2mp3.services.list_songs import (
     DEFAULT_MATCH_THRESHOLD,
     list_songs,
@@ -215,6 +216,24 @@ def create_app(repository_path: Path) -> FastAPI:
                 "query": q,
                 "junk_only": bool(junk),
             },
+        )
+
+    @app.get("/songs/{youtube_id}/audio")
+    def song_audio(youtube_id: str) -> FileResponse:
+        """Stream one song's MP3.
+
+        FileResponse handles Range requests, which is what lets the
+        browser's audio element seek without downloading the whole file
+        first.
+        """
+
+        try:
+            song_file = find_song_file(app.state.repository_path, youtube_id)
+        except SongNotFound:
+            raise HTTPException(status_code=404, detail="unknown song")
+
+        return FileResponse(
+            song_file, media_type="audio/mpeg", filename=song_file.name
         )
 
     @app.post("/songs/{youtube_id}/junkize")

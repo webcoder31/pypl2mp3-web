@@ -13,13 +13,10 @@ is attributable to one song rather than aborting a whole sweep.
 from dataclasses import dataclass
 from pathlib import Path
 
-from pypl2mp3.libs.repository import get_repository_song_files
 from pypl2mp3.libs.song import SongModel
-from pypl2mp3.libs.utils import get_song_id_from_filename
+from pypl2mp3.services.find_song import SongNotFound, find_song_file
 
-
-class SongNotFound(Exception):
-    """No song in the repository carries that YouTube id."""
+__all__ = ["JunkizeResult", "SongNotFound", "junkize_song"]
 
 
 @dataclass(frozen=True)
@@ -47,7 +44,7 @@ def junkize_song(repository_path: Path, youtube_id: str) -> JunkizeResult:
         SongNotFound: if no song in the repository has that id.
     """
 
-    song_file = _find_by_youtube_id(Path(repository_path), youtube_id)
+    song_file = find_song_file(repository_path, youtube_id)
     song = SongModel(song_file)
     previous_filename = song_file.name
 
@@ -60,23 +57,3 @@ def junkize_song(repository_path: Path, youtube_id: str) -> JunkizeResult:
         filename=song.filename,
         path=song_file.parent / song.filename,
     )
-
-
-def _find_by_youtube_id(repository_path: Path, youtube_id: str) -> Path:
-    """Locate a song by id.
-
-    Matching is on the id embedded in the filename rather than on a fuzzy
-    keyword search: this operation destroys metadata, so it must act on
-    exactly the song the caller named or on none at all.
-
-    The id is read from the filename rather than by building a SongModel
-    per candidate. Constructing one rewrites the file's ID3 header (2.4 to
-    2.3), so scanning that way would silently modify every song in the
-    repository just to find one.
-    """
-
-    for song_file in get_repository_song_files(repository_path) or []:
-        if get_song_id_from_filename(song_file.name) == youtube_id:
-            return song_file
-
-    raise SongNotFound(youtube_id)
