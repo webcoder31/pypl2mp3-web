@@ -1,0 +1,31 @@
+{# Shazam's answer, or the wait for it. Self-polling while the job runs:
+   no hx-trigger on a terminal state, so the browser stops on its own.
+
+   The proposal is not applied for you. It fills the form's fields and
+   you decide — Shazam is confident about remixes it has never heard. #}
+<div id="shazam" class="job"
+     {% if polling %}hx-get="/fragments/shazam/{{ youtube_id }}"
+     hx-trigger="every 1s"
+     hx-swap="outerHTML"{% endif %}>
+  {% if state in ("pending", "running") %}
+    <span class="job-running">Listening…{{ tick }}</span>
+  {% elif state == "completed" %}
+    {% if result and result.matched %}
+      <div class="proposal">
+        <span class="job-new">{{ result.score | round | int }}% match</span>
+        <div class="proposal-value">{{ result.artist }} - {{ result.title }}</div>
+        <button type="button"
+                data-shazam-artist="{{ result.artist }}"
+                data-shazam-title="{{ result.title }}"
+                data-shazam-cover="{{ result.cover_art_url }}"
+        >Use this</button>
+      </div>
+    {% else %}
+      <span class="job-none">Shazam does not recognise it.</span>
+    {% endif %}
+  {% elif state == "failed" %}
+    <span class="job-error">Shazam failed: {{ error }}</span>
+  {% elif state == "cancelled" %}
+    <span class="job-error">Cancelled</span>
+  {% endif %}
+</div>

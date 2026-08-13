@@ -20,10 +20,13 @@
     <header id="header" data-swap-region>
       <strong>PYPL2MP3</strong>
 
+      {# keyup filters as you type; `changed` keeps arrow keys and modifiers
+         from refetching an unchanged query. The form still submits, so
+         pressing enter is not a dead end. #}
       <form id="filters"
             hx-get="/fragments/list"
             hx-target="#list"
-            hx-trigger="submit, change">
+            hx-trigger="submit, change, keyup changed delay:300ms">
         <input type="hidden" name="playlist" id="playlist-field"
                value="{{ playlist }}">
         <input type="search" name="q" value="{{ query }}"
@@ -42,7 +45,14 @@
 
     <nav id="nav" data-swap-region>{% include "_nav.html" %}</nav>
 
-    <main id="list" data-swap-region>{% include "_list.html" %}</main>
+    {# songsChanged fires when a save changed what the repository holds.
+       The listing refetches with the current filters, because a fixed
+       junk song must leave a junk-filtered view rather than sit there
+       looking repaired. #}
+    <main id="list" data-swap-region
+          hx-get="/fragments/list"
+          hx-trigger="songsChanged from:body"
+          hx-include="#filters">{% include "_list.html" %}</main>
 
     <aside id="inspector" data-swap-region>
       <p class="job-none">Select a song.</p>

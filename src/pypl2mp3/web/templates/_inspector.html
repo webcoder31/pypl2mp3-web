@@ -1,0 +1,55 @@
+{# What one song is, and the means to change it. The right-hand panel of
+   the console; it follows whatever is playing, so the song being judged
+   is the song being heard. #}
+<div id="inspector-body" data-song-id="{{ song.youtube_id }}">
+  <img src="/songs/{{ song.youtube_id }}/cover" alt="" class="cover"
+       onerror="this.style.display='none'">
+
+  <h2 class="inspector-title">
+    {% if song.is_junk %}<span class="junk">⚠</span> {% endif %}
+    {{ song.label }}
+  </h2>
+  <p class="id">{{ song.playlist_name }} · {{ song.duration }}</p>
+
+  {# Shazam is not called on load: it takes seconds and waits fifteen
+     more between requests. It is a job the user starts. #}
+  <p>
+    <button type="button"
+            hx-post="/songs/{{ song.youtube_id }}/shazam"
+            hx-target="#shazam"
+            hx-swap="outerHTML">Ask Shazam</button>
+    <a href="https://youtu.be/{{ song.youtube_id }}" target="_blank"
+       rel="noopener noreferrer">video</a>
+  </p>
+
+  <div id="shazam" class="job"></div>
+
+  <form hx-post="/songs/{{ song.youtube_id }}/fix"
+        hx-target="#inspector"
+        hx-swap="innerHTML">
+    <label>Artist
+      <input type="text" name="artist" value="{{ song.artist }}"></label>
+    <label>Title
+      <input type="text" name="title" value="{{ song.title }}"></label>
+    <label>Cover art URL
+      <input type="url" name="cover_art_url"
+             placeholder="leave empty to keep the current one"></label>
+    <p>
+      <button type="submit">Save</button>
+      {% if not song.is_junk %}
+        <button type="button"
+          hx-post="/songs/{{ song.youtube_id }}/junkize"
+          hx-target="#song-{{ song.youtube_id }}"
+          hx-swap="outerHTML"
+          hx-confirm="Clear this song's metadata and mark it as junk? This cannot be undone."
+        >Junkize</button>
+      {% endif %}
+    </p>
+  </form>
+
+  {% if saved %}
+    <p class="job-new">Saved.</p>
+  {% endif %}
+
+  <p class="id filename">{{ song.path.name }}</p>
+</div>

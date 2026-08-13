@@ -58,6 +58,20 @@
     videoLink.href = "https://youtu.be/" + current;
   }
 
+  // Set when the inspector's form has edits nobody has saved. The panel
+  // follows the playing song, and a track ending mid-sentence must not
+  // wipe what you were typing.
+  let dirty = false;
+
+  function inspect(id) {
+    if (dirty) return;
+
+    const shown = document.querySelector("#inspector [data-song-id]");
+    if (shown && shown.dataset.songId === id) return;
+
+    window.htmx.ajax("GET", "/fragments/inspector/" + id, "#inspector");
+  }
+
   function play(i) {
     if (!queue.length) return;
 
@@ -65,6 +79,9 @@
     index = (i + queue.length) % queue.length;
     audio.src = "/songs/" + queue[index] + "/audio";
     paint();
+
+    // The song being judged is the song being heard: one cursor, not two.
+    inspect(queue[index]);
 
     audio.play().catch(function () {
       // Browsers refuse autoplay until the page has been interacted
@@ -185,6 +202,45 @@
         }
         break;
     }
+  });
+
+  // Anything typed in the inspector is unsaved work; stop following the
+  // player until it is saved or the panel is replaced.
+  document.addEventListener("input", function (event) {
+    if (event.target.closest("#inspector")) dirty = true;
+  });
+
+  document.addEventListener("htmx:afterSwap", function (event) {
+    if (event.target.id === "inspector") dirty = false;
+  });
+
+  // Shazam proposes; you decide. Filling the fields rather than writing
+  // the tags is the point — it is confident about remixes it has never
+  // heard.
+  document.addEventListener("click", function (event) {
+    const use = event.target.closest("[data-shazam-artist]");
+    if (!use) return;
+
+    const form = document.querySelector("#inspector form");
+    if (!form) return;
+
+    form.artist.value = use.dataset.shazamArtist;
+    form.title.value = use.dataset.shazamTitle;
+    form.cover_art_url.value = use.dataset.shazamCover || "";
+    dirty = true;
+  });
+
+  // Keep the address bar on the current selection so a reload restores
+  // the view. The filter form is the query, so it is what gets read.
+  document.addEventListener("htmx:afterRequest", function (event) {
+    if (event.target !== filters) return;
+
+    const params = new URLSearchParams(new FormData(filters));
+    for (const [key, value] of Array.from(params)) {
+      if (!value) params.delete(key);
+    }
+    const query = params.toString();
+    window.history.replaceState(null, "", query ? "/?" + query : "/");
   });
 
   const list = document.getElementById("list");

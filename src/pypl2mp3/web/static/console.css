@@ -145,3 +145,15 @@ tr:hover .row-meta { opacity: 0.9; }
 .job-none { opacity: 0.6; }
 .job-error { color: #b00020; }
 .htmx-request .job, .htmx-request.job { opacity: 0.5; }
+
+/* Inspector */
+
+#inspector .cover { max-width: 100%; margin-bottom: 0.6rem; }
+.inspector-title { font-size: 1rem; margin: 0.2rem 0; }
+#inspector label { display: block; margin: 0.4rem 0; font-size: 0.85em;
+                   opacity: 0.8; }
+#inspector input { display: block; width: 100%; margin-top: 0.15rem; }
+#inspector .filename { word-break: break-all; margin-top: 1rem; }
+.proposal { border: 1px solid var(--line); border-radius: 4px;
+            padding: 0.4rem 0.6rem; margin: 0.4rem 0; }
+.proposal-value { font-weight: 600; margin: 0.2rem 0; }

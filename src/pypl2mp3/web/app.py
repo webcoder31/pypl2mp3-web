@@ -121,6 +121,24 @@ def create_app(repository_path: Path) -> FastAPI:
             },
         )
 
+    def _shazam_fragment(request, youtube_id: str, job):
+        """Shazam's answer, or the poll that waits for it."""
+
+        return templates.TemplateResponse(
+            request,
+            "_shazam.html",
+            {
+                "youtube_id": youtube_id,
+                "state": job.state.value,
+                "result": job.result,
+                "error": job.error,
+                "tick": (
+                    f" {job.elapsed_seconds}s" if job.elapsed_seconds else ""
+                ),
+                "polling": job.state.value in ("pending", "running"),
+            },
+        )
+
     @app.post("/playlists/{playlist_id}/check")
     async def start_check(playlist_id: str, request: Request):
         loop = asyncio.get_running_loop()
@@ -347,6 +365,34 @@ def create_app(repository_path: Path) -> FastAPI:
             {"songs": _selection(playlist, q, junk, match)},
         )
 
+    def _summary_or_404(youtube_id: str):
+        try:
+            return summarize(SongModel(
+                find_song_file(app.state.repository_path, youtube_id)
+            ))
+        except SongNotFound:
+            raise HTTPException(status_code=404, detail="unknown song")
+
+    @app.get("/fragments/inspector/{youtube_id}", response_class=HTMLResponse)
+    def inspector_fragment(youtube_id: str, request: Request) -> HTMLResponse:
+        """One song's details and the form that changes them."""
+
+        return templates.TemplateResponse(
+            request,
+            "_inspector.html",
+            {"song": _summary_or_404(youtube_id)},
+        )
+
+    @app.get("/fragments/shazam/{youtube_id}", response_class=HTMLResponse)
+    def shazam_fragment(youtube_id: str, request: Request) -> HTMLResponse:
+        """Where a running identification has got to."""
+
+        job = app.state.jobs.get(f"shazam:{youtube_id}")
+        if job is None:
+            raise HTTPException(status_code=404, detail="no such job")
+
+        return _shazam_fragment(request, youtube_id, job)
+
     @app.get("/playlists", response_class=HTMLResponse)
     def inventory(request: Request) -> HTMLResponse:
         return templates.TemplateResponse(
@@ -515,6 +561,9 @@ def create_app(repository_path: Path) -> FastAPI:
         except JobAlreadyRunning:
             job = app.state.jobs.get(job_id)
 
+        if request.headers.get("HX-Request") is not None:
+            return _shazam_fragment(request, youtube_id, job)
+
         return {"job_id": job.job_id}
 
     @app.post("/songs/{youtube_id}/fix")
@@ -541,9 +590,18 @@ def create_app(repository_path: Path) -> FastAPI:
         ))
 
         if request.headers.get("HX-Request") is not None:
-            return templates.TemplateResponse(
-                request, "_song_row.html", {"song": song, "fixed": True}
+            # HX-Trigger rather than an out-of-band row swap: fixing a junk
+            # song makes it not junk, so in a junk-filtered listing the row
+            # must *leave*, not update. Only the server knows whether the
+            # song still belongs to the current selection, so the console
+            # refetches the listing and finds out.
+            response = templates.TemplateResponse(
+                request,
+                "_inspector.html",
+                {"song": song, "saved": True},
             )
+            response.headers["HX-Trigger"] = "songsChanged"
+            return response
 
         # A plain form POST navigates to whatever comes back, so returning
         # JSON left the browser showing raw data. Send it back to the list
