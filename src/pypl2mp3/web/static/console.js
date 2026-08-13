@@ -18,16 +18,23 @@
 
   const audio = document.getElementById("audio");
   const bar = document.getElementById("player");
-  const label = document.getElementById("player-label");
+  const upNext = document.getElementById("player-next");
   const position = document.getElementById("player-position");
   const videoLink = document.getElementById("player-video");
   const toggle = document.querySelector('[data-player-action="toggle"]');
   const filters = document.getElementById("filters");
   const playlistField = document.getElementById("playlist-field");
 
-  // {id, label} in play order, captured when the queue is set.
+  // {id, label, duration, junk} in play order, captured when the queue
+  // is set.
   let queue = [];
   let index = -1;
+
+  // Which way the queue is being walked. Pressing ← does not just step
+  // back once: it turns the player round, and playback keeps going that
+  // way when a track ends. The CLI behaves the same, and it is why the
+  // preview below can be trusted.
+  let direction = 1;
 
   function rows() {
     return Array.from(document.querySelectorAll("#list tr[data-song-id]"));
@@ -35,7 +42,12 @@
 
   function queueFromRows() {
     return rows().map(function (row) {
-      return { id: row.dataset.songId, label: row.dataset.label || "" };
+      return {
+        id: row.dataset.songId,
+        label: row.dataset.label || "",
+        duration: row.dataset.duration || "",
+        junk: row.dataset.junk === "1",
+      };
     });
   }
 
@@ -50,19 +62,30 @@
 
     if (!current) {
       bar.classList.add("idle");
-      label.textContent = "Nothing playing";
-      label.title = "";
+      upNext.textContent = "Nothing playing";
+      upNext.title = "";
       position.textContent = "";
       return;
     }
 
     bar.classList.remove("idle");
-    // The name or nothing — never the raw id, which says less than a
-    // blank does.
-    label.textContent = current.label;
-    label.title = current.label;
     position.textContent = index + 1 + " / " + queue.length;
     videoLink.href = "https://youtu.be/" + current.id;
+
+    // What is playing is already the inspector's whole job. What the bar
+    // can say that nothing else does is what comes next.
+    const following =
+      queue[(index + direction + queue.length) % queue.length];
+    const arrow = direction < 0 ? "←" : "→";
+    upNext.textContent = following
+      ? arrow +
+        "  " +
+        following.duration +
+        "  " +
+        following.label +
+        (following.junk ? " (JUNK)" : "")
+      : "";
+    upNext.title = upNext.textContent;
   }
 
   // Set when the inspector's form has edits nobody has saved. The panel
@@ -97,13 +120,20 @@
   }
 
   function move(step) {
-    if (queue.length) play(index + step);
+    if (!queue.length) return;
+
+    // Stepping sets the direction, so the preview and what a finishing
+    // track does next agree with each other.
+    direction = step < 0 ? -1 : 1;
+    play(index + step);
   }
 
   // Setting the queue: the visible listing becomes what plays, which is
   // what every music player does when you start a track from a view.
   function setQueue(entries, startAt) {
     queue = entries;
+    // A fresh selection plays forward, whichever way the last one ended.
+    direction = 1;
     // A findIndex that missed returns -1, which play() would wrap round
     // to the last track. Start at the top instead.
     play(startAt > 0 ? startAt : 0);
@@ -119,7 +149,10 @@
   }
 
   audio.addEventListener("ended", function () {
-    move(1);
+    // Follows the direction rather than always going forward, so walking
+    // backwards through a selection keeps working when you stop pressing
+    // keys. This is what makes the preview honest.
+    move(direction);
   });
 
   audio.addEventListener("play", function () {

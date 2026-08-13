@@ -65,9 +65,12 @@ body {
 }
 
 #player audio { flex: 1; min-width: 0; }
-#player-label { flex: 0 1 22rem; overflow: hidden; text-overflow: ellipsis;
-                white-space: nowrap; }
-#player.idle #player-label { opacity: 0.5; }
+/* What comes next, the way the CLI previews it: dimmed, secondary to
+   the track you are actually hearing. */
+#player-next { flex: 0 1 26rem; overflow: hidden; text-overflow: ellipsis;
+               white-space: nowrap; opacity: 0.6; font-size: 0.9em;
+               font-variant-numeric: tabular-nums; }
+#player.idle #player-next { opacity: 0.4; }
 
 /* Navigation */
 

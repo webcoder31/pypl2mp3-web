@@ -63,7 +63,10 @@
       <button data-player-action="previous" title="Previous (←)">⏮</button>
       <button data-player-action="toggle" title="Play / pause (space)">▶</button>
       <button data-player-action="next" title="Next (→)">⏭</button>
-      <span id="player-label">Nothing playing</span>
+      {# What is playing is already the whole right-hand panel. What the
+         bar can say that nothing else does is what comes next — the CLI
+         prints it too, before the current track has even started. #}
+      <span id="player-next">Nothing playing</span>
       <audio id="audio" controls></audio>
       <span class="id" id="player-position"></span>
       <a id="player-video" href="#" target="_blank"

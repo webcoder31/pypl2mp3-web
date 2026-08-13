@@ -263,12 +263,57 @@ async def test_every_row_carries_the_name_the_player_will_show(tmp_path):
 
 
 async def test_the_player_title_never_falls_back_to_the_id(tmp_path):
-    """A wiring check on the regression: the id says less than a blank."""
+    """A wiring check on the regression: the id says less than a blank.
+
+    The bar names the *next* track now, but the trap is the same — a
+    lookup in a listing the song may have been filtered out of.
+    """
 
     async with _client(create_app(tmp_path)) as client:
         script = (await client.get("/static/console.js")).text
 
-    assert "current.label" in script, "the bar no longer reads the queue"
+    assert "following.label" in script, "the bar no longer reads the queue"
     assert "labelFor" not in script, (
         "the DOM lookup that fell back to the id is back"
+    )
+
+
+async def test_a_row_carries_what_the_preview_needs(tmp_path):
+    """The bar previews the next track the way the CLI does: duration,
+    name, and whether it is still junk."""
+
+    _make_song(tmp_path, "ARTIST", "Good", "aaaaaaaaaaa")
+    _make_song(tmp_path, "UNKNOWN", "Bad", "bbbbbbbbbbb", junk=True)
+
+    async with _client(create_app(tmp_path)) as client:
+        fragment = (await client.get("/fragments/list")).text
+
+    rows = re.findall(r"<tr[^>]*>", fragment)
+    assert len(rows) == 2
+
+    for row in rows:
+        assert re.search(r'data-duration="\d[\d:]*"', row), row
+
+    junk = next(r for r in rows if 'data-song-id="bbbbbbbbbbb"' in r)
+    good = next(r for r in rows if 'data-song-id="aaaaaaaaaaa"' in r)
+    assert 'data-junk="1"' in junk
+    assert 'data-junk="0"' in good
+
+
+async def test_the_bar_previews_what_comes_next_not_what_is_playing(tmp_path):
+    """A wiring check. What is playing already fills the inspector; the
+    bar's one useful job is saying what follows."""
+
+    async with _client(create_app(tmp_path)) as client:
+        page = (await client.get("/")).text
+        script = (await client.get("/static/console.js")).text
+
+    assert 'id="player-next"' in page
+    assert 'id="player-label"' not in page, "the old current-track slot"
+
+    assert "index + direction" in script, "the preview ignores the queue"
+    # Pressing ← turns the player round; auto-advance must follow, or the
+    # preview promises a track that never comes.
+    assert "move(direction)" in script, (
+        "a finishing track always goes forward, so the preview can lie"
     )

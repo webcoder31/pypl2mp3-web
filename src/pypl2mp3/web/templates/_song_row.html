@@ -9,9 +9,14 @@
    the rows on screen *are* the queue. There used to be an <audio> here,
    one per row — 915 of them in a full listing, none of which survived
    leaving the page. The console has a single player instead. #}
+{# data-duration and data-junk feed the player bar's preview of what
+   comes next, the way the CLI prints it before the current track even
+   starts. #}
 <tr id="song-{{ song.youtube_id }}"
     data-song-id="{{ song.youtube_id }}"
-    data-label="{{ song.label }}">
+    data-label="{{ song.label }}"
+    data-duration="{{ song.duration }}"
+    data-junk="{{ 1 if song.is_junk else 0 }}">
   <td>
     <div class="row-title">
       {% if song.is_junk %}<span class="junk">⚠</span> {% endif %}
