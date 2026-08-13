@@ -252,3 +252,58 @@ async def test_the_fragment_names_the_song_instead_of_saying_checking(
 
     assert "Checking" not in fragment, "that label belongs to the check job"
     assert "ARTIST - Title" in fragment, "the current song should be named"
+
+
+async def test_the_song_name_survives_its_own_sub_stages():
+    """Regression: the display named the stage but not the song.
+
+    "Streaming audio: 42%" tells you nothing about which of 34 songs is
+    downloading. The sub-stage used to overwrite the item name wholesale.
+    """
+
+    from pypl2mp3.web.jobs import Job
+
+    job = Job(job_id="import:x")
+
+    job.append_event(
+        {"kind": "stage_started", "stage": "song", "label": "7/34 WU-TANG"}
+    )
+    job.append_event(
+        {
+            "kind": "stage_started",
+            "stage": "download_audio",
+            "label": "Streaming audio:",
+        }
+    )
+    job.append_event(
+        {"kind": "stage_progress", "stage": "download_audio", "percent": 42.0}
+    )
+
+    assert job.current["item"] == "7/34 WU-TANG", "the song name was lost"
+    assert job.current["label"] == "Streaming audio:"
+    assert job.current["percent"] == 42.0
+
+
+async def test_a_new_song_clears_the_previous_one_s_stage():
+    """Otherwise song 8 would open still showing song 7's last percentage."""
+
+    from pypl2mp3.web.jobs import Job
+
+    job = Job(job_id="import:x")
+    job.append_event(
+        {"kind": "stage_started", "stage": "song", "label": "7/34 WU-TANG"}
+    )
+    job.append_event(
+        {"kind": "stage_started", "stage": "mp3_encode", "label": "Encoding:"}
+    )
+    job.append_event(
+        {"kind": "stage_progress", "stage": "mp3_encode", "percent": 99.0}
+    )
+
+    job.append_event(
+        {"kind": "stage_started", "stage": "song", "label": "8/34 PHARCYDE"}
+    )
+
+    assert job.current["item"] == "8/34 PHARCYDE"
+    assert job.current["label"] is None
+    assert job.current["percent"] is None

@@ -28,6 +28,11 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_EVENTS = 500
 
+# Stage name a producer uses to announce which item it is working on. The
+# sub-stages that follow belong to it, and its name must outlive them in
+# `Job.current` — see append_event.
+ITEM_STAGE = "song"
+
 
 class JobState(str, Enum):
     PENDING = "pending"
@@ -93,12 +98,30 @@ class Job:
         """
 
         if event.get("kind") == "stage_progress":
-            self.current = {**self.current, **event}
+            self.current = {**self.current, "percent": event.get("percent")}
             return
 
-        if event.get("kind") == "stage_started" and event.get("stage"):
-            # A new stage supersedes the previous percentage.
-            self.current = {**event, "percent": None}
+        if event.get("kind") == "stage_started":
+            if event.get("stage") == ITEM_STAGE:
+                # A new item: keep its name for the whole of its work, and
+                # clear whatever the previous item's last stage left behind.
+                self.current = {
+                    "item": event.get("label"),
+                    "stage": None,
+                    "label": None,
+                    "percent": None,
+                }
+            else:
+                # A sub-stage of the current item. It replaces the previous
+                # sub-stage and its percentage, but must not erase the item
+                # name — doing so left the display showing "Streaming
+                # audio: 42%" with no clue which song that was.
+                self.current = {
+                    **self.current,
+                    "stage": event.get("stage"),
+                    "label": event.get("label"),
+                    "percent": None,
+                }
         else:
             self.current = {**self.current, **event}
 

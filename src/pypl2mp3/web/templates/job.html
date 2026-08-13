@@ -8,9 +8,10 @@
     {# .get(), not attribute access: a missing key yields Undefined, which
        `is not none` happily lets through into round(). #}
     {%- set percent = current.get("percent") -%}
-    <span class="job-running">{{ current.get("label") or busy_label }}…{%
-      if percent is not none and current.get("stage") != "song"
-      %} · {{ percent | round | int }}%{% endif %}{{ tick }}</span>
+    <span class="job-running">{{ current.get("item") or busy_label }}…{%
+      if current.get("label") %} · {{ current.get("label") }}{% endif %}{%
+      if percent is not none %} {{ percent | round | int }}%{% endif
+      %}{{ tick }}</span>
   {% elif state == "completed" %}
     {% if result and result.imported is defined %}
       <span class="job-new">{{ result.imported | length }} imported</span>
