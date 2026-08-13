@@ -1216,11 +1216,11 @@ class SongModel:
         # Update or remove tag title
         if self.title:
             self.mp3.tags.add(TIT2(
-                encoding=3, 
+                encoding=3,
                 text=u"" + self.title
             ))
         else:
-            self.mp3.tags.delall("TPE1")
+            self.mp3.tags.delall("TIT2")
 
         # Delete all custom tags
         self.mp3.tags.delall("TXXX")

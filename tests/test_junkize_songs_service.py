@@ -34,17 +34,6 @@ def _make_tagged_song(repo: Path, artist: str, title: str, vid: str) -> Path:
     return path
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "libs/song.py bug, pre-existing and out of scope: reset_state() "
-        "clears the in-memory state then calls __init__, which re-reads the "
-        "file, so only the artist frame is dropped. The title survives in "
-        "both the tags and the filename. Verified against the library "
-        "directly, not through this service. Remove this marker when "
-        "libs/song.py is unfrozen and fixed."
-    ),
-)
 def test_it_clears_the_tags_and_renames_the_file(tmp_path):
     path = _make_tagged_song(tmp_path, "THE PHARCYDE", "Passin Me By", "aaaaaaaaaaa")
 
@@ -111,3 +100,25 @@ def test_junkizing_an_already_junk_song_is_harmless(tmp_path):
 
     assert second.filename == first.filename
     assert len(list_songs(tmp_path, junk_only=True)) == 1
+
+
+def test_the_title_frame_is_actually_removed(tmp_path):
+    """Regression for a copy-paste bug in libs/song.py.
+
+    `update_id3_tags` deleted TPE1 in *both* branches — the artist's own
+    else-branch and the title's — so TIT2 was never removed and the title
+    survived every reset. `pypl2mp3 junkize` shipped that way.
+
+    Asserted at the frame level rather than through EasyID3, which hides
+    the distinction behind friendly names.
+    """
+
+    from mutagen.id3 import ID3
+
+    _make_tagged_song(tmp_path, "THE PHARCYDE", "Passin Me By", "aaaaaaaaaaa")
+
+    result = junkize_song(tmp_path, "aaaaaaaaaaa")
+
+    frames = ID3(tmp_path / PLAYLIST / result.filename)
+    assert frames.getall("TIT2") == [], "the title frame survived the reset"
+    assert frames.getall("TPE1") == [], "the artist frame survived the reset"
