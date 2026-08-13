@@ -790,18 +790,31 @@ class SongModel:
 
             # Download audio stream
             try:
-                m4a_stream = video.streams.get_audio_only()
+                # Resolving the stream and downloading it are both blocking
+                # network calls. Run them off the event loop so a caller
+                # sharing it — a web server — keeps serving while a song
+                # downloads. Under asyncio.run, as the CLI uses, this
+                # behaves exactly as a direct call did.
+                #
+                # Note the progress callback registered above now fires in
+                # the worker thread. That is why the terminal animation is
+                # a plain time.sleep and not an await: there is no event
+                # loop in here.
+                m4a_stream = await asyncio.to_thread(
+                    video.streams.get_audio_only
+                )
 
                 if m4a_stream is None:
                     raise SongModelException(
                         f"Cannot get audio stream "
                         f"for YouTube video \"{youtube_id}\""
                     )
-                
+
                 # Use 1.12 MB chunk chunk for download (default: 9 MB)
                 request.default_range_size = 1179648
-                m4a_stream.download(
-                    output_path=Path(temp_dir), 
+                await asyncio.to_thread(
+                    m4a_stream.download,
+                    output_path=Path(temp_dir),
                     filename="temp.m4a"
                 )
 
@@ -845,13 +858,26 @@ class SongModel:
                     ) from exc
                 
             # Encode audio stream to MP3 file
-            try:
+            def encode_to_mp3() -> None:
+                """Open, encode, close — all in one worker thread.
+
+                ffmpeg work, entirely blocking. Kept as a single unit so
+                the clip is not handed between threads mid-encode. The
+                close sits in a finally: without it, a failed encode
+                leaked the reader and its ffmpeg subprocess.
+                """
+
                 mp3_stream = AudioFileClip(str(temp_m4a_path))
-                mp3_stream.write_audiofile(
-                    str(temp_mp3_path), 
-                    logger=mp3_encode_logger
-                )
-                mp3_stream.close()
+                try:
+                    mp3_stream.write_audiofile(
+                        str(temp_mp3_path),
+                        logger=mp3_encode_logger
+                    )
+                finally:
+                    mp3_stream.close()
+
+            try:
+                await asyncio.to_thread(encode_to_mp3)
             except Exception as exc:
                 raise SongModelException(
                     f"Failed to encode audio stream to MP3 "
@@ -1409,9 +1435,12 @@ class SongModel:
                 temp_file = Path(temporary_directory_pathname) / "temp.jpg"
 
                 try:
-                    urllib.request.urlretrieve(
-                        self.cover_art_url, 
-                        temp_file, 
+                    # Blocking network call, like the audio download: off
+                    # the loop so a shared event loop keeps serving.
+                    await asyncio.to_thread(
+                        urllib.request.urlretrieve,
+                        self.cover_art_url,
+                        temp_file,
                         progress_bar_callback
                     )
                 except Exception as exc:
