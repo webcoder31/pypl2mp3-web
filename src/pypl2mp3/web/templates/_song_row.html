@@ -16,6 +16,12 @@
         hx-confirm="Clear this song's metadata and mark it as junk? This cannot be undone."
       >Junkize</button>
     {% endif %}
+    {% if song.is_junk %}
+      <a href="/songs/{{ song.youtube_id }}/fix" class="fix-link">Fix</a>
+    {% endif %}
+    {% if fixed %}
+      <span class="job-new">metadata fixed</span>
+    {% endif %}
     {% if junkized %}
       <span class="job-new">metadata cleared</span>
     {% endif %}

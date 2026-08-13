@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block heading %}Fix metadata{% endblock %}
+
+{% block content %}
+  <p><a href="/songs?junk=1">← All junk songs</a></p>
+
+  <p class="id">{{ song.playlist }}</p>
+  <h2>{{ song.label or song.youtube_id }}</h2>
+
+  {# The reason this screen exists: deciding what a song is means seeing
+     its cover and hearing it, neither of which a terminal can do. #}
+  <p>
+    <img src="/songs/{{ song.youtube_id }}/cover" alt="" class="cover"
+         onerror="this.style.display='none'">
+  </p>
+
+  <p>
+    <audio controls preload="none"
+           src="/songs/{{ song.youtube_id }}/audio"></audio>
+  </p>
+
+  <p>
+    <button hx-post="/songs/{{ song.youtube_id }}/shazam"
+            hx-target="#shazam-{{ song.youtube_id }}"
+            hx-swap="outerHTML"
+    >Ask Shazam</button>
+    <span id="shazam-{{ song.youtube_id }}" class="job"></span>
+  </p>
+
+  <form method="post" action="/songs/{{ song.youtube_id }}/fix">
+    <p>
+      <label>Artist<br>
+        <input type="text" name="artist" size="48"
+               value="{{ song.artist }}"></label>
+    </p>
+    <p>
+      <label>Title<br>
+        <input type="text" name="title" size="48"
+               value="{{ song.title }}"></label>
+    </p>
+    <p>
+      <label>Cover art URL<br>
+        <input type="url" name="cover_art_url" size="48"
+               placeholder="leave empty to keep the current one"></label>
+    </p>
+    <p>
+      <button type="submit">Save</button>
+      <a href="/songs?junk=1">Cancel</a>
+    </p>
+  </form>
+
+  <p class="id">{{ song.path.name }}</p>
+{% endblock %}

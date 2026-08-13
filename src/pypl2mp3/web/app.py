@@ -10,14 +10,16 @@ import asyncio
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from pypl2mp3.libs.song import SongModel
 from pypl2mp3.services.check_new_songs import check_new_songs
 from pypl2mp3.services.list_playlists import list_playlists
 from pypl2mp3.services.find_song import SongNotFound, find_song_file
+from pypl2mp3.services.fix_junks import apply_fix, propose_fix
 from pypl2mp3.services.import_playlist import import_playlist
 from pypl2mp3.services.junkize_songs import junkize_song
 from pypl2mp3.services.list_songs import (
@@ -311,6 +313,106 @@ def create_app(repository_path: Path) -> FastAPI:
             },
         )
 
+    @app.get("/songs/{youtube_id}/fix", response_class=HTMLResponse)
+    def fix_page(youtube_id: str, request: Request) -> HTMLResponse:
+        """The repair screen: cover art, player, and an editable form.
+
+        Shazam is not called here. Identifying a song takes seconds and can
+        wait fifteen more between requests, so it is a job the user starts
+        from this page rather than a cost paid on every load.
+        """
+
+        try:
+            song = summarize(SongModel(
+                find_song_file(app.state.repository_path, youtube_id)
+            ))
+        except SongNotFound:
+            raise HTTPException(status_code=404, detail="unknown song")
+
+        return templates.TemplateResponse(
+            request, "fix.html", {"song": song}
+        )
+
+    @app.post("/songs/{youtube_id}/shazam")
+    async def shazam_song(youtube_id: str, request: Request):
+        """Ask Shazam what this is. Writes nothing.
+
+        A job rather than a held-open request: identification takes
+        seconds, and SongModel waits 15s between calls.
+        """
+
+        loop = asyncio.get_running_loop()
+        repository_path = app.state.repository_path
+        job_id = f"shazam:{youtube_id}"
+
+        async def work(job) -> dict:
+            progress = WebProgress(app.state.jobs, job.job_id, loop)
+            proposal = await propose_fix(repository_path, youtube_id, progress)
+            return {
+                "matched": proposal.matched,
+                "artist": proposal.shazam_artist,
+                "title": proposal.shazam_title,
+                "cover_art_url": proposal.shazam_cover_art_url,
+                "score": proposal.shazam_match_score,
+            }
+
+        try:
+            job = app.state.jobs.start(job_id, work)
+        except JobAlreadyRunning:
+            job = app.state.jobs.get(job_id)
+
+        return {"job_id": job.job_id}
+
+    @app.post("/songs/{youtube_id}/fix")
+    async def submit_fix(youtube_id: str, request: Request):
+        """Write the metadata the user settled on."""
+
+        form = await request.form()
+
+        try:
+            result = await apply_fix(
+                app.state.repository_path,
+                youtube_id,
+                artist=str(form.get("artist", "")).strip(),
+                title=str(form.get("title", "")).strip(),
+                cover_art_url=str(form.get("cover_art_url", "")).strip(),
+            )
+        except SongNotFound:
+            raise HTTPException(status_code=404, detail="unknown song")
+
+        # The file was renamed, but it keeps its YouTube id, so the finder
+        # locates it again under its new name.
+        song = summarize(SongModel(
+            find_song_file(app.state.repository_path, youtube_id)
+        ))
+
+        if request.headers.get("HX-Request") is not None:
+            return templates.TemplateResponse(
+                request, "_song_row.html", {"song": song, "fixed": True}
+            )
+
+        return {"youtube_id": youtube_id, "filename": result.filename}
+
+    @app.get("/songs/{youtube_id}/cover")
+    def song_cover(youtube_id: str) -> Response:
+        """Serve the embedded cover art, if the file carries one."""
+
+        try:
+            song = SongModel(
+                find_song_file(app.state.repository_path, youtube_id)
+            )
+        except SongNotFound:
+            raise HTTPException(status_code=404, detail="unknown song")
+
+        pictures = song.mp3.tags.getall("APIC") if song.mp3.tags else []
+        if not pictures:
+            raise HTTPException(status_code=404, detail="no cover art")
+
+        return Response(
+            content=pictures[0].data,
+            media_type=pictures[0].mime or "image/jpeg",
+        )
+
     @app.get("/songs/{youtube_id}/audio")
     def song_audio(youtube_id: str) -> FileResponse:
         """Stream one song's MP3.
@@ -338,8 +440,6 @@ def create_app(repository_path: Path) -> FastAPI:
         which replaces itself in place — the listing shows the outcome
         without a reload.
         """
-
-        from pypl2mp3.libs.song import SongModel
 
         try:
             result = junkize_song(app.state.repository_path, youtube_id)
