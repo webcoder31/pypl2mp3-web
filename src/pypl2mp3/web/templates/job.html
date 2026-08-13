@@ -17,12 +17,9 @@
       <span class="job-new">{{ result.imported | length }} imported</span>
       {% if result.failed %}
         <span class="job-error">{{ result.failed | length }} failed</span>
-        {% if result.failed_by_reason %}
-          <span class="job-none">({% for reason, count in
-            result.failed_by_reason.items() %}{{ count }} {{ reason }}{%
-            if not loop.last %}, {% endif %}{% endfor %})</span>
-        {% endif %}
       {% endif %}
+      {# Counts fit inline; which songs and why does not. #}
+      <a href="/jobs/{{ job_id }}/report">see report</a>
     {% elif result and result.missing %}
       <span class="job-new">{{ result.missing | length }} new song(s)</span>
     {% else %}

@@ -11,7 +11,11 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    RedirectResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -192,7 +196,19 @@ def create_app(repository_path: Path) -> FastAPI:
             return {
                 "total_remote": report.total_remote,
                 "already_local": report.already_local,
-                "imported": [song.filename for song in report.imported],
+                "imported": [
+                    {
+                        "youtube_id": song.youtube_id,
+                        "filename": song.filename,
+                        "artist": song.artist,
+                        "title": song.title,
+                        "score": song.shazam_match_score,
+                        # Imported but unmatched: on disk, still needing a
+                        # trip through the fix screen.
+                        "is_junk": song.is_junk,
+                    }
+                    for song in report.imported
+                ],
                 "failed": [
                     {
                         "youtube_id": item.youtube_id,
@@ -313,6 +329,31 @@ def create_app(repository_path: Path) -> FastAPI:
             },
         )
 
+    @app.get("/jobs/{job_id}/report", response_class=HTMLResponse)
+    def job_report(job_id: str, request: Request) -> HTMLResponse:
+        """The full outcome of a run, song by song.
+
+        The inline fragment has room for counts only. Knowing which songs
+        arrived, which did not, and why, is the whole point of running an
+        import you cannot watch.
+        """
+
+        job = app.state.jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="unknown job")
+
+        return templates.TemplateResponse(
+            request,
+            "report.html",
+            {
+                "job_id": job_id,
+                "state": job.state.value,
+                "result": job.result or {},
+                "error": job.error,
+                "elapsed": job.elapsed_seconds,
+            },
+        )
+
     @app.get("/songs/{youtube_id}/fix", response_class=HTMLResponse)
     def fix_page(youtube_id: str, request: Request) -> HTMLResponse:
         """The repair screen: cover art, player, and an editable form.
@@ -391,7 +432,10 @@ def create_app(repository_path: Path) -> FastAPI:
                 request, "_song_row.html", {"song": song, "fixed": True}
             )
 
-        return {"youtube_id": youtube_id, "filename": result.filename}
+        # A plain form POST navigates to whatever comes back, so returning
+        # JSON left the browser showing raw data. Send it back to the list
+        # it came from. 303 so a reload does not re-submit the form.
+        return RedirectResponse(url="/songs?junk=1", status_code=303)
 
     @app.get("/songs/{youtube_id}/cover")
     def song_cover(youtube_id: str) -> Response:

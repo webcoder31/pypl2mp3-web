@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block heading %}Import report{% endblock %}
+
+{% block content %}
+  <p><a href="/">← All playlists</a></p>
+
+  <p class="id">{{ job_id }} · {{ state }} · {{ elapsed }}s</p>
+
+  {% if error %}
+    <p class="job-error">The run itself failed: {{ error }}</p>
+  {% endif %}
+
+  {% if result.total_remote is defined %}
+    <p>
+      {{ result.total_remote }} in the playlist,
+      {{ result.already_local }} already here,
+      {{ result.imported | length }} imported,
+      {{ result.failed | length }} failed.
+    </p>
+  {% endif %}
+
+  {% if result.imported %}
+    <h2>Imported — {{ result.imported | length }}</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Song</th>
+          <th class="num">Shazam</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for song in result.imported %}
+          <tr>
+            <td>
+              {% if song.is_junk %}<span class="junk">⚠</span> {% endif %}
+              {{ song.artist }} - {{ song.title }}<br>
+              <span class="id">{{ song.filename }}</span>
+            </td>
+            <td class="num">
+              {% if song.score %}{{ song.score | round | int }}%{% else %}—{% endif %}
+            </td>
+            <td>
+              {# Imported without a Shazam match: on disk, but still junk
+                 and worth a trip through the repair screen. #}
+              {% if song.is_junk %}
+                <a href="/songs/{{ song.youtube_id }}/fix">Fix</a>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+  {% if result.failed %}
+    <h2>Failed — {{ result.failed | length }}</h2>
+    {% if result.failed_by_reason %}
+      <p>
+        {% for reason, count in result.failed_by_reason.items() %}
+          {{ count }} {{ reason }}{% if not loop.last %}, {% endif %}
+        {% endfor %}
+      </p>
+    {% endif %}
+    <table>
+      <thead>
+        <tr>
+          <th>Video</th>
+          <th>Reason</th>
+          <th>Detail</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in result.failed %}
+          <tr>
+            <td>
+              <a href="https://youtu.be/{{ item.youtube_id }}"
+                 target="_blank" rel="noopener noreferrer"
+                >{{ item.youtube_id }}</a>
+            </td>
+            <td class="job-error">{{ item.reason }}</td>
+            <td><span class="id">{{ item.issue }}</span></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+  {% if not result.imported and not result.failed %}
+    <p>Nothing to report — no song needed importing.</p>
+  {% endif %}
+{% endblock %}

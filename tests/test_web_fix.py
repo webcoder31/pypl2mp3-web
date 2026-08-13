@@ -88,7 +88,10 @@ async def test_submitting_the_form_writes_the_tags_and_clears_junk(tmp_path):
             data={"artist": "THE PHARCYDE", "title": "Passin Me By"},
         )
 
-    assert response.status_code == 200
+    # A browser posting a plain form navigates to the response, so this
+    # must send it somewhere useful rather than render JSON at it.
+    assert response.status_code == 303
+    assert response.headers["location"] == "/songs?junk=1"
     written = next((tmp_path / PLAYLIST).glob("*.mp3"))
     assert "(JUNK)" not in written.name
     assert ID3(written).getall("TPE1")[0].text[0] == "THE PHARCYDE"

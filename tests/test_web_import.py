@@ -307,3 +307,110 @@ async def test_a_new_song_clears_the_previous_one_s_stage():
     assert job.current["item"] == "8/34 PHARCYDE"
     assert job.current["label"] is None
     assert job.current["percent"] is None
+
+
+async def test_the_report_lists_every_song_and_why_it_failed(
+    tmp_path, monkeypatch
+):
+    """Counts fit inline; knowing which songs and why is the point of a
+    report you read after an import you could not watch."""
+
+    from pytubefix.exceptions import AgeRestrictedError
+
+    async def mixed(youtube_id, playlist_path, threshold, **kwargs):
+        if youtube_id == "AAAAAAAAAAA":
+            wrapper = RuntimeError("Failed to fetch information")
+            wrapper.__cause__ = AgeRestrictedError(youtube_id)
+            raise wrapper
+        (playlist_path / f"ARTIST - Title [{youtube_id}].mp3").write_bytes(
+            _MP3_FRAME * 8
+        )
+        return _FakeSong(youtube_id)
+
+    _install_fakes(monkeypatch)
+    monkeypatch.setattr(mod.SongModel, "create_from_youtube", mixed)
+    app = create_app(tmp_path)
+
+    async with _client(app) as client:
+        await client.post(f"/playlists/{PLAYLIST_ID}/import")
+        await _settle(client, f"import:{PLAYLIST_ID}")
+
+        report = await client.get(f"/jobs/import:{PLAYLIST_ID}/report")
+
+    assert report.status_code == 200
+    body = report.text
+
+    # The song that made it, named rather than counted.
+    assert "BBBBBBBBBBB" in body or "ARTIST - Title" in body
+    # The one that did not, with a reason a human can act on — asserted
+    # inside its own row, not merely somewhere on the page: the summary
+    # paragraph names the reasons too, so a bare substring check passes
+    # even when the per-song column is empty.
+    import re as _re
+
+    row = _re.search(
+        r"<tr>(?:(?!</tr>).)*AAAAAAAAAAA(?:(?!</tr>).)*</tr>",
+        body,
+        _re.DOTALL,
+    )
+    assert row, "the failed song has no row of its own"
+
+    # The reason cell itself, not the row: the Detail column repeats the
+    # raw exception text, which contains the same words, so a row-wide
+    # substring check passes even with the reason column emptied.
+    cell = _re.search(r'<td class="job-error">([^<]*)</td>', row.group(0))
+    assert cell, "the row has no reason cell"
+    assert cell.group(1).strip() == "age restricted", (
+        f"the reason column says {cell.group(1)!r}"
+    )
+
+
+async def test_the_completed_fragment_links_to_the_report(
+    tmp_path, monkeypatch
+):
+    _install_fakes(monkeypatch)
+    app = create_app(tmp_path)
+
+    async with _client(app) as client:
+        await client.post(f"/playlists/{PLAYLIST_ID}/import")
+        await _settle(client, f"import:{PLAYLIST_ID}")
+
+        fragment = (
+            await client.get(f"/jobs/import:{PLAYLIST_ID}", headers=HX)
+        ).text
+
+    assert f"/jobs/import:{PLAYLIST_ID}/report" in fragment
+
+
+async def test_an_unmatched_import_is_offered_the_fix_screen(
+    tmp_path, monkeypatch
+):
+    """A song can arrive on disk and still be junk; the report should say so."""
+
+    class _JunkSong(_FakeSong):
+        def __init__(self, youtube_id):
+            super().__init__(youtube_id)
+            self.shazam_match_score = None
+            self.has_junk_filename = True
+
+    async def unmatched(youtube_id, playlist_path, threshold, **kwargs):
+        (playlist_path / f"ARTIST - Title [{youtube_id}].mp3").write_bytes(
+            _MP3_FRAME * 8
+        )
+        return _JunkSong(youtube_id)
+
+    _install_fakes(monkeypatch)
+    monkeypatch.setattr(mod.SongModel, "create_from_youtube", unmatched)
+    app = create_app(tmp_path)
+
+    async with _client(app) as client:
+        await client.post(f"/playlists/{PLAYLIST_ID}/import")
+        await _settle(client, f"import:{PLAYLIST_ID}")
+        body = (await client.get(f"/jobs/import:{PLAYLIST_ID}/report")).text
+
+    assert "/songs/AAAAAAAAAAA/fix" in body
+
+
+async def test_an_unknown_job_report_is_a_404(tmp_path):
+    async with _client(create_app(tmp_path)) as client:
+        assert (await client.get("/jobs/nope/report")).status_code == 404
