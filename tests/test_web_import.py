@@ -1,0 +1,185 @@
+"""Starting an import from the browser."""
+
+import asyncio
+import re
+from pathlib import Path
+
+import httpx
+import pytest
+
+from pypl2mp3.services import import_playlist as mod
+from pypl2mp3.web.app import create_app
+
+PLAYLIST_ID = "PLP6XxNg42qDGMg1cR2PPPzwdoAOD1MQ97"
+REMOTE_IDS = ["AAAAAAAAAAA", "BBBBBBBBBBB"]
+HX = {"HX-Request": "true"}
+
+_MP3_FRAME = b"\xff\xfb\x90\xc0" + b"\x00" * 413
+
+
+class _FakePlaylist:
+    def __init__(self, url, *args, **kwargs):
+        self.title = "fake"
+        self.owner = "owner"
+        self.length = len(REMOTE_IDS)
+        self.video_urls = [
+            f"https://www.youtube.com/watch?v={vid}" for vid in REMOTE_IDS
+        ]
+
+
+class _FakeYouTube:
+    def __init__(self, url, *args, **kwargs):
+        self.video_id = url.rsplit("=", 1)[-1]
+        self.author = "ARTIST"
+        self.title = "Title"
+
+
+class _FakeSong:
+    def __init__(self, youtube_id):
+        self.filename = f"ARTIST - Title [{youtube_id}].mp3"
+        self.artist = "ARTIST"
+        self.title = "Title"
+        self.shazam_match_score = 66.0
+        self.has_junk_filename = False
+
+
+def _install_fakes(monkeypatch, delay: float = 0.0):
+    monkeypatch.setattr(mod, "Playlist", _FakePlaylist)
+    monkeypatch.setattr(mod, "YouTube", _FakeYouTube)
+
+    async def create(youtube_id, playlist_path, threshold, **kwargs):
+        if delay:
+            await asyncio.sleep(delay)
+        (playlist_path / f"ARTIST - Title [{youtube_id}].mp3").write_bytes(
+            _MP3_FRAME * 8
+        )
+        return _FakeSong(youtube_id)
+
+    monkeypatch.setattr(mod.SongModel, "create_from_youtube", create)
+
+
+def _client(app):
+    return httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    )
+
+
+async def _settle(client, job_id):
+    for _ in range(100):
+        payload = (await client.get(f"/jobs/{job_id}")).json()
+        if payload["state"] not in ("pending", "running"):
+            return payload
+        await asyncio.sleep(0.05)
+
+    pytest.fail(f"job {job_id} never settled")
+
+
+async def test_it_imports_and_reports_what_it_did(tmp_path, monkeypatch):
+    _install_fakes(monkeypatch)
+
+    async with _client(create_app(tmp_path)) as client:
+        started = await client.post(f"/playlists/{PLAYLIST_ID}/import")
+        assert started.status_code == 200
+        job_id = started.json()["job_id"]
+        assert job_id == f"import:{PLAYLIST_ID}"
+
+        payload = await _settle(client, job_id)
+
+    assert payload["state"] == "completed"
+    assert len(payload["result"]["imported"]) == 2
+    assert payload["result"]["failed"] == []
+
+    written = list((tmp_path / f"owner - fake [{PLAYLIST_ID}]").glob("*.mp3"))
+    assert len(written) == 2, "the songs should actually be on disk"
+
+
+async def test_progress_events_name_the_song_being_imported(
+    tmp_path, monkeypatch
+):
+    _install_fakes(monkeypatch)
+
+    async with _client(create_app(tmp_path)) as client:
+        await client.post(f"/playlists/{PLAYLIST_ID}/import")
+        payload = await _settle(client, f"import:{PLAYLIST_ID}")
+
+    labels = [
+        event.get("label")
+        for event in payload["events"]
+        if event["kind"] == "stage_started" and event.get("stage") == "song"
+    ]
+    assert "1/2 ARTIST - Title" in labels
+    assert "2/2 ARTIST - Title" in labels
+
+
+async def test_check_and_import_do_not_share_an_element_id(
+    tmp_path, monkeypatch
+):
+    """Both target the same playlist; one DOM node cannot serve both.
+
+    Without the job kind in the id, whichever fragment arrived second
+    would swap the other's poller out of the document.
+    """
+
+    _install_fakes(monkeypatch)
+    monkeypatch.setattr(
+        "pypl2mp3.services.check_new_songs.Playlist", _FakePlaylist
+    )
+
+    # The inventory only renders buttons for playlists it can see.
+    folder = tmp_path / f"owner - fake [{PLAYLIST_ID}]"
+    folder.mkdir(parents=True)
+    (folder / "ARTIST - Title [AAAAAAAAAAA].mp3").write_bytes(_MP3_FRAME * 8)
+
+    app = create_app(tmp_path)
+
+    async with _client(app) as client:
+        page = (await client.get("/")).text
+        check = (
+            await client.post(f"/playlists/{PLAYLIST_ID}/check", headers=HX)
+        ).text
+        importing = (
+            await client.post(f"/playlists/{PLAYLIST_ID}/import", headers=HX)
+        ).text
+
+    targets = re.findall(r'hx-target="#([^"]+)"', page)
+    check_id = re.search(r'<div id="([^"]+)"', check).group(1)
+    import_id = re.search(r'<div id="([^"]+)"', importing).group(1)
+
+    assert check_id != import_id, "the two job kinds collided on one id"
+    assert check_id in targets, "no button targets the check fragment"
+    assert import_id in targets, "no button targets the import fragment"
+
+
+async def test_a_second_import_of_the_same_playlist_is_refused(
+    tmp_path, monkeypatch
+):
+    _install_fakes(monkeypatch, delay=2.0)
+    app = create_app(tmp_path)
+
+    async with _client(app) as client:
+        assert (
+            await client.post(f"/playlists/{PLAYLIST_ID}/import")
+        ).status_code == 200
+        await asyncio.sleep(0.1)
+
+        second = await client.post(f"/playlists/{PLAYLIST_ID}/import")
+        assert second.status_code == 409
+
+        app.state.jobs.cancel(f"import:{PLAYLIST_ID}")
+
+
+async def test_the_import_button_warns_before_a_long_download(tmp_path):
+    """It downloads for minutes and writes to disk; a stray click is costly."""
+
+    folder = tmp_path / f"owner - fake [{PLAYLIST_ID}]"
+    folder.mkdir(parents=True)
+    (folder / "ARTIST - Title [AAAAAAAAAAA].mp3").write_bytes(_MP3_FRAME * 8)
+
+    async with _client(create_app(tmp_path)) as client:
+        body = (await client.get("/")).text
+
+    import_button = re.search(
+        r"<button[^>]*?/import\"(.*?)</button>", body, re.DOTALL
+    )
+    assert import_button, "the inventory should offer an import button"
+    assert "hx-confirm" in import_button.group(1)

@@ -22,11 +22,18 @@
               <span class="id">{{ summary.playlist_id }}</span><br>
               <button
                 hx-post="/playlists/{{ summary.playlist_id }}/check"
-                hx-target="#job-{{ summary.playlist_id }}"
+                hx-target="#job-check-{{ summary.playlist_id }}"
                 hx-swap="outerHTML"
-                hx-indicator="#job-{{ summary.playlist_id }}"
               >Check for new songs</button>
-              <div id="job-{{ summary.playlist_id }}" class="job"></div>
+              <div id="job-check-{{ summary.playlist_id }}" class="job"></div>
+
+              <button
+                hx-post="/playlists/{{ summary.playlist_id }}/import"
+                hx-target="#job-import-{{ summary.playlist_id }}"
+                hx-swap="outerHTML"
+                hx-confirm="Download every song this playlist has and you do not? This can take a long time."
+              >Import new songs</button>
+              <div id="job-import-{{ summary.playlist_id }}" class="job"></div>
             </td>
             <td class="num">
               <a href="/songs?playlist={{ summary.playlist_id }}"

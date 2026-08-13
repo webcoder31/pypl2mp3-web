@@ -18,6 +18,7 @@ from fastapi.templating import Jinja2Templates
 from pypl2mp3.services.check_new_songs import check_new_songs
 from pypl2mp3.services.list_playlists import list_playlists
 from pypl2mp3.services.find_song import SongNotFound, find_song_file
+from pypl2mp3.services.import_playlist import import_playlist
 from pypl2mp3.services.junkize_songs import junkize_song
 from pypl2mp3.services.list_songs import (
     DEFAULT_MATCH_THRESHOLD,
@@ -82,6 +83,10 @@ def create_app(repository_path: Path) -> FastAPI:
             {
                 "job_id": job_id,
                 "playlist_id": playlist_id,
+                # Two job kinds can target the same playlist. Without the
+                # kind in the element id, a check and an import would fight
+                # over one DOM node and swap each other away.
+                "kind": job_id.partition(":")[0] or "job",
                 "state": state,
                 "result": result,
                 "error": error,
@@ -131,6 +136,67 @@ def create_app(repository_path: Path) -> FastAPI:
                 )
             raise HTTPException(
                 status_code=409, detail="already checking this playlist"
+            )
+
+        if is_htmx:
+            return _job_fragment(
+                request,
+                job.job_id,
+                playlist_id,
+                job.state.value,
+                job.result,
+                job.error,
+                job.elapsed_seconds,
+            )
+
+        return {"job_id": job.job_id}
+
+    @app.post("/playlists/{playlist_id}/import")
+    async def start_import(playlist_id: str, request: Request):
+        """Import every song the playlist has and the repository lacks.
+
+        Awaited directly on the server's loop, not handed to a worker
+        thread: `create_from_youtube` now runs its own blocking steps —
+        download, ffmpeg, cover art — through asyncio.to_thread, so the
+        coroutine itself cooperates and the loop stays free.
+        """
+
+        loop = asyncio.get_running_loop()
+        repository_path = app.state.repository_path
+        is_htmx = request.headers.get("HX-Request") is not None
+        job_id = f"import:{playlist_id}"
+
+        async def work(job) -> dict:
+            progress = WebProgress(app.state.jobs, job.job_id, loop)
+            report = await import_playlist(
+                repository_path, playlist_id, progress
+            )
+            return {
+                "total_remote": report.total_remote,
+                "already_local": report.already_local,
+                "imported": [song.filename for song in report.imported],
+                "failed": [
+                    {"youtube_id": item.youtube_id, "issue": item.issue}
+                    for item in report.failed
+                ],
+            }
+
+        try:
+            job = app.state.jobs.start(job_id, work)
+        except JobAlreadyRunning:
+            if is_htmx:
+                running = app.state.jobs.get(job_id)
+                return _job_fragment(
+                    request,
+                    job_id,
+                    playlist_id,
+                    "busy",
+                    None,
+                    None,
+                    running.elapsed_seconds if running else None,
+                )
+            raise HTTPException(
+                status_code=409, detail="already importing this playlist"
             )
 
         if is_htmx:
