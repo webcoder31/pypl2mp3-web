@@ -1,20 +1,20 @@
 {# The listing, and — because console.js reads the queue straight out of
    these rows — the play queue too. One source, so the two can never
-   disagree about what track 12 is. #}
+   disagree about what track 12 is.
+
+   The toolbar is what stays pinned while you scroll, not a row of column
+   headers: on two self-evident columns those headers were worth less
+   than the actions they were crowding out. #}
 {% if not songs %}
-  <p class="job-none" style="padding: 1rem">No songs match.</p>
+  <p class="empty">No songs match.</p>
 {% else %}
+  <div class="toolbar">
+    <span>{{ songs | length }} song(s)</span>
+    <button type="button" data-queue-action="play">▶ Play all</button>
+    <button type="button" data-queue-action="shuffle">⤨ Shuffle</button>
+  </div>
+
   <table>
-    <thead>
-      <tr>
-        <th>{{ songs | length }} song(s)
-          <button type="button" data-queue-action="play">Play all</button>
-          <button type="button" data-queue-action="shuffle">Shuffle</button>
-        </th>
-        <th>Playlist</th>
-        <th class="num">Length</th>
-      </tr>
-    </thead>
     <tbody>
       {% for song in songs %}
         {% include "_song_row.html" %}

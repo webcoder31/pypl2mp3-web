@@ -113,6 +113,42 @@ async def test_the_listing_carries_no_player_of_its_own(tmp_path):
     )
 
 
+async def test_a_row_shows_the_playlist_without_repeating_its_id(tmp_path):
+    """The id was a column of its own: forty identical characters a row."""
+
+    _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        fragment = (await client.get("/fragments/list")).text
+
+    assert "Owner - Alpha" in fragment, "the playlist is no longer shown"
+    assert "PL0000000000000000000000000000001" not in fragment, (
+        "the playlist id is back in the listing"
+    )
+    assert "<th" not in fragment, "the column headers are back"
+
+
+async def test_the_queue_controls_are_not_crammed_into_a_header_cell(tmp_path):
+    """They overlapped the count there; a table header is not a toolbar."""
+
+    _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        fragment = (await client.get("/fragments/list")).text
+
+    toolbar = re.search(
+        r'<div class="toolbar">(.*?)</div>', fragment, re.DOTALL
+    )
+    assert toolbar, "no toolbar"
+    assert 'data-queue-action="play"' in toolbar.group(1)
+    assert 'data-queue-action="shuffle"' in toolbar.group(1)
+
+    table = fragment[fragment.index("<table") :]
+    assert "data-queue-action" not in table, (
+        "a queue control is still inside the table"
+    )
+
+
 async def test_the_page_starts_silent(tmp_path):
     """No src until you press play: opening the console reads no files."""
 

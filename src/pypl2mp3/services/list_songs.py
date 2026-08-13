@@ -8,6 +8,7 @@ Reads the local filesystem only — no network call, ever. Building a
 SongModel parses the file's ID3 tags, which is disk work, not a request.
 """
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -35,6 +36,17 @@ class SongSummary:
         """Artist and title as one line, for a single-column display."""
 
         return f"{self.artist} - {self.title}"
+
+    @property
+    def playlist_name(self) -> str:
+        """The playlist without its YouTube id.
+
+        `playlist` is the folder name, which ends in the id — the same
+        forty characters repeated on every row of a listing. list_playlists
+        strips it the same way for the same reason.
+        """
+
+        return re.sub(r"\s*\[[^\[\]]*\]\s*$", "", self.playlist).strip()
 
 
 def list_songs(

@@ -92,15 +92,46 @@ body {
 
 /* Listing */
 
+/* Pinned while the list scrolls. This, not a row of column headers on
+   two self-evident columns, is what needs to stay reachable. */
+#list .toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: Canvas;
+  border-bottom: 1px solid var(--line);
+  padding: 0.4rem 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+#list .toolbar span { opacity: 0.7; font-size: 0.85em;
+                      font-variant-numeric: tabular-nums; }
+#list .empty { padding: 1rem; opacity: 0.6; }
+
 table { border-collapse: collapse; width: 100%; }
-th, td { text-align: left; padding: 0.3rem 0.6rem; }
-thead th { position: sticky; top: 0; background: Canvas;
-           border-bottom: 1px solid var(--line); font-size: 0.8rem; }
+td { text-align: left; padding: 0.35rem 0.6rem; vertical-align: top; }
 tbody tr { cursor: pointer; }
 tbody tr:nth-child(odd) { background: var(--dim); }
 tbody tr.selected { outline: 2px solid currentColor; outline-offset: -2px; }
-tbody tr.playing td:first-child::before { content: "▶ "; }
-td.num { text-align: right; font-variant-numeric: tabular-nums; }
+tbody tr.playing .row-title { font-weight: 700; }
+tbody tr.playing .row-title::before { content: "▶ "; }
+td.num { text-align: right; font-variant-numeric: tabular-nums;
+         white-space: nowrap; width: 1%; opacity: 0.7; }
+
+.row-meta {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.85em;
+  opacity: 0.6;
+  margin-top: 0.1rem;
+}
+.row-meta .playlist { overflow: hidden; text-overflow: ellipsis;
+                      white-space: nowrap; max-width: 22rem; }
+.row-meta button, .row-meta a { font-size: inherit; }
+tr:hover .row-meta { opacity: 0.9; }
 
 .id { font-family: ui-monospace, monospace; font-size: 0.85em; opacity: 0.7; }
 .junk { color: #b26a00; }

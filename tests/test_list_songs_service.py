@@ -104,3 +104,26 @@ def test_the_network_trap_actually_fires(monkeypatch):
 
     with pytest.raises(AssertionError, match="network access"):
         socket.getaddrinfo("example.invalid", 80)
+
+
+def test_the_playlist_name_drops_the_youtube_id(tmp_path):
+    """It is the same forty characters on every row of a 900-row listing."""
+
+    _make_song(tmp_path, "ARTIST", "Title", "aaaaaaaaaaa")
+
+    summary = list_songs(tmp_path)[0]
+
+    assert summary.playlist.endswith("]"), "fixture is not shaped like a folder"
+    assert "[" not in summary.playlist_name, summary.playlist_name
+    assert summary.playlist_name, "stripping must not empty the name"
+    assert summary.playlist_name in summary.playlist
+
+
+def test_a_playlist_name_containing_brackets_keeps_them(tmp_path):
+    """Only the trailing id goes; brackets are legal in a playlist title."""
+
+    folder = tmp_path / "Owner - Best of [1999] [PL0000000000000000000000000000001]"
+    folder.mkdir(parents=True)
+    (folder / "ARTIST - Title [aaaaaaaaaaa].mp3").write_bytes(_MP3_FRAME * 8)
+
+    assert list_songs(tmp_path)[0].playlist_name == "Owner - Best of [1999]"
