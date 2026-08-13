@@ -158,6 +158,11 @@ def _stage_hooks(progress: ProgressPort, stage: _Stage) -> dict[str, object]:
         stage.on: ProgressBarInterface(
             label=stage.label,
             callback=_percent_forwarder(progress, stage.stage),
+            # No terminal is watching. The animation walks every
+            # intermediate percentage with a blocking time.sleep(0.01) —
+            # up to a second per stage — and a browser animates from the
+            # values it receives anyway.
+            animate=False,
         ),
         stage.post: stage_done,
     }

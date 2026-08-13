@@ -18,6 +18,7 @@ import datetime
 from pathlib import Path
 import re
 import tempfile
+import asyncio
 import time
 from types import SimpleNamespace
 from typing import Any, Callable, Optional, Union
@@ -71,6 +72,7 @@ class ProgressBarInterface:
 
     label: str = ""
     callback: Optional[Callable[[int, str], None]] = None
+    animate: bool = True
 
 
 class SongModel:
@@ -126,7 +128,8 @@ class SongModel:
         def __init__(
             self,
             progress_callback: Optional[Callable[[int, str], None]] = None,
-            label: str = ""
+            label: str = "",
+            animate: bool = True
         ) -> None:
             """
             Initialize a new terminal progress bar instance.
@@ -142,6 +145,17 @@ class SongModel:
                     If None, uses default display_progress_bar()
                 label (str, optional): Text shown before progress bar.
                     Will be truncated if >33 chars. Defaults to "".
+                animate (bool, optional): Step through intermediate values
+                    on a large jump, pausing 10ms each, so a terminal bar
+                    glides instead of snapping. Defaults to True.
+
+                    Set False when nothing is watching a terminal. The
+                    pause is a blocking `time.sleep` and cannot become an
+                    `await`: this runs inside pytubefix's synchronous
+                    download callback, which will itself be running in a
+                    worker thread with no event loop. A caller that only
+                    wants the numbers — a web UI animating on its own —
+                    pays up to a second per stage for nothing.
 
             Example:
                 >>> bar = TerminalProgressBar("Converting: ")
@@ -158,6 +172,7 @@ class SongModel:
                 self.label_suffix = ":"
 
             self.progress_value = 0
+            self.animate = animate
 
             # Set the callback in charge of displaying the progress bar
             # If none provided use the default one
@@ -234,13 +249,13 @@ class SongModel:
 
             if new_value != self.progress_value:
 
-                if new_value - self.progress_value > 10:
-                    # If progress_value is too high, update progress bar 
+                if new_value - self.progress_value > 10 and self.animate:
+                    # If progress_value is too high, update progress bar
                     # by small steps to avoid flickering
                     for value in range(self.progress_value, new_value + 1):
                         # Update the display of the progress bar
                         self.progress_callback(
-                            max(0, min(100, value)), 
+                            max(0, min(100, value)),
                             label=self.label
                         )
                         time.sleep(0.01)
@@ -394,6 +409,7 @@ class SongModel:
             self,
             progress_callback: Optional[Callable[[int, str], None]] = None,
             label: str = "",
+            animate: bool = True,
             **kwargs: Any
         ) -> None:
             """
@@ -420,8 +436,9 @@ class SongModel:
             super().__init__(kwargs)
 
             self.progress_bar = SongModel.TerminalProgressBar(
-                progress_callback=progress_callback, 
-                label=label
+                progress_callback=progress_callback,
+                label=label,
+                animate=animate
             )
 
 
@@ -753,8 +770,9 @@ class SongModel:
             # Set up progress bar for audio download
             if on_download_audio is not None:
                 audio_download_logger = SongModel.AudioDownloadProgressBar(
-                    progress_callback=on_download_audio.callback, 
-                    label=on_download_audio.label
+                    progress_callback=on_download_audio.callback,
+                    label=on_download_audio.label,
+                    animate=on_download_audio.animate
                 )
                 video.register_on_progress_callback(
                     audio_download_logger.update
@@ -807,8 +825,9 @@ class SongModel:
             mp3_encode_logger = None
             if on_mp3_encode is not None:
                 mp3_encode_logger = SongModel.Mp3EncodingProgressBar(
-                    progress_callback=on_mp3_encode.callback, 
-                    label=on_mp3_encode.label
+                    progress_callback=on_mp3_encode.callback,
+                    label=on_mp3_encode.label,
+                    animate=on_mp3_encode.animate
                 )
 
             # Call pre_mp3_encode hook if provided
@@ -1370,8 +1389,9 @@ class SongModel:
             progress_bar_callback = None
             if on_download_cover_art is not None:
                 progress_bar_logger = SongModel.CoverArtDownloadProgressBar(
-                    progress_callback=on_download_cover_art.callback, 
-                    label=on_download_cover_art.label
+                    progress_callback=on_download_cover_art.callback,
+                    label=on_download_cover_art.label,
+                    animate=on_download_cover_art.animate
                 )
                 progress_bar_callback = progress_bar_logger.update
 
@@ -1487,7 +1507,9 @@ class SongModel:
             # Wait for 15s min since last request to Shazam API.
             diff_time = time.time() - SongModel.last_shazam_request_time
             if diff_time < 15:
-                time.sleep(15 - diff_time)
+                # Awaited, not slept: this sits in an async body, and a web
+                # server sharing the loop must stay responsive for the 15s.
+                await asyncio.sleep(15 - diff_time)
 
             # Call Shazam API to recognize song and get metadata
             shazam_metadata = \
@@ -1497,7 +1519,7 @@ class SongModel:
             # If Shazam API call fails, wait for 35s before retry
             diff_time = time.time() - SongModel.last_shazam_request_time
             if diff_time < 35:
-                time.sleep(35 - diff_time)
+                await asyncio.sleep(35 - diff_time)
 
             # Retry Shazam API call
             # If it fails again, raise an error
