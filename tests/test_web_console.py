@@ -236,3 +236,39 @@ async def test_the_console_references_no_external_host(tmp_path):
         r'<(?:script|link|img)[^>]*?(?:src|href)="([^"]+)"', body
     ):
         assert not src.startswith(("http://", "https://", "//")), src
+
+
+async def test_every_row_carries_the_name_the_player_will_show(tmp_path):
+    """The player bar reads its title from here.
+
+    It used to look the row up in the DOM when painting, and fall back to
+    the YouTube id when the lookup missed — which it does the moment you
+    filter while a track plays, the very thing this layout is for. The
+    queue carries labels now, so the rows must supply them.
+    """
+
+    _make_song(tmp_path, "WU-TANG CLAN", "Tearz", "aaaaaaaaaaa")
+    _make_song(tmp_path, "UNKNOWN", "Something", "bbbbbbbbbbb", junk=True)
+
+    async with _client(create_app(tmp_path)) as client:
+        fragment = (await client.get("/fragments/list")).text
+
+    labels = re.findall(r'data-label="([^"]*)"', fragment)
+    assert len(labels) == 2, labels
+    for label in labels:
+        assert label.strip(), "a row would play as a blank title"
+        assert not re.fullmatch(r"[\w-]{11}", label), (
+            f"{label!r} is a YouTube id, not a name"
+        )
+
+
+async def test_the_player_title_never_falls_back_to_the_id(tmp_path):
+    """A wiring check on the regression: the id says less than a blank."""
+
+    async with _client(create_app(tmp_path)) as client:
+        script = (await client.get("/static/console.js")).text
+
+    assert "current.label" in script, "the bar no longer reads the queue"
+    assert "labelFor" not in script, (
+        "the DOM lookup that fell back to the id is back"
+    )

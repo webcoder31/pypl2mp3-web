@@ -1,8 +1,13 @@
 // The console's persistent player and selection.
 //
-// The queue is not a separate data structure: it is read out of the rows
-// currently in #list. One source of truth, so the visible list and the
-// thing being played can never disagree about what track 12 is.
+// The queue is built from the rows in #list at the moment you start
+// playing, and then it is its own thing. It has to be: filtering while
+// the music plays is the point of this layout, and the row you are
+// hearing may well not be on screen any more.
+//
+// That is why each entry carries its label rather than looking one up in
+// the DOM. A lookup that missed used to fall back to the YouTube id, so
+// filtering mid-track turned the player's title into `iwMP-vXX7Pk`.
 //
 // Playback state lives here and only here. #player sits outside every
 // htmx target, so swapping the list, the nav or the inspector leaves the
@@ -20,7 +25,7 @@
   const filters = document.getElementById("filters");
   const playlistField = document.getElementById("playlist-field");
 
-  // Ids, in play order. Rebuilt from the DOM whenever the queue is set.
+  // {id, label} in play order, captured when the queue is set.
   let queue = [];
   let index = -1;
 
@@ -28,34 +33,36 @@
     return Array.from(document.querySelectorAll("#list tr[data-song-id]"));
   }
 
-  function rowFor(id) {
-    return document.querySelector('#list tr[data-song-id="' + id + '"]');
-  }
-
-  function labelFor(id) {
-    const row = rowFor(id);
-    return row ? row.dataset.label : id;
+  function queueFromRows() {
+    return rows().map(function (row) {
+      return { id: row.dataset.songId, label: row.dataset.label || "" };
+    });
   }
 
   function paint() {
     const current = queue[index];
 
     rows().forEach(function (row) {
-      row.classList.toggle("playing", row.dataset.songId === current);
+      row.classList.toggle(
+        "playing", current && row.dataset.songId === current.id
+      );
     });
 
     if (!current) {
       bar.classList.add("idle");
       label.textContent = "Nothing playing";
+      label.title = "";
       position.textContent = "";
       return;
     }
 
     bar.classList.remove("idle");
-    label.textContent = labelFor(current);
-    label.title = label.textContent;
+    // The name or nothing — never the raw id, which says less than a
+    // blank does.
+    label.textContent = current.label;
+    label.title = current.label;
     position.textContent = index + 1 + " / " + queue.length;
-    videoLink.href = "https://youtu.be/" + current;
+    videoLink.href = "https://youtu.be/" + current.id;
   }
 
   // Set when the inspector's form has edits nobody has saved. The panel
@@ -77,11 +84,11 @@
 
     // Wrap rather than stop, the way the CLI's play loops its selection.
     index = (i + queue.length) % queue.length;
-    audio.src = "/songs/" + queue[index] + "/audio";
+    audio.src = "/songs/" + queue[index].id + "/audio";
     paint();
 
     // The song being judged is the song being heard: one cursor, not two.
-    inspect(queue[index]);
+    inspect(queue[index].id);
 
     audio.play().catch(function () {
       // Browsers refuse autoplay until the page has been interacted
@@ -95,13 +102,15 @@
 
   // Setting the queue: the visible listing becomes what plays, which is
   // what every music player does when you start a track from a view.
-  function setQueue(ids, startAt) {
-    queue = ids;
-    play(startAt || 0);
+  function setQueue(entries, startAt) {
+    queue = entries;
+    // A findIndex that missed returns -1, which play() would wrap round
+    // to the last track. Start at the top instead.
+    play(startAt > 0 ? startAt : 0);
   }
 
-  function shuffled(ids) {
-    const out = ids.slice();
+  function shuffled(entries) {
+    const out = entries.slice();
     for (let i = out.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [out[i], out[j]] = [out[j], out[i]];
@@ -121,8 +130,9 @@
     toggle.textContent = "▶";
   });
 
-  // Playing a song that then leaves the listing (filtered out, junkized)
-  // would otherwise show a stale row highlight and a raw id as a label.
+  // A song that leaves the listing — filtered out, junkized — would keep
+  // a stale row highlighted. The title stays put: it lives in the queue,
+  // not in the row.
   const observer = new MutationObserver(paint);
 
   // Delegated: #list and #nav are replaced wholesale by htmx, so nothing
@@ -137,12 +147,12 @@
 
     const queueButton = event.target.closest("[data-queue-action]");
     if (queueButton) {
-      const ids = rows().map(function (row) {
-        return row.dataset.songId;
-      });
-      if (!ids.length) return;
+      const entries = queueFromRows();
+      if (!entries.length) return;
       setQueue(
-        queueButton.dataset.queueAction === "shuffle" ? shuffled(ids) : ids
+        queueButton.dataset.queueAction === "shuffle"
+          ? shuffled(entries)
+          : entries
       );
       return;
     }
@@ -154,10 +164,8 @@
       else if (action === "previous") move(-1);
       else if (action === "toggle") {
         if (!queue.length) {
-          const ids = rows().map(function (row) {
-            return row.dataset.songId;
-          });
-          if (ids.length) setQueue(ids);
+          const entries = queueFromRows();
+          if (entries.length) setQueue(entries);
         } else if (audio.paused) {
           audio.play();
         } else {
@@ -171,10 +179,13 @@
     // queue. Buttons and links inside the row keep their own meaning.
     const row = event.target.closest("#list tr[data-song-id]");
     if (row && !event.target.closest("button, a")) {
-      const ids = rows().map(function (r) {
-        return r.dataset.songId;
-      });
-      setQueue(ids, ids.indexOf(row.dataset.songId));
+      const entries = queueFromRows();
+      setQueue(
+        entries,
+        entries.findIndex(function (entry) {
+          return entry.id === row.dataset.songId;
+        })
+      );
     }
   });
 
