@@ -3,7 +3,14 @@
      hx-trigger="every 1s"
      hx-swap="outerHTML"{% endif %}>
   {% if state in ("pending", "running") %}
-    <span class="job-running">Checking…{{ tick }}</span>
+    {# Name what is actually happening. A hardcoded "Checking…" read as a
+       hang through a five-minute import. #}
+    {# .get(), not attribute access: a missing key yields Undefined, which
+       `is not none` happily lets through into round(). #}
+    {%- set percent = current.get("percent") -%}
+    <span class="job-running">{{ current.get("label") or busy_label }}…{%
+      if percent is not none and current.get("stage") != "song"
+      %} · {{ percent | round | int }}%{% endif %}{{ tick }}</span>
   {% elif state == "completed" %}
     {% if result and result.imported is defined %}
       <span class="job-new">{{ result.imported | length }} imported</span>
@@ -17,10 +24,10 @@
     {% endif %}
     <span class="job-none">{{ tick }}</span>
   {% elif state == "failed" %}
-    <span class="job-error">Check failed: {{ error }}</span>
+    <span class="job-error">{{ busy_label }} failed: {{ error }}</span>
   {% elif state == "cancelled" %}
-    <span class="job-error">Check cancelled</span>
+    <span class="job-error">{{ busy_label }} cancelled</span>
   {% elif state == "busy" %}
-    <span class="job-running">Already checking…{{ tick }}</span>
+    <span class="job-running">Already running…{{ tick }}</span>
   {% endif %}
 </div>

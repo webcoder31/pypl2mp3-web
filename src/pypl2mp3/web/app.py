@@ -63,7 +63,8 @@ def create_app(repository_path: Path) -> FastAPI:
     app.state.jobs = JobRegistry()
 
     def _job_fragment(
-        request, job_id, playlist_id, state, result, error, elapsed=None
+        request, job_id, playlist_id, state, result, error, elapsed=None,
+        current=None
     ):
         """Render the self-polling fragment consumed by HTMX.
 
@@ -91,6 +92,12 @@ def create_app(repository_path: Path) -> FastAPI:
                 "result": result,
                 "error": error,
                 "elapsed": elapsed,
+                "current": current or {},
+                # What to say when no song has been announced yet.
+                "busy_label": (
+                    "Importing" if job_id.startswith("import:")
+                    else "Checking"
+                ),
                 # Rendered verbatim next to the status text. Empty for the
                 # first second so a fast job never flashes " 0s".
                 "tick": f" {elapsed}s" if elapsed else "",
@@ -133,6 +140,7 @@ def create_app(repository_path: Path) -> FastAPI:
                     None,
                     None,
                     running.elapsed_seconds if running else None,
+                    running.current if running else None,
                 )
             raise HTTPException(
                 status_code=409, detail="already checking this playlist"
@@ -147,6 +155,7 @@ def create_app(repository_path: Path) -> FastAPI:
                 job.result,
                 job.error,
                 job.elapsed_seconds,
+                job.current,
             )
 
         return {"job_id": job.job_id}
@@ -194,6 +203,7 @@ def create_app(repository_path: Path) -> FastAPI:
                     None,
                     None,
                     running.elapsed_seconds if running else None,
+                    running.current if running else None,
                 )
             raise HTTPException(
                 status_code=409, detail="already importing this playlist"
@@ -208,6 +218,7 @@ def create_app(repository_path: Path) -> FastAPI:
                 job.result,
                 job.error,
                 job.elapsed_seconds,
+                job.current,
             )
 
         return {"job_id": job.job_id}
@@ -231,10 +242,12 @@ def create_app(repository_path: Path) -> FastAPI:
                 job.result,
                 job.error,
                 job.elapsed_seconds,
+                job.current,
             )
 
         return {
             "state": job.state.value,
+            "current": job.current,
             "events": job.events,
             "result": job.result,
             "error": job.error,

@@ -48,8 +48,14 @@ async def test_events_reach_the_job():
     await wait_for(registry, "j1")
     await asyncio.sleep(0)
 
-    kinds = [event["kind"] for event in registry.get("j1").events]
-    assert kinds == ["stage_started", "stage_progress", "stage_done"]
+    job = registry.get("j1")
+
+    # Percentages never enter the ring: one per point, three stages per
+    # song, would erase every song boundary of a long import. They update
+    # `current` in place instead.
+    kinds = [event["kind"] for event in job.events]
+    assert kinds == ["stage_started", "stage_done"]
+    assert job.current["percent"] == 42.0
 
 
 async def test_events_emitted_from_a_worker_thread_reach_the_job():
@@ -71,8 +77,8 @@ async def test_events_emitted_from_a_worker_thread_reach_the_job():
     await wait_for(registry, "j1")
     await asyncio.sleep(0)
 
-    events = registry.get("j1").events
-    assert any(event["kind"] == "stage_progress" for event in events)
+    # A percentage updates `current` rather than the ring — see above.
+    assert registry.get("j1").current["percent"] == 10.0
 
 
 async def test_the_port_never_blocks_its_caller():

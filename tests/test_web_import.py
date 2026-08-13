@@ -183,3 +183,72 @@ async def test_the_import_button_warns_before_a_long_download(tmp_path):
     )
     assert import_button, "the inventory should offer an import button"
     assert "hx-confirm" in import_button.group(1)
+
+
+async def test_progress_noise_does_not_evict_the_song_boundaries(
+    tmp_path, monkeypatch
+):
+    """Regression: a real import overflowed the ring and lost its history.
+
+    Each song emits one event per percentage point across three stages.
+    Thirty-four songs produced over 10,000 events against a 500-entry
+    ring, so every boundary from the first two thirds of the run was
+    already overwritten by the time anything read them.
+    """
+
+    from pypl2mp3.web.jobs import Job
+
+    job = Job(job_id="import:x", max_events=500)
+
+    for song in range(1, 35):
+        job.append_event(
+            {"kind": "stage_started", "stage": "song", "label": f"{song}/34"}
+        )
+        for stage in ("download_audio", "mp3_encode", "download_cover_art"):
+            job.append_event(
+                {"kind": "stage_started", "stage": stage, "label": stage}
+            )
+            for percent in range(101):
+                job.append_event(
+                    {
+                        "kind": "stage_progress",
+                        "stage": stage,
+                        "percent": float(percent),
+                    }
+                )
+            job.append_event({"kind": "stage_done", "stage": stage})
+
+    labels = [
+        event["label"]
+        for event in job.events
+        if event["kind"] == "stage_started" and event["stage"] == "song"
+    ]
+    assert "1/34" in labels, "the first song was evicted from the ring"
+    assert "34/34" in labels
+    assert len(labels) == 34
+
+    assert job.current["percent"] == 100.0
+    assert not any(
+        event["kind"] == "stage_progress" for event in job.events
+    ), "percentages must not enter the ring"
+
+
+async def test_the_fragment_names_the_song_instead_of_saying_checking(
+    tmp_path, monkeypatch
+):
+    """An import that said "Checking…" for five minutes read as a hang."""
+
+    _install_fakes(monkeypatch, delay=1.0)
+    app = create_app(tmp_path)
+
+    async with _client(app) as client:
+        await client.post(f"/playlists/{PLAYLIST_ID}/import", headers=HX)
+        await asyncio.sleep(0.3)
+        fragment = (
+            await client.get(f"/jobs/import:{PLAYLIST_ID}", headers=HX)
+        ).text
+
+        app.state.jobs.cancel(f"import:{PLAYLIST_ID}")
+
+    assert "Checking" not in fragment, "that label belongs to the check job"
+    assert "ARTIST - Title" in fragment, "the current song should be named"

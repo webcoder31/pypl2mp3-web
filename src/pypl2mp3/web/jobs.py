@@ -52,6 +52,9 @@ class Job:
     max_events: int = DEFAULT_MAX_EVENTS
     started_at: float = field(default_factory=time.monotonic)
     finished_at: Optional[float] = None
+    # Latest known state, overwritten rather than accumulated: what a UI
+    # polling once a second actually needs.
+    current: dict = field(default_factory=dict)
     _events: deque = field(default_factory=deque, repr=False)
     task: Optional[asyncio.Task] = field(default=None, repr=False)
 
@@ -76,6 +79,29 @@ class Job:
         return list(self._events)
 
     def append_event(self, event: dict) -> None:
+        """Record an event, keeping the ring free of progress noise.
+
+        A download emits one event per percentage point, three times per
+        song. An import of 34 songs produced over 10,000 events against a
+        500-entry ring: every song boundary from the first two thirds of
+        the run had already been overwritten before anything could read
+        them.
+
+        So percentages update `current` in place and never enter the ring.
+        Transitions — a song starting, a stage finishing, a song being
+        identified — are the history worth keeping.
+        """
+
+        if event.get("kind") == "stage_progress":
+            self.current = {**self.current, **event}
+            return
+
+        if event.get("kind") == "stage_started" and event.get("stage"):
+            # A new stage supersedes the previous percentage.
+            self.current = {**event, "percent": None}
+        else:
+            self.current = {**self.current, **event}
+
         self._events.append(event)
 
 
