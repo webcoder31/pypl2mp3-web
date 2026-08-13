@@ -183,3 +183,95 @@ async def test_a_lazy_attribute_failure_is_attributed_to_its_song(
 
     assert report.imported == []
     assert len(report.failed) == 3, "each song should fail on its own"
+
+
+from pytubefix.exceptions import BotDetection
+
+
+def _wrapped(cause: Exception) -> Exception:
+    """As SongModel raises it: the real reason buried under a wrapper."""
+
+    wrapper = RuntimeError("Failed to fetch information")
+    wrapper.__cause__ = cause
+
+    return wrapper
+
+
+def test_it_reads_the_reason_from_under_the_wrapper():
+    """The surface message is the same words for every kind of failure."""
+
+    from pytubefix.exceptions import AgeRestrictedError, VideoRegionBlocked
+
+    from pypl2mp3.services.import_playlist import (
+        failure_reason,
+        is_bot_detection,
+    )
+
+    age = _wrapped(AgeRestrictedError("x"))
+    assert failure_reason(age) == "age restricted"
+    assert not is_bot_detection(age), "age restriction never clears"
+
+    region = _wrapped(VideoRegionBlocked("x"))
+    assert failure_reason(region) == "blocked in this country"
+    assert not is_bot_detection(region)
+
+    refused = _wrapped(BotDetection("vid"))
+    assert failure_reason(refused) == "refused by YouTube"
+    assert is_bot_detection(refused), "a refusal is what we retry"
+
+
+async def test_it_retries_only_what_youtube_refused(tmp_path, monkeypatch):
+    """A refused song has been seen to succeed moments later. An
+    age-restricted one never will, and retrying it only spends time."""
+
+    from pytubefix.exceptions import AgeRestrictedError
+
+    attempts: dict[str, int] = {}
+
+    async def selective(youtube_id, playlist_path, threshold, **kwargs):
+        attempts[youtube_id] = attempts.get(youtube_id, 0) + 1
+
+        if youtube_id == "AAAAAAAAAAA":
+            raise _wrapped(AgeRestrictedError(youtube_id))
+        if youtube_id == "BBBBBBBBBBB" and attempts[youtube_id] == 1:
+            raise _wrapped(BotDetection("vid"))
+
+        (playlist_path / f"ARTIST - Title [{youtube_id}].mp3").write_bytes(
+            _MP3_FRAME * 8
+        )
+        return _FakeSong(youtube_id)
+
+    _install_fakes(monkeypatch, create=selective)
+    _make_local(tmp_path, [])
+
+    report = await import_playlist(tmp_path, PLAYLIST_ID, FakeProgress())
+
+    assert attempts["AAAAAAAAAAA"] == 1, "age restriction must not be retried"
+    assert attempts["BBBBBBBBBBB"] == 2, "a refusal should get a second pass"
+
+    assert sorted(s.youtube_id for s in report.imported) == [
+        "BBBBBBBBBBB",
+        "CCCCCCCCCCC",
+    ], "the retried song should end up imported"
+    assert [f.reason for f in report.failed] == ["age restricted"]
+
+
+async def test_a_refusal_that_persists_is_reported_not_looped(
+    tmp_path, monkeypatch
+):
+    attempts: dict[str, int] = {}
+
+    async def always_refused(youtube_id, playlist_path, threshold, **kwargs):
+        attempts[youtube_id] = attempts.get(youtube_id, 0) + 1
+        raise _wrapped(BotDetection("vid"))
+
+    _install_fakes(monkeypatch, create=always_refused)
+    _make_local(tmp_path, [])
+
+    report = await import_playlist(tmp_path, PLAYLIST_ID, FakeProgress())
+
+    assert all(count == 2 for count in attempts.values()), (
+        f"one retry pass, no more: {attempts}"
+    )
+    assert len(report.failed) == 3
+    assert {f.reason for f in report.failed} == {"refused by YouTube"}

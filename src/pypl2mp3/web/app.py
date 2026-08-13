@@ -62,6 +62,13 @@ def create_app(repository_path: Path) -> FastAPI:
 
     app.state.jobs = JobRegistry()
 
+    def _count_reasons(failures) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for item in failures:
+            counts[item.reason] = counts.get(item.reason, 0) + 1
+
+        return dict(sorted(counts.items(), key=lambda kv: -kv[1]))
+
     def _job_fragment(
         request, job_id, playlist_id, state, result, error, elapsed=None,
         current=None
@@ -185,9 +192,16 @@ def create_app(repository_path: Path) -> FastAPI:
                 "already_local": report.already_local,
                 "imported": [song.filename for song in report.imported],
                 "failed": [
-                    {"youtube_id": item.youtube_id, "issue": item.issue}
+                    {
+                        "youtube_id": item.youtube_id,
+                        "reason": item.reason,
+                        "issue": item.issue,
+                    }
                     for item in report.failed
                 ],
+                # Grouped so the page can say "12 age restricted" instead
+                # of listing 22 opaque lines.
+                "failed_by_reason": _count_reasons(report.failed),
             }
 
         try:

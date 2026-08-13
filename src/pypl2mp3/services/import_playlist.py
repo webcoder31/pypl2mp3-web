@@ -29,6 +29,67 @@ DEFAULT_SHAZAM_THRESHOLD = 50
 # (download, encode, shazam) belong to whichever song was last announced.
 SONG_STAGE = "song"
 
+# How many extra passes to make over songs YouTube refused. Refusals have
+# been observed to clear on their own — a video that raised BotDetection
+# mid-import fetched cleanly moments later. Age restriction and region
+# blocking never clear, so they are not retried at all.
+DEFAULT_RETRY_PASSES = 1
+
+
+def root_cause(error: BaseException) -> BaseException:
+    """Walk to the deepest cause.
+
+    SongModel wraps everything in a SongModelException, so the surface
+    message reads "Failed to fetch information" whether the video is age
+    restricted, region blocked, or simply refused. The distinction lives
+    at the bottom of the chain.
+    """
+
+    seen = {id(error)}
+    current = error
+
+    while True:
+        deeper = current.__cause__ or current.__context__
+        if deeper is None or id(deeper) in seen:
+            return current
+        seen.add(id(deeper))
+        current = deeper
+
+
+def is_bot_detection(error: BaseException) -> bool:
+    """Whether YouTube refused this request, rather than the video being
+    off limits.
+
+    The only failure worth retrying: age restriction and region blocking
+    are properties of the video and will hold on a second attempt.
+    """
+
+    return type(root_cause(error)).__name__ == "BotDetection"
+
+
+def failure_reason(error: BaseException) -> str:
+    """A short, honest label for why a song did not import."""
+
+    name = type(root_cause(error)).__name__
+
+    return {
+        "AgeRestrictedError": "age restricted",
+        "AgeCheckRequiredError": "age restricted",
+        "AgeCheckRequiredAccountError": "age restricted",
+        "LoginRequired": "login required",
+        "VideoRegionBlocked": "blocked in this country",
+        "VideoPrivate": "private",
+        "MembersOnly": "members only",
+        "VideoUnavailable": "unavailable",
+        "VideoRemovedByUploader": "removed by uploader",
+        "VideoRemovedByYouTubeForViolatingTOS": "removed by YouTube",
+        "VideoBlockedByCopyright": "blocked for copyright",
+        "AccountTerminated": "account terminated",
+        "BotDetection": "refused by YouTube",
+        "SABRError": "stream protection",
+        "LiveStreamError": "live stream",
+    }.get(name, name)
+
 
 @dataclass(frozen=True)
 class ImportedSong:
@@ -49,6 +110,8 @@ class FailedImport:
     youtube_id: str
     song_name: str
     issue: str
+    reason: str = ""
+    retryable: bool = False
 
 
 @dataclass(frozen=True)
@@ -67,6 +130,7 @@ async def import_playlist(
     playlist_id: str,
     progress: ProgressPort,
     shazam_threshold: float = DEFAULT_SHAZAM_THRESHOLD,
+    retry_passes: int = DEFAULT_RETRY_PASSES,
 ) -> ImportReport:
     """Download every song the playlist has and the repository lacks.
 
@@ -76,6 +140,8 @@ async def import_playlist(
         progress: receives stage events; the per-song boundary is reported
             as a `song` stage whose label names the song.
         shazam_threshold: minimum Shazam score to accept an identification.
+        retry_passes: extra sweeps over songs YouTube refused. Only those:
+            an age-restricted video is just as restricted the second time.
 
     Returns:
         What was imported and what failed. A song that fails does not
@@ -121,30 +187,53 @@ async def import_playlist(
     imported: list[ImportedSong] = []
     failed: list[FailedImport] = []
 
-    for index, youtube_id in enumerate(missing, 1):
-        position = f"{index}/{len(missing)}"
+    async def sweep(ids: list[str], prefix: str = "") -> list[FailedImport]:
+        """Import each id, collecting rather than raising failures."""
 
-        try:
-            song = await _import_one(
-                youtube_id,
-                playlist_path,
-                shazam_threshold,
-                progress,
-                position,
-            )
-        except Exception as exc:
-            # One song failing must not end the run: a dropped connection
-            # on song 3 of 34 used to lose the other 31.
-            failed.append(
-                FailedImport(
-                    youtube_id=youtube_id,
-                    song_name=f"Video ID: {youtube_id}",
-                    issue=f"{type(exc).__name__}: {exc}",
+        rejected: list[FailedImport] = []
+
+        for index, youtube_id in enumerate(ids, 1):
+            position = f"{prefix}{index}/{len(ids)}"
+
+            try:
+                song = await _import_one(
+                    youtube_id,
+                    playlist_path,
+                    shazam_threshold,
+                    progress,
+                    position,
                 )
-            )
-            continue
+            except Exception as exc:
+                # One song failing must not end the run: a dropped
+                # connection on song 3 of 34 used to lose the other 31.
+                cause = root_cause(exc)
+                rejected.append(
+                    FailedImport(
+                        youtube_id=youtube_id,
+                        song_name=f"Video ID: {youtube_id}",
+                        issue=f"{type(cause).__name__}: {cause}",
+                        reason=failure_reason(exc),
+                        retryable=is_bot_detection(exc),
+                    )
+                )
+                continue
 
-        imported.append(song)
+            imported.append(song)
+
+        return rejected
+
+    failed = await sweep(missing)
+
+    # Retry only what YouTube refused. Those have been seen to succeed on
+    # a later attempt; an age-restricted video never will, and retrying it
+    # would just spend time to reach the same answer.
+    for attempt in range(retry_passes):
+        retryable = [item.youtube_id for item in failed if item.retryable]
+        if not retryable:
+            break
+
+        permanent = [item for item in failed if not item.retryable]
+        failed = permanent + await sweep(retryable, prefix=f"retry {attempt + 1}: ")
 
     progress.stage_done(SONG_STAGE)
 
