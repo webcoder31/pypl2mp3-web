@@ -141,3 +141,84 @@ Chaque tranche est visible et testable seule.
 5. **Nettoyage.** Suppression des pages mortes et de leurs tests.
 
 Le « look » vient après, sur cette structure.
+
+---
+
+# Points en suspens
+
+Tenu à jour au fil des tranches. Rien n'est perdu ici : ce qui est
+mesuré est chiffré, ce qui est un choix est motivé.
+
+## Dettes ouvertes par ce qui est déjà livré
+
+### 1. La recherche vivante relance un parcours complet à chaque frappe
+
+**Mesuré :** 1,4 s par parcours sur 927 morceaux, relancé à chaque pause
+de 300 ms dans la frappe. Le contrôle d'une empreinte du dépôt (nombre de
+fichiers + mtime maximum) coûte **6 ms**.
+
+**Remède :** un cache du parcours invalidé par cette empreinte. Le point
+délicat est que `SongModel` détient l'objet mutagen, pochette comprise —
+927 modèles en mémoire, c'est à mesurer avant de s'engager. Cacher les
+`SongSummary` (légers) obligerait en revanche à réimplémenter le
+filtrage flou de `repository.py`, qui dériverait alors du CLI.
+
+**Débloque aussi :** le point 2.
+
+### 2. Les présélections d'artistes vieillissent après une correction
+
+`#nav` n'est pas rafraîchi par `songsChanged` : un morceau réparé
+n'apparaît sous son artiste qu'au rechargement de la page. Le rafraîchir
+coûterait 1,4 s à chaque sauvegarde — inacceptable pendant une série de
+corrections. Bloqué par le point 1.
+
+### 3. Aucune page n'a jamais été rendue par un moteur de navigateur
+
+Tout le comportement JavaScript — suivi de l'inspecteur, garde sur la
+saisie non enregistrée, aperçu du suivant, sens de lecture, filtre de la
+liste d'artistes — n'est vérifié qu'au niveau du **câblage** : le test
+constate que le code est là, pas qu'il fait ce qu'il prétend. Les
+verrous du bac à sable ont empêché Chrome de démarrer ; les vérifications
+sont manuelles depuis le début.
+
+## Tranches restantes
+
+### 4. Tranche 3 — les jobs en ruban
+
+Import et check remontent dans `#header`, persistants quoi qu'on fasse
+ensuite. Le compte rendu s'affiche dans l'inspecteur au lieu d'une page.
+
+### 5. Tranche 4 — l'établi
+
+Plein cadre, clavier, curseur unique. Worker de préchargement Shazam
+**et son verrou** : `SongModel.last_shazam_request_time` est un attribut
+de classe qui lit une date puis attend, ce qui n'est pas une exclusion
+mutuelle. Aujourd'hui il n'y a qu'un appelant ; le worker en crée un
+second, et sans `asyncio.Lock` les deux traversent la temporisation
+ensemble.
+
+### 6. Tranche 5 — nettoyage
+
+Suppression de `playlists.html`, `songs.html`, `player.html`,
+`fix.html`, `report.html` et des routes `/playlists`, `/songs`,
+`/player`, `/songs/{id}/fix` (GET), avec leurs tests. Le lien « Fix »
+des lignes junk pointe encore sur l'ancien écran.
+
+### 7. La passe « look »
+
+Décidée avec l'utilisateur : après l'ergonomie. Points déjà relevés —
+hauteur des lignes trop grande sur les titres longs, durée affichée
+`00:06:17` là où `6:17` suffit.
+
+## Hors périmètre web, notés au passage
+
+### 8. Le CLI n'utilise pas `get_repository_songs`
+
+Les commandes CLI passent encore par `get_repository_song_files` et
+reconstruisent un `SongModel` par chemin. Le même gain d'environ 50 %
+qu'a eu la couche web les attend.
+
+### 9. Le mode interactif de `import -p`
+
+Seul cas qui justifierait un `WebInteraction` : le port `InteractionPort`
+existe, la console ne s'en sert pas.

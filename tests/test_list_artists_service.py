@@ -73,14 +73,55 @@ def test_spellings_that_differ_only_in_case_are_one_artist():
     )
 
 
-def test_the_order_is_alphabetical_and_ignores_case():
-    """You come here knowing the name; you scan for it."""
+def test_the_order_is_where_a_person_would_look():
+    """You come here knowing the name; you scan for it.
+
+    Sorting on the raw name filed accented names after Z and names
+    starting with punctuation ahead of the digits. Both are places
+    nobody looks, so both were reported as missing.
+    """
 
     artists = list_artists(
-        [_song("the xx"), _song("Air"), _song("ZZ Top"), _song("Björk")]
+        [
+            _song("the xx"),
+            _song("Air"),
+            _song("ZZ Top"),
+            _song("Björk"),
+            _song("Étienne Daho"),
+            _song("...And You Will Know Us By the Trail of Dead"),
+            _song("2TH"),
+        ]
     )
 
-    assert [a.name for a in artists] == ["Air", "Björk", "the xx", "ZZ Top"]
+    assert [a.name for a in artists] == [
+        "2TH",
+        "Air",
+        "...And You Will Know Us By the Trail of Dead",
+        "Björk",
+        "Étienne Daho",
+        "the xx",
+        "ZZ Top",
+    ]
+
+
+def test_an_accented_name_files_under_its_plain_letter():
+    artists = list_artists([_song("Zero 7"), _song("Étienne Daho")])
+
+    assert [a.name for a in artists] == ["Étienne Daho", "Zero 7"], (
+        "É sorts after z by code point, which puts it past the end"
+    )
+
+
+def test_leading_punctuation_does_not_hide_a_name_at_the_top():
+    artists = list_artists(
+        [_song("Air"), _song("...And You Will Know Us"), _song("2TH")]
+    )
+
+    assert [a.name for a in artists] == [
+        "2TH",
+        "Air",
+        "...And You Will Know Us",
+    ], "the dots must not file it before the digits"
 
 
 def test_it_reads_no_files():

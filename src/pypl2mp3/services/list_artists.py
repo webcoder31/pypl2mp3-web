@@ -9,6 +9,7 @@ artist list is free rather than a second pass over the same files.
 
 from dataclasses import dataclass
 
+from pypl2mp3.libs.utils import natural_sort_key
 from pypl2mp3.services.list_songs import SongSummary
 
 
@@ -31,7 +32,11 @@ def list_artists(songs: list[SongSummary]) -> list[ArtistSummary]:
         songs: summaries to group. Usually a whole playlist or repository.
 
     Returns:
-        One entry per artist, ordered case-insensitively by name.
+        One entry per artist, in the order a person would look for them:
+        the repository's own natural_sort_key, which ignores case,
+        diacritics and leading punctuation. Sorting on the raw name filed
+        "Étienne Daho" after Z and "...And You Will Know Us By the Trail
+        of Dead" ahead of the digits — two places nobody looks.
     """
 
     # Spellings differ between files: the ID3 tag says "Above & Beyond",
@@ -52,4 +57,4 @@ def list_artists(songs: list[SongSummary]) -> list[ArtistSummary]:
         for seen in spellings.values()
     ]
 
-    return sorted(artists, key=lambda artist: artist.name.casefold())
+    return sorted(artists, key=lambda artist: natural_sort_key(artist.name))

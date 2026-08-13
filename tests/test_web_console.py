@@ -397,3 +397,14 @@ async def test_the_bar_says_next_before_the_arrow(tmp_path):
 
     assert '"NEXT →"' in script
     assert '"NEXT ←"' in script, "the backward preview lost its label"
+
+
+async def test_the_artist_filter_box_ignores_accents(tmp_path):
+    """Typing "etienne" has to find "Étienne Daho", the way the sort does."""
+
+    async with _client(create_app(tmp_path)) as client:
+        script = (await client.get("/static/console.js")).text
+
+    assert "normalize(\"NFD\")" in script, (
+        "the artist filter box would miss every accented name"
+    )

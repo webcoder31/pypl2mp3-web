@@ -296,14 +296,23 @@
   // 450 artists, nearly three quarters of them with a single song. The
   // list has to be complete to be a preset list, so it needs a way to
   // be narrowed. Purely local: the names are already in the page.
+  // Diacritics are stripped both sides, the way the list is sorted:
+  // typing "etienne" has to find "Étienne Daho".
+  function plain(text) {
+    return text
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase();
+  }
+
   document.addEventListener("input", function (event) {
     if (event.target.id !== "artist-filter") return;
 
-    const needle = event.target.value.trim().toLowerCase();
+    const needle = plain(event.target.value.trim());
     document
       .querySelectorAll("#artist-list li")
       .forEach(function (row) {
-        row.hidden = needle && !row.textContent.toLowerCase().includes(needle);
+        row.hidden = needle && !plain(row.textContent).includes(needle);
       });
   });
 
