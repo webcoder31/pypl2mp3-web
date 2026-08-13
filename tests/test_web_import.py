@@ -44,9 +44,6 @@ class _FakeSong:
 
 
 def _install_fakes(monkeypatch, delay: float = 0.0):
-    # No pacing in tests: the real 4s gap between songs would add minutes
-    # to the suite and proves nothing these tests are about.
-    monkeypatch.setattr(mod, "DEFAULT_REQUEST_INTERVAL", 0.0)
     monkeypatch.setattr(mod, "Playlist", _FakePlaylist)
     monkeypatch.setattr(mod, "YouTube", _FakeYouTube)
 

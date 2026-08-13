@@ -11,8 +11,6 @@ the event loop, so this coroutine can be awaited directly by a web server
 without freezing it.
 """
 
-import asyncio
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -27,78 +25,9 @@ from pypl2mp3.services._song_callbacks import create_from_youtube_callbacks
 
 DEFAULT_SHAZAM_THRESHOLD = 50
 
-# Seconds to leave between two songs. A 34-song import with no spacing at
-# all had 8 requests refused outright with "This request was detected as a
-# bot" and 12 more fail to fetch — 20 of 34 lost. SongModel already paces
-# its Shazam calls 15s apart; nothing paced YouTube, and that asymmetry is
-# what tripped the detector.
-DEFAULT_REQUEST_INTERVAL = 4.0
-
-# Where the pause goes once YouTube has already objected. Backing off from
-# 4s doubles to 8, 16, 32, then holds — long enough to matter, bounded so a
-# long playlist still finishes.
-MAX_REQUEST_INTERVAL = 32.0
-
-# Fragments that mark a refusal rather than a broken video. Matched
-# case-insensitively against the exception text.
-_RATE_LIMIT_MARKERS = (
-    "detected as a bot",
-    "too many requests",
-    "http error 429",
-)
-
 # Stage name for the per-song boundary. The sub-stages that follow
 # (download, encode, shazam) belong to whichever song was last announced.
 SONG_STAGE = "song"
-
-
-def looks_rate_limited(error: BaseException) -> bool:
-    """Whether YouTube refused us rather than the video being broken.
-
-    Matched on the message: pytubefix raises BotDetection for the explicit
-    case, but the same throttling also surfaces as a plain failure to
-    fetch video information, and both call for backing off rather than
-    charging on.
-    """
-
-    text = f"{type(error).__name__}: {error}".lower()
-
-    return any(marker in text for marker in _RATE_LIMIT_MARKERS)
-
-
-class _Pacer:
-    """Keeps a minimum gap between YouTube requests, widening on refusal."""
-
-    def __init__(self, interval: float):
-        self._interval = interval
-        self._last_request: Optional[float] = None
-
-    @property
-    def interval(self) -> float:
-        return self._interval
-
-    async def wait(self) -> float:
-        """Sleep until the next request is due. Returns what it waited."""
-
-        if self._interval <= 0:
-            return 0.0
-
-        now = time.monotonic()
-        if self._last_request is not None:
-            remaining = self._interval - (now - self._last_request)
-            if remaining > 0:
-                await asyncio.sleep(remaining)
-                self._last_request = time.monotonic()
-                return remaining
-
-        self._last_request = time.monotonic()
-
-        return 0.0
-
-    def penalise(self) -> None:
-        """Double the gap, up to the cap. Call after a refusal."""
-
-        self._interval = min(max(self._interval, 1.0) * 2, MAX_REQUEST_INTERVAL)
 
 
 @dataclass(frozen=True)
@@ -138,7 +67,6 @@ async def import_playlist(
     playlist_id: str,
     progress: ProgressPort,
     shazam_threshold: float = DEFAULT_SHAZAM_THRESHOLD,
-    request_interval: Optional[float] = None,
 ) -> ImportReport:
     """Download every song the playlist has and the repository lacks.
 
@@ -148,10 +76,6 @@ async def import_playlist(
         progress: receives stage events; the per-song boundary is reported
             as a `song` stage whose label names the song.
         shazam_threshold: minimum Shazam score to accept an identification.
-        request_interval: seconds to leave between songs, widened when
-            YouTube starts refusing. Zero disables pacing entirely. None
-            resolves to DEFAULT_REQUEST_INTERVAL at call time, so a test
-            can neutralise the wait by patching that constant.
 
     Returns:
         What was imported and what failed. A song that fails does not
@@ -196,22 +120,9 @@ async def import_playlist(
 
     imported: list[ImportedSong] = []
     failed: list[FailedImport] = []
-    pacer = _Pacer(
-        DEFAULT_REQUEST_INTERVAL if request_interval is None
-        else request_interval
-    )
 
     for index, youtube_id in enumerate(missing, 1):
         position = f"{index}/{len(missing)}"
-
-        # Space the requests out. Announced when the wait is long enough
-        # to look like a hang, silent when it is not.
-        if pacer.interval > 2:
-            progress.stage_started(
-                SONG_STAGE,
-                f"{position} waiting {pacer.interval:.0f}s for YouTube",
-            )
-        await pacer.wait()
 
         try:
             song = await _import_one(
@@ -224,10 +135,6 @@ async def import_playlist(
         except Exception as exc:
             # One song failing must not end the run: a dropped connection
             # on song 3 of 34 used to lose the other 31.
-            if looks_rate_limited(exc):
-                # Charging on after a refusal just collects more refusals.
-                pacer.penalise()
-
             failed.append(
                 FailedImport(
                     youtube_id=youtube_id,
