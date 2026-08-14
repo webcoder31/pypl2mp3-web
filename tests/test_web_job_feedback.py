@@ -85,22 +85,22 @@ async def test_the_button_gets_a_fragment_that_polls_itself(
     assert "hx-trigger" in body
 
 
-async def test_the_fragment_id_matches_what_the_button_targets(
+async def test_the_started_fragment_and_its_polls_are_one_element(
     tmp_path, monkeypatch
 ):
-    """The whole polling swap rests on one id equality — assert it directly.
+    """The polling swap rests on one id equality — assert it directly.
 
-    The button's hx-target, the id the POST fragment carries, and the id
-    the GET /jobs fragment carries must all name the same element. If any
-    of the three drifts, hx-swap="outerHTML" either swaps the wrong node or
-    detaches the live poller from the document.
+    The fragment the POST returns and the fragment each poll returns
+    must name the same element: the poll replaces itself by outerHTML,
+    and the ribbon keys its entries by that id. If the two drift, a poll
+    silently changes the entry's identity and the ribbon starts treating
+    one job as two.
     """
 
     monkeypatch.setattr(mod, "Playlist", _FakePlaylist)
     _make_local(tmp_path, [])
 
     async with _client(create_app(tmp_path)) as client:
-        page = (await client.get("/playlists")).text
         post_fragment = (
             await client.post(f"/playlists/{PLAYLIST_ID}/check", headers=HX)
         ).text
@@ -108,16 +108,19 @@ async def test_the_fragment_id_matches_what_the_button_targets(
             await client.get(f"/jobs/check:{PLAYLIST_ID}", headers=HX)
         ).text
 
-    target = re.search(r'hx-target="#([^"]+)"', page)
     post_div = re.search(r'<div id="([^"]+)"', post_fragment)
     get_div = re.search(r'<div id="([^"]+)"', get_fragment)
 
-    assert target and post_div and get_div, (
-        "expected an hx-target on the page and a <div id=...> in both "
-        f"fragments; got target={target}, post_div={post_div}, "
-        f"get_div={get_div}"
+    assert post_div and get_div, (
+        f"expected <div id=...> in both fragments; got post={post_div}, "
+        f"get={get_div}"
     )
-    assert target.group(1) == post_div.group(1) == get_div.group(1)
+    assert post_div.group(1) == get_div.group(1)
+
+    # And the element polls the job it actually represents.
+    polled = re.search(r'hx-get="/jobs/([^"]+)"', post_fragment)
+    assert polled, "the started fragment does not poll"
+    assert polled.group(1) == f"check:{PLAYLIST_ID}"
 
 
 async def test_polling_stops_once_the_job_is_done(tmp_path, monkeypatch):

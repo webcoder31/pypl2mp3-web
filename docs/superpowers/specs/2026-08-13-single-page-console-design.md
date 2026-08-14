@@ -181,44 +181,38 @@ constate que le code est là, pas qu'il fait ce qu'il prétend. Les
 verrous du bac à sable ont empêché Chrome de démarrer ; les vérifications
 sont manuelles depuis le début.
 
-## Tranches restantes
+## Tranches — toutes livrées
 
-### 4. Tranche 3 — les jobs en ruban
+| # | Tranche | Commit |
+|---|---|---|
+| 1 | Coquille et lecteur permanent | `f72c9d8` |
+| 2 | Recherche vivante et inspecteur | `9bdfeb3` |
+| 3 | Jobs en ruban | `6bee025` |
+| 4 | L'établi (+ verrou Shazam `ff39232`) | `46507d3` |
+| 5 | Nettoyage | ci-dessous |
 
-Import et check remontent dans `#header`, persistants quoi qu'on fasse
-ensuite. Le compte rendu s'affiche dans l'inspecteur au lieu d'une page.
+## Reste à faire
 
-### 5. Tranche 4 — l'établi
-
-Plein cadre, clavier, curseur unique. Worker de préchargement Shazam
-**et son verrou** : `SongModel.last_shazam_request_time` est un attribut
-de classe qui lit une date puis attend, ce qui n'est pas une exclusion
-mutuelle. Aujourd'hui il n'y a qu'un appelant ; le worker en crée un
-second, et sans `asyncio.Lock` les deux traversent la temporisation
-ensemble.
-
-### 6. Tranche 5 — nettoyage
-
-Suppression de `playlists.html`, `songs.html`, `player.html`,
-`fix.html`, `report.html` et des routes `/playlists`, `/songs`,
-`/player`, `/songs/{id}/fix` (GET), avec leurs tests. Le lien « Fix »
-des lignes junk pointe encore sur l'ancien écran.
-
-### 7. La passe « look »
+### 4. La passe « look »
 
 Décidée avec l'utilisateur : après l'ergonomie. Points déjà relevés —
 hauteur des lignes trop grande sur les titres longs, durée affichée
 `00:06:17` là où `6:17` suffit.
 
-## Hors périmètre web, notés au passage
-
-### 8. Le CLI n'utilise pas `get_repository_songs`
+### 5. Le CLI n'utilise pas `get_repository_songs`
 
 Les commandes CLI passent encore par `get_repository_song_files` et
 reconstruisent un `SongModel` par chemin. Le même gain d'environ 50 %
-qu'a eu la couche web les attend.
+qu'a eu la couche web les attend. Hors périmètre web.
 
-### 9. Le mode interactif de `import -p`
+### 6. Le mode interactif de `import -p`
 
 Seul cas qui justifierait un `WebInteraction` : le port `InteractionPort`
 existe, la console ne s'en sert pas.
+
+### 7. Une seule page subsiste
+
+`report.html`, servie uniquement aux requêtes non-HTMX de
+`/jobs/{id}/report`. Une URL de compte rendu mise en favori doit
+répondre autre chose qu'un fragment nu. Elle ne dépend plus de
+`base.html`, supprimé.

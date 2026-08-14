@@ -39,12 +39,12 @@ async def test_the_listing_offers_junkize_only_for_tagged_songs(tmp_path):
     app = create_app(tmp_path)
 
     async with _client(app) as client:
-        body = (await client.get("/songs")).text
+        body = (await client.get("/fragments/list")).text
         assert "/songs/aaaaaaaaaaa/junkize" in body
 
         await client.post("/songs/aaaaaaaaaaa/junkize", headers=HX)
 
-        after = (await client.get("/songs")).text
+        after = (await client.get("/fragments/list")).text
 
     assert "/songs/aaaaaaaaaaa/junkize" not in after, (
         "an already-junk song must not offer the button again"
@@ -87,7 +87,7 @@ async def test_the_button_asks_for_confirmation(tmp_path):
     _make_song(tmp_path, "ARTIST", "Title", "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
-        body = (await client.get("/songs")).text
+        body = (await client.get("/fragments/list")).text
 
     assert "hx-confirm" in body
 

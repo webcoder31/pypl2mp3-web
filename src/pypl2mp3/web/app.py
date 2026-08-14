@@ -7,10 +7,7 @@ passed the wrong flag.
 """
 
 import asyncio
-import json
-import random
 from pathlib import Path
-from urllib.parse import urlencode
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -481,101 +478,6 @@ def create_app(repository_path: Path) -> FastAPI:
 
         return _shazam_fragment(request, youtube_id, job)
 
-    @app.get("/playlists", response_class=HTMLResponse)
-    def inventory(request: Request) -> HTMLResponse:
-        return templates.TemplateResponse(
-            request,
-            "playlists.html",
-            {
-                "summaries": list_playlists(app.state.repository_path),
-                "repository": str(app.state.repository_path),
-            },
-        )
-
-    @app.get("/songs", response_class=HTMLResponse)
-    def songs(
-        request: Request,
-        playlist: str = "",
-        q: str = "",
-        junk: int = 0,
-        match: float = DEFAULT_MATCH_THRESHOLD,
-    ) -> HTMLResponse:
-        """List songs, optionally scoped to a playlist and filtered.
-
-        `junk=1` is the `junks` command: the same query with the flag
-        flipped, which is why there is one route rather than two.
-        """
-
-        found = list_songs(
-            app.state.repository_path,
-            junk_only=bool(junk),
-            keywords=q,
-            match_threshold=match,
-            playlist_identifier=playlist or None,
-        )
-
-        return templates.TemplateResponse(
-            request,
-            "songs.html",
-            {
-                "songs": found,
-                "playlist": playlist,
-                "query": q,
-                "junk_only": bool(junk),
-            },
-        )
-
-    @app.get("/player", response_class=HTMLResponse)
-    def player(
-        request: Request,
-        playlist: str = "",
-        q: str = "",
-        junk: int = 0,
-        match: float = DEFAULT_MATCH_THRESHOLD,
-        shuffle: int = 0,
-    ) -> HTMLResponse:
-        """Play a whole selection, the way the CLI's `play` does.
-
-        Same filters as the listing, so whatever you are looking at is
-        what you can play. Shuffling happens here rather than in the
-        browser: reloading with shuffle=1 gives a new order, which is
-        what the CLI's -s does on each run.
-        """
-
-        found = list_songs(
-            app.state.repository_path,
-            junk_only=bool(junk),
-            keywords=q,
-            match_threshold=match,
-            playlist_identifier=playlist or None,
-        )
-
-        if shuffle:
-            found = list(found)
-            random.shuffle(found)
-
-        exit_query = urlencode(
-            {k: v for k, v in (("playlist", playlist), ("q", q)) if v}
-            | ({"junk": 1} if junk else {})
-        )
-
-        return templates.TemplateResponse(
-            request,
-            "player.html",
-            {
-                "songs": found,
-                "exit_url": "/songs" + (f"?{exit_query}" if exit_query else ""),
-                # The list and the script must agree on the order, so both
-                # are rendered from this one sequence.
-                "queue_json": json.dumps(
-                    [
-                        {"youtube_id": song.youtube_id, "label": song.label}
-                        for song in found
-                    ]
-                ),
-            },
-        )
-
     @app.get("/jobs/{job_id}/report", response_class=HTMLResponse)
     def job_report(job_id: str, request: Request) -> HTMLResponse:
         """The full outcome of a run, song by song.
@@ -605,26 +507,6 @@ def create_app(repository_path: Path) -> FastAPI:
                 "error": job.error,
                 "elapsed": job.elapsed_seconds,
             },
-        )
-
-    @app.get("/songs/{youtube_id}/fix", response_class=HTMLResponse)
-    def fix_page(youtube_id: str, request: Request) -> HTMLResponse:
-        """The repair screen: cover art, player, and an editable form.
-
-        Shazam is not called here. Identifying a song takes seconds and can
-        wait fifteen more between requests, so it is a job the user starts
-        from this page rather than a cost paid on every load.
-        """
-
-        try:
-            song = summarize(SongModel(
-                find_song_file(app.state.repository_path, youtube_id)
-            ))
-        except SongNotFound:
-            raise HTTPException(status_code=404, detail="unknown song")
-
-        return templates.TemplateResponse(
-            request, "fix.html", {"song": song}
         )
 
     @app.post("/songs/{youtube_id}/shazam")
@@ -700,7 +582,7 @@ def create_app(repository_path: Path) -> FastAPI:
         # A plain form POST navigates to whatever comes back, so returning
         # JSON left the browser showing raw data. Send it back to the list
         # it came from. 303 so a reload does not re-submit the form.
-        return RedirectResponse(url="/songs?junk=1", status_code=303)
+        return RedirectResponse(url="/?junk=1", status_code=303)
 
     @app.get("/songs/{youtube_id}/cover")
     def song_cover(youtube_id: str) -> Response:

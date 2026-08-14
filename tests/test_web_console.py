@@ -499,3 +499,22 @@ async def test_the_nav_fragment_is_a_fragment(tmp_path):
         assert tag not in fragment, tag
     assert 'data-artist="IAMX"' in fragment
     assert 'data-playlist=""' in fragment, "no way back to everything"
+
+
+async def test_the_console_keeps_the_cli_s_playback_controls(tmp_path):
+    """Parity with `play`, which the standalone player page used to hold.
+
+    A wiring check — the behaviour needs a browser engine — but it is
+    what stops these keys quietly disappearing.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        script = (await client.get("/static/console.js")).text
+
+    for key in ("ArrowRight", "ArrowLeft", "Tab", "Escape"):
+        assert f'"{key}"' in script, key
+    assert 'case " "' in script, "no space bar handling"
+    assert 'addEventListener("ended"' in script, (
+        "the queue does not advance when a song finishes"
+    )
+    assert "youtu.be/" in script, "no way to open the video"

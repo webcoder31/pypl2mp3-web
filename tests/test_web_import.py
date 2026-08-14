@@ -116,8 +116,9 @@ async def test_check_and_import_do_not_share_an_element_id(
 ):
     """Both target the same playlist; one DOM node cannot serve both.
 
-    Without the job kind in the id, whichever fragment arrived second
-    would swap the other's poller out of the document.
+    The ribbon keys its entries by that id and drops duplicates, so a
+    collision here would have a started import evict a running check —
+    or be silently swallowed by it.
     """
 
     _install_fakes(monkeypatch)
@@ -125,7 +126,6 @@ async def test_check_and_import_do_not_share_an_element_id(
         "pypl2mp3.services.check_new_songs.Playlist", _FakePlaylist
     )
 
-    # The inventory only renders buttons for playlists it can see.
     folder = tmp_path / f"owner - fake [{PLAYLIST_ID}]"
     folder.mkdir(parents=True)
     (folder / "ARTIST - Title [AAAAAAAAAAA].mp3").write_bytes(_MP3_FRAME * 8)
@@ -133,7 +133,6 @@ async def test_check_and_import_do_not_share_an_element_id(
     app = create_app(tmp_path)
 
     async with _client(app) as client:
-        page = (await client.get("/playlists")).text
         check = (
             await client.post(f"/playlists/{PLAYLIST_ID}/check", headers=HX)
         ).text
@@ -141,13 +140,10 @@ async def test_check_and_import_do_not_share_an_element_id(
             await client.post(f"/playlists/{PLAYLIST_ID}/import", headers=HX)
         ).text
 
-    targets = re.findall(r'hx-target="#([^"]+)"', page)
     check_id = re.search(r'<div id="([^"]+)"', check).group(1)
     import_id = re.search(r'<div id="([^"]+)"', importing).group(1)
 
     assert check_id != import_id, "the two job kinds collided on one id"
-    assert check_id in targets, "no button targets the check fragment"
-    assert import_id in targets, "no button targets the import fragment"
 
 
 async def test_a_second_import_of_the_same_playlist_is_refused(
@@ -166,23 +162,6 @@ async def test_a_second_import_of_the_same_playlist_is_refused(
         assert second.status_code == 409
 
         app.state.jobs.cancel(f"import:{PLAYLIST_ID}")
-
-
-async def test_the_import_button_warns_before_a_long_download(tmp_path):
-    """It downloads for minutes and writes to disk; a stray click is costly."""
-
-    folder = tmp_path / f"owner - fake [{PLAYLIST_ID}]"
-    folder.mkdir(parents=True)
-    (folder / "ARTIST - Title [AAAAAAAAAAA].mp3").write_bytes(_MP3_FRAME * 8)
-
-    async with _client(create_app(tmp_path)) as client:
-        body = (await client.get("/playlists")).text
-
-    import_button = re.search(
-        r"<button[^>]*?/import\"(.*?)</button>", body, re.DOTALL
-    )
-    assert import_button, "the inventory should offer an import button"
-    assert "hx-confirm" in import_button.group(1)
 
 
 async def test_progress_noise_does_not_evict_the_song_boundaries(
@@ -349,19 +328,19 @@ async def test_the_report_lists_every_song_and_why_it_failed(
     import re as _re
 
     row = _re.search(
-        r"<tr>(?:(?!</tr>).)*AAAAAAAAAAA(?:(?!</tr>).)*</tr>",
+        r"<li>(?:(?!</li>).)*AAAAAAAAAAA(?:(?!</li>).)*</li>",
         body,
         _re.DOTALL,
     )
-    assert row, "the failed song has no row of its own"
+    assert row, "the failed song has no entry of its own"
 
-    # The reason cell itself, not the row: the Detail column repeats the
-    # raw exception text, which contains the same words, so a row-wide
-    # substring check passes even with the reason column emptied.
-    cell = _re.search(r'<td class="job-error">([^<]*)</td>', row.group(0))
-    assert cell, "the row has no reason cell"
+    # The reason element itself, not the entry: the detail beside it
+    # repeats the raw exception text, which contains the same words, so
+    # an entry-wide substring check passes even with the reason emptied.
+    cell = _re.search(r'<span class="job-error">([^<]*)</span>', row.group(0))
+    assert cell, "the entry gives no reason"
     assert cell.group(1).strip() == "age restricted", (
-        f"the reason column says {cell.group(1)!r}"
+        f"the reason says {cell.group(1)!r}"
     )
 
 
@@ -408,7 +387,7 @@ async def test_an_unmatched_import_is_offered_the_fix_screen(
         await _settle(client, f"import:{PLAYLIST_ID}")
         body = (await client.get(f"/jobs/import:{PLAYLIST_ID}/report")).text
 
-    assert "/songs/AAAAAAAAAAA/fix" in body
+    assert "/fragments/inspector/AAAAAAAAAAA" in body
 
 
 async def test_an_unknown_job_report_is_a_404(tmp_path):

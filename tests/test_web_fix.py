@@ -1,4 +1,9 @@
-"""The repair screen: the one place a browser beats a terminal outright."""
+"""Repairing a song: the routes behind the inspector.
+
+The screen this file was named for is gone — the inspector took its
+place, and its guarantees are asserted in test_web_inspector.py. What
+remains here is what sits underneath either of them.
+"""
 
 from pathlib import Path
 
@@ -38,47 +43,6 @@ def _client(app):
     )
 
 
-async def test_the_junk_listing_links_to_the_repair_screen(tmp_path):
-    _make_junk(tmp_path)
-
-    async with _client(create_app(tmp_path)) as client:
-        body = (await client.get("/songs?junk=1")).text
-
-    assert "/songs/aaaaaaaaaaa/fix" in body
-
-
-async def test_the_screen_offers_the_cover_the_player_and_the_form(tmp_path):
-    """Seeing the cover and hearing the track is why this is a page."""
-
-    _make_junk(tmp_path)
-
-    async with _client(create_app(tmp_path)) as client:
-        body = (await client.get("/songs/aaaaaaaaaaa/fix")).text
-
-    assert "/songs/aaaaaaaaaaa/cover" in body, "no cover art"
-    assert "/songs/aaaaaaaaaaa/audio" in body, "no player"
-    assert 'name="artist"' in body
-    assert 'name="title"' in body
-    assert 'name="cover_art_url"' in body
-
-
-async def test_the_screen_does_not_call_shazam_on_load(tmp_path, monkeypatch):
-    """Shazam costs seconds and waits 15 more between calls."""
-
-    called = []
-
-    async def spy(self, **kwargs):
-        called.append(self)
-
-    monkeypatch.setattr("pypl2mp3.libs.song.SongModel.shazam_song", spy)
-    _make_junk(tmp_path)
-
-    async with _client(create_app(tmp_path)) as client:
-        assert (await client.get("/songs/aaaaaaaaaaa/fix")).status_code == 200
-
-    assert called == [], "loading the page must not identify the song"
-
-
 async def test_submitting_the_form_writes_the_tags_and_clears_junk(tmp_path):
     _make_junk(tmp_path)
 
@@ -91,7 +55,7 @@ async def test_submitting_the_form_writes_the_tags_and_clears_junk(tmp_path):
     # A browser posting a plain form navigates to the response, so this
     # must send it somewhere useful rather than render JSON at it.
     assert response.status_code == 303
-    assert response.headers["location"] == "/songs?junk=1"
+    assert response.headers["location"] == "/?junk=1"
     written = next((tmp_path / PLAYLIST).glob("*.mp3"))
     assert "(JUNK)" not in written.name
     assert ID3(written).getall("TPE1")[0].text[0] == "THE PHARCYDE"
@@ -121,7 +85,7 @@ async def test_an_unknown_song_is_a_404_everywhere(tmp_path):
     _make_junk(tmp_path)
 
     async with _client(create_app(tmp_path)) as client:
-        for path in ("fix", "cover", "audio"):
+        for path in ("cover", "audio"):
             assert (
                 await client.get(f"/songs/zzzzzzzzzzz/{path}")
             ).status_code == 404, path

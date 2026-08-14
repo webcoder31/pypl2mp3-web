@@ -84,7 +84,7 @@ async def test_a_listing_never_ships_one_player_per_row(tmp_path):
         _make_song(tmp_path, f"vid{i:07d}")
 
     async with _client(create_app(tmp_path)) as client:
-        body = (await client.get("/songs")).text
+        body = (await client.get("/fragments/list")).text
 
     assert body.count("<audio") == 0, (
         "a 900-row listing must not read every file on page load"

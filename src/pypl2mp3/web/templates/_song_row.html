@@ -26,9 +26,13 @@
       <span class="playlist">{{ song.playlist_name }}</span>
       <span class="id">{{ song.youtube_id }}</span>
       {% if song.is_junk %}
-        {# Until the inspector takes this over, the repair screen is
-           still the only way to fix a junk song. #}
-        <a href="/songs/{{ song.youtube_id }}/fix" class="fix-link">Fix</a>
+        {# Loads the panel without playing. Clicking the row does both,
+           which is usually what you want; this is for picking one out
+           of a listing you are already listening to. #}
+        <button type="button" class="fix-link"
+                hx-get="/fragments/inspector/{{ song.youtube_id }}"
+                hx-target="#inspector"
+                hx-swap="innerHTML">Fix</button>
       {% else %}
         <button type="button"
           hx-post="/songs/{{ song.youtube_id }}/junkize"
