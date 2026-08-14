@@ -1,0 +1,54 @@
+{# One song, full frame, for judging a selection in series.
+
+   Unlike the inspector, this asks Shazam on sight: in this mode
+   identifying *is* the work, and the answer for this song was very
+   likely started while you were deciding on the previous one. #}
+<div id="inspector-body" class="workbench"
+     data-song-id="{{ song.youtube_id }}">
+  <div class="workbench-cover">
+    <img src="/songs/{{ song.youtube_id }}/cover" alt="" class="cover"
+         onerror="this.style.display='none'">
+  </div>
+
+  <div class="workbench-detail">
+    <p class="id">
+      {{ song.playlist_name }} · {{ song.duration }} ·
+      <span id="workbench-position"></span>
+    </p>
+    <h2 class="inspector-title">
+      {% if song.is_junk %}<span class="junk">⚠</span> {% endif %}
+      {{ song.label }}
+    </h2>
+
+    {# Fires immediately. If a prefetch already ran, the job is finished
+       and this first poll returns the answer at once. #}
+    <div id="shazam" class="job"
+         hx-post="/songs/{{ song.youtube_id }}/shazam"
+         hx-trigger="load"
+         hx-swap="outerHTML"></div>
+
+    {# Nothing is swapped in: advancing to the next song is the
+       confirmation, and painting the ordinary inspector first would
+       flash the wrong panel on the way there. #}
+    <form hx-post="/songs/{{ song.youtube_id }}/fix"
+          hx-target="#prefetch"
+          hx-swap="none">
+      <label>Artist
+        <input type="text" name="artist" value="{{ song.artist }}"></label>
+      <label>Title
+        <input type="text" name="title" value="{{ song.title }}"></label>
+      <label>Cover art URL
+        <input type="url" name="cover_art_url"
+               placeholder="leave empty to keep the current one"></label>
+      <p class="workbench-actions">
+        <button type="submit">Save &amp; next</button>
+        <button type="button" data-player-action="next">Skip</button>
+        <button type="button" data-workbench="exit">Done</button>
+      </p>
+    </form>
+
+    <p class="id">
+      enter save · → skip · ← back · space pause · tab video · esc leave
+    </p>
+  </div>
+</div>

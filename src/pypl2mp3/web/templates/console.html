@@ -51,6 +51,10 @@
          changing playlist — which rebuilds the nav — cannot take a
          running import off the screen. #}
       <div id="jobs"></div>
+
+      {# Sink for requests whose answer is not displayed: the
+         prefetches, and the workbench's save. #}
+      <div id="prefetch" hidden></div>
     </header>
 
     {# Refetched on a playlist change only, never on a keystroke: the

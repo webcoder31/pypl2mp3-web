@@ -455,6 +455,22 @@ def create_app(repository_path: Path) -> FastAPI:
             {"song": _summary_or_404(youtube_id)},
         )
 
+    @app.get("/fragments/workbench/{youtube_id}", response_class=HTMLResponse)
+    def workbench_fragment(
+        youtube_id: str, request: Request
+    ) -> HTMLResponse:
+        """The same song, laid out for judging a run of them.
+
+        A separate template rather than a flag on the inspector: this one
+        asks Shazam on sight, which the inspector deliberately does not.
+        """
+
+        return templates.TemplateResponse(
+            request,
+            "_workbench.html",
+            {"song": _summary_or_404(youtube_id)},
+        )
+
     @app.get("/fragments/shazam/{youtube_id}", response_class=HTMLResponse)
     def shazam_fragment(youtube_id: str, request: Request) -> HTMLResponse:
         """Where a running identification has got to."""

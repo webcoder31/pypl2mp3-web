@@ -71,6 +71,9 @@
 
     bar.classList.remove("idle");
     position.textContent = index + 1 + " / " + queue.length;
+
+    const inCard = document.getElementById("workbench-position");
+    if (inCard) inCard.textContent = position.textContent;
     videoLink.href = "https://youtu.be/" + current.id;
 
     // What is playing is already the inspector's whole job. What the bar
@@ -94,13 +97,40 @@
   // wipe what you were typing.
   let dirty = false;
 
+  // Workbench mode: same panel, full frame, one song at a time. The
+  // cursor that walks the selection and the cursor that plays it are the
+  // same one, so judging a song means hearing it.
+  function inWorkbench() {
+    return document.body.classList.contains("workbench-mode");
+  }
+
+  // How far ahead to identify. Shazam allows one call every 15s and the
+  // throttle is now genuinely exclusive, so these queue up and arrive in
+  // order. Three is about as far as a listener gets ahead of the worker.
+  const PREFETCH = 3;
+
+  function prefetch() {
+    if (!inWorkbench()) return;
+
+    for (let step = 1; step <= PREFETCH; step++) {
+      const entry = queue[(index + step + queue.length) % queue.length];
+      // Starting a job that is already running or finished is a no-op
+      // server-side, so this needs no bookkeeping of its own.
+      if (entry) window.htmx.ajax("POST", "/songs/" + entry.id + "/shazam", {
+        target: "#prefetch",
+        swap: "none",
+      });
+    }
+  }
+
   function inspect(id) {
     if (dirty) return;
 
     const shown = document.querySelector("#inspector [data-song-id]");
     if (shown && shown.dataset.songId === id) return;
 
-    window.htmx.ajax("GET", "/fragments/inspector/" + id, "#inspector");
+    const panel = inWorkbench() ? "/fragments/workbench/" : "/fragments/inspector/";
+    window.htmx.ajax("GET", panel + id, "#inspector");
   }
 
   function play(i) {
@@ -113,6 +143,7 @@
 
     // The song being judged is the song being heard: one cursor, not two.
     inspect(queue[index].id);
+    prefetch();
 
     audio.play().catch(function () {
       // Browsers refuse autoplay until the page has been interacted
@@ -138,6 +169,19 @@
     // A findIndex that missed returns -1, which play() would wrap round
     // to the last track. Start at the top instead.
     play(startAt > 0 ? startAt : 0);
+  }
+
+  function leaveWorkbench() {
+    if (!inWorkbench()) return;
+
+    document.body.classList.remove("workbench-mode");
+    // Back to the ordinary panel for the song still playing. The music
+    // does not stop: leaving a mode is not leaving the queue.
+    if (queue[index]) {
+      window.htmx.ajax(
+        "GET", "/fragments/inspector/" + queue[index].id, "#inspector"
+      );
+    }
   }
 
   function shuffled(entries) {
@@ -207,11 +251,15 @@
     if (queueButton) {
       const entries = queueFromRows();
       if (!entries.length) return;
-      setQueue(
-        queueButton.dataset.queueAction === "shuffle"
-          ? shuffled(entries)
-          : entries
-      );
+
+      const action = queueButton.dataset.queueAction;
+      if (action === "workbench") document.body.classList.add("workbench-mode");
+      setQueue(action === "shuffle" ? shuffled(entries) : entries);
+      return;
+    }
+
+    if (event.target.closest('[data-workbench="exit"]')) {
+      leaveWorkbench();
       return;
     }
 
@@ -270,7 +318,26 @@
           window.open(videoLink.href, "_blank", "noopener");
         }
         break;
+      case "Escape":
+        if (inWorkbench()) {
+          event.preventDefault();
+          leaveWorkbench();
+        }
+        break;
     }
+  });
+
+  // Enter saves and moves on. Allowed from inside a field, which the
+  // guard above would otherwise swallow: the fast path is type, correct,
+  // enter, without reaching for the mouse.
+  document.addEventListener("keydown", function (event) {
+    if (event.key !== "Enter" || !inWorkbench()) return;
+
+    const form = document.querySelector("#inspector form");
+    if (!form) return;
+
+    event.preventDefault();
+    form.requestSubmit();
   });
 
   // Anything typed in the inspector is unsaved work; stop following the
@@ -344,6 +411,19 @@
       .forEach(function (row) {
         row.hidden = needle && !plain(row.textContent).includes(needle);
       });
+  });
+
+  // A save in the workbench means "done with this one". Advancing is
+  // what makes the mode worth entering; stopping to admire the result
+  // would be the old one-page-per-song rhythm again.
+  document.body.addEventListener("htmx:afterRequest", function (event) {
+    if (!inWorkbench()) return;
+    if (!/\/fix$/.test(event.detail.requestConfig.path || "")) return;
+    if (event.detail.requestConfig.verb !== "post") return;
+    if (!event.detail.successful) return;
+
+    dirty = false;
+    move(1);
   });
 
   // Keep the address bar on the current selection so a reload restores

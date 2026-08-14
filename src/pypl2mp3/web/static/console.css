@@ -191,3 +191,25 @@ tr:hover .row-meta { opacity: 0.9; }
 .report-list li { padding: 0.2rem 0; border-bottom: 1px solid var(--dim);
                   font-size: 0.9em; }
 .report h3 { font-size: 0.9rem; margin: 0.8rem 0 0.2rem; }
+
+/* Workbench: the inspector, full frame */
+
+body.workbench-mode { grid-template-columns: 0 0 minmax(0, 1fr); }
+body.workbench-mode #nav,
+body.workbench-mode #list { display: none; }
+body.workbench-mode #inspector { border-left: none; padding: 1.5rem; }
+
+.workbench { display: flex; gap: 2rem; align-items: flex-start;
+             max-width: 60rem; margin: 0 auto; }
+.workbench-cover { flex: 0 0 18rem; }
+.workbench-cover .cover { width: 100%; }
+.workbench-detail { flex: 1; min-width: 0; }
+.workbench-detail .inspector-title { font-size: 1.4rem; }
+.workbench-detail input { max-width: 32rem; }
+.workbench-actions { display: flex; gap: 0.5rem; margin-top: 0.8rem; }
+.workbench-actions button[type="submit"] { font-weight: 700; }
+
+@media (max-width: 60rem) {
+  .workbench { flex-direction: column; }
+  .workbench-cover { flex: none; max-width: 14rem; }
+}
