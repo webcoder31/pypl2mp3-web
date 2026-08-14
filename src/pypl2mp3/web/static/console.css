@@ -99,55 +99,73 @@
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
   /* Surfaces differ by lightness, not by having a border drawn round
-     them. Two levels are enough: the page, and the things on it. */
-  --bg: #f6f7f8;
+     them. Two levels are enough: the page, and the things on it. Both
+     carry a trace of the accent's hue — a truly neutral grey reads as
+     unpainted rather than as a choice. */
+  --bg: #f3f6f6;
   --surface: #ffffff;
-  --sunken: #eef0f2;
-  --hover: rgba(16, 20, 26, 0.045);
-  --active: rgba(16, 20, 26, 0.085);
+  --sunken: #e8eded;
+  --hover: rgba(11, 92, 84, 0.055);
+  --active: rgba(11, 92, 84, 0.1);
 
-  --line: rgba(16, 20, 26, 0.09);
-  --line-strong: rgba(16, 20, 26, 0.17);
+  --line: rgba(16, 26, 26, 0.09);
+  --line-strong: rgba(16, 26, 26, 0.17);
 
-  --text: #16181c;
-  --text-2: #5b6169;
-  --text-3: #8b9199;
+  --text: #1a1f22;
+  --text-2: #576366;
+  --text-3: #879497;
 
-  --accent: #0d7d6f;
+  --accent: #0a8f7c;
   --accent-text: #ffffff;
-  --accent-soft: rgba(13, 125, 111, 0.12);
-  --junk: #a35a09;
-  --junk-soft: rgba(163, 90, 9, 0.13);
-  --ok: #17803d;
-  --bad: #b3261e;
+  --accent-soft: rgba(10, 143, 124, 0.13);
+  --junk: #b4610a;
+  --junk-soft: rgba(180, 97, 10, 0.13);
+  --ok: #167f45;
+  --bad: #bb2d2d;
+  --busy: #2f6fb0;
 
-  --shadow: 0 1px 2px rgba(16, 20, 26, 0.06);
+  /* A Shazam score is a judgement. Three bands, so the confidence
+     registers before the digits are read. */
+  --score-high: #167f45;
+  --score-mid: #b4610a;
+  --score-low: #bb2d2d;
+
+  --shadow: 0 1px 2px rgba(16, 26, 26, 0.07);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0e1013;
-    --surface: #16191e;
-    --sunken: #0a0c0f;
-    --hover: rgba(255, 255, 255, 0.055);
-    --active: rgba(255, 255, 255, 0.095);
+    --bg: #0d1214;
+    --surface: #141b1e;
+    --sunken: #090e10;
+    --hover: rgba(126, 214, 199, 0.06);
+    --active: rgba(126, 214, 199, 0.11);
 
-    --line: rgba(255, 255, 255, 0.075);
-    --line-strong: rgba(255, 255, 255, 0.16);
+    --line: rgba(160, 200, 200, 0.09);
+    --line-strong: rgba(160, 200, 200, 0.18);
 
-    --text: #e6e9ed;
-    --text-2: #99a1ab;
-    --text-3: #6b737d;
+    /* Softened deliberately. Near-white on near-black glares, and on a
+       listing of 900 rows every line is shouting. This ramp reads as
+       light grey with a trace of the page's hue, which is what a long
+       session wants. */
+    --text: #c3ccce;
+    --text-2: #8b9799;
+    --text-3: #66716f;
 
-    --accent: #3fbfae;
-    --accent-text: #06211d;
-    --accent-soft: rgba(63, 191, 174, 0.15);
-    --junk: #d99b3f;
-    --junk-soft: rgba(217, 155, 63, 0.14);
-    --ok: #4eab72;
-    --bad: #e4756c;
+    --accent: #46c9b1;
+    --accent-text: #04211c;
+    --accent-soft: rgba(70, 201, 177, 0.15);
+    --junk: #e0a24a;
+    --junk-soft: rgba(224, 162, 74, 0.14);
+    --ok: #5cba7d;
+    --bad: #e0817a;
+    --busy: #6ba8de;
 
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --score-high: #5cba7d;
+    --score-mid: #e0a24a;
+    --score-low: #e0817a;
+
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
   }
 }
 
@@ -353,7 +371,8 @@ a { color: var(--accent); text-decoration-thickness: 1px;
   font-size: var(--fs-xs);
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  color: var(--text-3);
+  color: var(--accent);
+  opacity: 0.75;
   font-weight: 600;
   margin: 0 0 0.35rem 0.5rem;
 }
@@ -441,7 +460,8 @@ tbody tr.is-junk { border-left-color: var(--junk); }
 tbody tr.is-junk .row-title { color: var(--junk); }
 tbody tr.playing { border-left-color: var(--accent);
                    background: var(--accent-soft); }
-tbody tr.playing .row-title { font-weight: 700; }
+tbody tr.playing .row-title { font-weight: 700; color: var(--accent); }
+tbody tr.playing td.num { color: var(--accent); }
 
 .id { font-family: var(--font-mono); font-size: 0.92em; }
 .junk { color: var(--junk); }
@@ -477,15 +497,18 @@ tbody tr.playing .row-title { font-weight: 700; }
 /* Shazam's answer sits above the form: it is what you came for, the
    form is only where you agree with it. */
 .proposal {
-  border: 1px solid var(--accent);
-  border-left-width: 2px;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--accent);
   border-radius: 2px;
   background: var(--accent-soft);
   padding: 0.5rem 0.65rem;
   margin: 0.6rem 0;
 }
-.proposal .job-new { color: var(--accent); font-size: var(--fs-xs);
-                     text-transform: uppercase; letter-spacing: 0.1em; }
+.score { font-size: var(--fs-xs); font-weight: 700;
+         text-transform: uppercase; letter-spacing: 0.1em; }
+.score-high { color: var(--score-high); }
+.score-mid { color: var(--score-mid); }
+.score-low { color: var(--score-low); }
 .proposal-value { font-weight: 600; margin: 0.2rem 0 0.5rem;
                   font-size: var(--fs-base); }
 
@@ -502,7 +525,8 @@ tbody tr.playing .row-title { font-weight: 700; }
              overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .job-item [data-dismiss-job] { margin-left: auto; color: var(--text-3);
                                padding: 0 0.35rem; }
-.job-running { color: var(--text-2); }
+.job-running { color: var(--busy); }
+.job-item .job-scope { color: var(--text-3); }
 .job-new { color: var(--ok); font-weight: 600; }
 .job-none { color: var(--text-3); }
 .job-error { color: var(--bad); }
@@ -603,10 +627,10 @@ tbody tr.playing .row-title { font-weight: 700; }
 #seek .track { position: absolute; left: 0; right: 0; height: 3px;
                background: var(--line-strong); }
 #seek .fill { position: absolute; left: 0; height: 3px; width: 0;
-              background: var(--text-3); }
+              background: var(--accent); opacity: 0.75; }
 #seek .head { position: absolute; width: 2px; height: 12px; left: 0;
               background: var(--accent); }
-#seek:hover .fill { background: var(--text-2); }
+#seek:hover .fill { opacity: 1; }
 #player.idle #seek { cursor: default; }
 #player.idle #seek .head { display: none; }
 

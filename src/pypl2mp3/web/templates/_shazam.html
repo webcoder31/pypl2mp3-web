@@ -11,8 +11,16 @@
     <span class="job-running">Listening…{{ tick }}</span>
   {% elif state == "completed" %}
     {% if result and result.matched %}
+      {# The score is a judgement, not a number: 92% and 54% call for
+         very different amounts of trust, and reading them as identical
+         grey text hides that. Coloured by band, so the confidence
+         registers before the digits are read. #}
+      {% set score = result.score | round | int %}
       <div class="proposal">
-        <span class="job-new">{{ result.score | round | int }}% match</span>
+        <span class="score
+          {%- if score >= 85 %} score-high
+          {%- elif score >= 60 %} score-mid
+          {%- else %} score-low{% endif %}">{{ score }}% match</span>
         <div class="proposal-value">{{ result.artist }} - {{ result.title }}</div>
         <button type="button"
                 data-shazam-artist="{{ result.artist }}"

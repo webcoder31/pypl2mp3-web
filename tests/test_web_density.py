@@ -347,3 +347,82 @@ async def test_type_sizes_come_from_a_scale(tmp_path):
     assert literal <= scale, (
         f"sizes written outside the scale: {sorted(literal - scale)}"
     )
+
+
+async def test_dark_text_is_not_near_white(tmp_path):
+    """Near-white on near-black glares, and on 900 rows every line is
+    shouting. The ramp is deliberately softened."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    dark = css[css.index("prefers-color-scheme: dark"):]
+    value = re.search(r"--text:\s*#([0-9a-fA-F]{6})", dark).group(1)
+    channels = [int(value[i:i + 2], 16) for i in (0, 2, 4)]
+
+    assert max(channels) <= 210, (
+        f"#{value} is {max(channels)}/255 at its brightest — that is glare, "
+        "not text"
+    )
+    # And still readable: softening must not become mud.
+    assert min(channels) >= 150, f"#{value} is too dim to read"
+
+
+async def test_a_shazam_score_is_coloured_by_confidence(tmp_path, monkeypatch):
+    """92% and 54% call for very different amounts of trust. Rendering
+    them as identical grey text hides that."""
+
+    async def fake(self, shazam_match_threshold=50, **kwargs):
+        self.shazam_artist = "THE PHARCYDE"
+        self.shazam_title = "Passin Me By"
+        self.shazam_cover_art_url = ""
+        self.shazam_match_score = 91.0
+
+    monkeypatch.setattr("pypl2mp3.libs.song.SongModel.shazam_song", fake)
+    _make_song(tmp_path, "UNKNOWN", "Something", "aaaaaaaaaaa", junk=True)
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+        await client.post("/songs/aaaaaaaaaaa/shazam", headers=HX)
+
+        for _ in range(60):
+            body = (
+                await client.get("/fragments/shazam/aaaaaaaaaaa", headers=HX)
+            ).text
+            if "Listening" not in body:
+                break
+
+    assert "score-high" in body, body
+
+    for band in ("--score-high", "--score-mid", "--score-low"):
+        assert band in css, band
+
+    dark = css[css.index("prefers-color-scheme: dark"):]
+    for band in ("--score-high", "--score-mid", "--score-low"):
+        assert band in dark, f"{band} has no dark value"
+
+    # Three bands that resolve to one colour would be three names for
+    # nothing.
+    values = {
+        band: re.search(band + r":\s*([^;]+)", dark).group(1).strip()
+        for band in ("--score-high", "--score-mid", "--score-low")
+    }
+    assert len(set(values.values())) == 3, values
+
+
+async def test_colour_marks_state_rather_than_decorating(tmp_path):
+    """Every hue in the file has to answer for itself."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    # The one element that moves constantly carries the accent.
+    fill = re.search(r"#seek \.fill \{([^}]*)\}", css).group(1)
+    assert "var(--accent)" in fill, "the progress fill is still grey"
+
+    # A running job is a state, not dimmed text.
+    assert ".job-running { color: var(--busy)" in css
+
+    # The playing row is named by colour, not only by a border.
+    assert "tbody tr.playing .row-title { font-weight: 700; " \
+           "color: var(--accent); }" in css
