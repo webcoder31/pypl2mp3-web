@@ -191,6 +191,31 @@ sont manuelles depuis le début.
 | 4 | L'établi (+ verrou Shazam `ff39232`) | `46507d3` |
 | 5 | Nettoyage | ci-dessous |
 
+## Dettes traitées
+
+### Le parcours du dépôt (point 2) — `fe8f2c0`, `909f942`
+
+Cache des morceaux parsés dans `repository.py`, clé = chemin, validation
+= (mtime, taille). Mesuré sur les 928 morceaux : console 1,46 s → 90 ms,
+frappe dans la recherche 1,4 s → 65-100 ms. Coût : 66 Mo.
+
+Angle mort assumé et testé : une réécriture qui ne change ni la date ni
+la taille est invisible.
+
+### Le double parsing (point 3) — `256c8d7`
+
+Les six commandes CLI demandent les modèles, plus les chemins.
+`get_repository_song_files` supprimée : plus aucun appelant, et un
+helper qui coûte le double en le disant dans sa propre docstring est un
+piège.
+
+`find_song_file` globe directement — 6 ms contre 41 ms à chaud, sur le
+chemin de chaque clic. Sa docstring promettait déjà d'éviter de
+construire un modèle par candidat, « ce constructeur réécrit l'en-tête
+ID3 de tout fichier sans tag YouTube ID » ; le helper qu'elle appelait
+faisait exactement ça. Le danger était réel, il est maintenant écarté
+pour de bon.
+
 ## Reste à faire
 
 ### 4. La passe « look »
