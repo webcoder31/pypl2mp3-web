@@ -166,3 +166,5 @@ tr:hover .row-meta { opacity: 0.9; }
 #artist-filter { width: 100%; margin: 0 0 0.3rem; font-size: 0.85em; }
 #artist-list { max-height: none; }
 #artist-list li[hidden] { display: none; }
+#nav .scope { margin: 0.1rem 0.3rem 0.4rem; font-size: 0.8em; opacity: 0.65; }
+#nav .scope button { all: unset; cursor: pointer; text-decoration: underline; }

@@ -24,8 +24,22 @@
 {# Junk songs are left out of this list: their "artist" is whatever
    YouTube called the channel, which is the noise a preset list exists to
    avoid. Nearly three quarters of these have a single song, so the whole
-   list is long by nature — hence the box that narrows it. #}
+   list is long by nature — hence the box that narrows it.
+
+   The list covers the selected playlist, not the repository — otherwise
+   picking an artist from elsewhere would filter to nothing. That scope
+   has to be stated: a bare count of 420 reads as "every artist", and an
+   artist held only by another playlist reads as missing. #}
+{% set current_playlist =
+     (summaries | selectattr("playlist_id", "equalto", playlist) | first)
+     if playlist else none %}
 <h2>Artists — {{ artists | length }}</h2>
+{% if current_playlist %}
+  <p class="scope">
+    in {{ current_playlist.name }} ·
+    <button type="button" data-playlist="">all playlists</button>
+  </p>
+{% endif %}
 <input type="search" id="artist-filter" placeholder="Narrow this list"
        autocomplete="off">
 <ul id="artist-list">

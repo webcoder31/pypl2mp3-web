@@ -408,3 +408,94 @@ async def test_the_artist_filter_box_ignores_accents(tmp_path):
     assert "normalize(\"NFD\")" in script, (
         "the artist filter box would miss every accented name"
     )
+
+
+async def test_the_presets_say_when_they_only_cover_one_playlist(tmp_path):
+    """A bare count of 420 reads as "every artist".
+
+    The presets are scoped to the selected playlist — they have to be,
+    or picking an artist held elsewhere would filter to nothing. An
+    artist absent from the current playlist then reads as missing, which
+    is exactly how this was reported.
+    """
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+    _make_song(tmp_path, "THE CURE", "A Forest", "bbbbbbbbbbb", playlist=OTHER)
+
+    async with _client(create_app(tmp_path)) as client:
+        whole = (await client.get("/")).text
+        scoped = (
+            await client.get("/?playlist=PL0000000000000000000000000000001")
+        ).text
+
+    assert re.findall(r'data-artist="([^"]*)"', whole) == ["IAMX", "THE CURE"]
+    assert re.findall(r'data-artist="([^"]*)"', scoped) == ["IAMX"]
+
+    note = re.search(r'<p class="scope">(.*?)</p>', scoped, re.DOTALL)
+    assert note, "nothing says the presets cover one playlist"
+    assert "Owner - Alpha" in note.group(1), "the note does not name it"
+    assert "all playlists" in note.group(1), "no way back to everything"
+
+    assert 'class="scope"' not in whole, (
+        "the unscoped nav claims a scope it does not have"
+    )
+
+
+async def test_the_nav_refetches_when_the_playlist_changes(tmp_path):
+    """Otherwise it keeps offering artists the listing cannot show, and
+    keeps the old playlist highlighted as current."""
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        body = (await client.get("/")).text
+
+    nav = re.search(r'<nav[^>]*id="nav"[^>]*>', body, re.DOTALL)
+    assert nav, "no nav element"
+    assert 'hx-get="/fragments/nav"' in nav.group(0)
+    assert 'hx-trigger="playlistChanged from:body"' in nav.group(0)
+    assert 'hx-include="#filters"' in nav.group(0), (
+        "the refetch would lose the playlist it is meant to scope to"
+    )
+
+
+async def test_only_a_playlist_change_rebuilds_the_nav(tmp_path):
+    """Rebuilding it costs a pass over the songs; a keystroke must not."""
+
+    async with _client(create_app(tmp_path)) as client:
+        script = (await client.get("/static/console.js")).text
+        page = (await client.get("/")).text
+
+    assert 'dispatchEvent(new CustomEvent("playlistChanged"))' in script
+
+    form = re.search(r'<form[^>]*id="filters"[^>]*>', page, re.DOTALL)
+    assert "playlistChanged" not in form.group(0), (
+        "every keystroke would pay for a nav rebuild"
+    )
+
+
+async def test_changing_playlist_clears_the_artist_preset(tmp_path):
+    """The artist may not exist in the new playlist; keeping it would
+    filter to nothing and look like an empty playlist."""
+
+    async with _client(create_app(tmp_path)) as client:
+        script = (await client.get("/static/console.js")).text
+
+    playlist_branch = script[
+        script.index("button[data-playlist]") : script.index(
+            "button[data-artist]"
+        )
+    ]
+    assert 'artistField.value = ""' in playlist_branch
+
+
+async def test_the_nav_fragment_is_a_fragment(tmp_path):
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        fragment = (await client.get("/fragments/nav")).text
+
+    for tag in ("<html", "<body", "<head", "<audio"):
+        assert tag not in fragment, tag
+    assert 'data-artist="IAMX"' in fragment
+    assert 'data-playlist=""' in fragment, "no way back to everything"

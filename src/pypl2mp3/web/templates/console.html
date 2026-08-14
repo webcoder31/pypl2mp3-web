@@ -45,7 +45,13 @@
       </span>
     </header>
 
-    <nav id="nav" data-swap-region>{% include "_nav.html" %}</nav>
+    {# Refetched on a playlist change only, never on a keystroke: the
+       presets are scoped to the playlist, and rebuilding them costs a
+       pass over its songs. #}
+    <nav id="nav" data-swap-region
+         hx-get="/fragments/nav"
+         hx-trigger="playlistChanged from:body"
+         hx-include="#filters">{% include "_nav.html" %}</nav>
 
     {# songsChanged fires when a save changed what the repository holds.
        The listing refetches with the current filters, because a fixed

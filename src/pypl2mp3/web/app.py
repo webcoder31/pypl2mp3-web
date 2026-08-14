@@ -377,6 +377,34 @@ def create_app(repository_path: Path) -> FastAPI:
             },
         )
 
+    @app.get("/fragments/nav", response_class=HTMLResponse)
+    def nav_fragment(
+        request: Request,
+        playlist: str = "",
+        artist: str = "",
+        match: float = DEFAULT_MATCH_THRESHOLD,
+    ) -> HTMLResponse:
+        """Playlists and artist presets, for the selected scope.
+
+        Refetched when the playlist changes: the presets cover that
+        playlist, so leaving the old ones on screen would offer artists
+        the listing can no longer show.
+        """
+
+        summaries = list_playlists(app.state.repository_path)
+
+        return templates.TemplateResponse(
+            request,
+            "_nav.html",
+            {
+                "summaries": summaries,
+                "artists": list_artists(_selection(playlist, "", 0, match)),
+                "playlist": playlist,
+                "artist": artist,
+                "total_songs": sum(s.total_songs for s in summaries),
+            },
+        )
+
     @app.get("/fragments/list", response_class=HTMLResponse)
     def list_fragment(
         request: Request,

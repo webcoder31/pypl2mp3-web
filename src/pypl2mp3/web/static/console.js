@@ -175,7 +175,13 @@
     const navButton = event.target.closest("#nav button[data-playlist]");
     if (navButton) {
       playlistField.value = navButton.dataset.playlist;
+      // Changing playlist changes which artists exist, and which entry
+      // is current. The nav has to be rebuilt; the search box must not
+      // rebuild it, which is why this is an event and not a trigger on
+      // the form.
+      artistField.value = "";
       filters.requestSubmit();
+      document.body.dispatchEvent(new CustomEvent("playlistChanged"));
       return;
     }
 
