@@ -79,6 +79,20 @@ def create_app(repository_path: Path) -> FastAPI:
 
         return dict(sorted(counts.items(), key=lambda kv: -kv[1]))
 
+    def _playlist_name(playlist_id: str) -> str:
+        """The playlist's display name, without counting its songs.
+
+        One directory listing. list_playlists would do, but it globs
+        every playlist's MP3s to count them, and this runs once a second
+        while a job polls.
+        """
+
+        # [[] and []] match literal brackets in fnmatch.
+        for folder in app.state.repository_path.glob(f"*[[]{playlist_id}[]]"):
+            return folder.name.replace(f"[{playlist_id}]", "").strip()
+
+        return playlist_id
+
     def _job_fragment(
         request, job_id, playlist_id, state, result, error, elapsed=None,
         current=None
@@ -101,6 +115,7 @@ def create_app(repository_path: Path) -> FastAPI:
             {
                 "job_id": job_id,
                 "playlist_id": playlist_id,
+                "playlist_name": _playlist_name(playlist_id),
                 # Two job kinds can target the same playlist. Without the
                 # kind in the element id, a check and an import would fight
                 # over one DOM node and swap each other away.
@@ -560,7 +575,13 @@ def create_app(repository_path: Path) -> FastAPI:
 
         return templates.TemplateResponse(
             request,
-            "report.html",
+            # In the console this lands in the inspector, so it must not
+            # bring a whole document with it.
+            (
+                "_report.html"
+                if request.headers.get("HX-Request") is not None
+                else "report.html"
+            ),
             {
                 "job_id": job_id,
                 "state": job.state.value,

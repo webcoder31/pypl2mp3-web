@@ -17,7 +17,9 @@
     {# One form holds the whole query. Everything that narrows the listing
        — the search box, the junk flag, the playlist picked in the nav —
        is a field of it, so the three can never drift apart. #}
-    <header id="header" data-swap-region>
+    {# Deliberately not a swap region: it holds the job ribbon, and a
+       running import must survive everything else on the page. #}
+    <header id="header">
       <strong>PYPL2MP3</strong>
 
       {# keyup filters as you type; `changed` keeps arrow keys and modifiers
@@ -43,6 +45,12 @@
       <span class="id" id="counts">
         {{ total_songs }} songs · {{ total_junk }} junk
       </span>
+
+      {# Started jobs are appended here and poll themselves. They live in
+         the header rather than beside the button that started them, so
+         changing playlist — which rebuilds the nav — cannot take a
+         running import off the screen. #}
+      <div id="jobs"></div>
     </header>
 
     {# Refetched on a playlist change only, never on a keystroke: the

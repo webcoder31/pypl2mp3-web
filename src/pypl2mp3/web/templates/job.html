@@ -1,7 +1,18 @@
-<div id="job-{{ kind }}-{{ playlist_id }}" class="job"
+{# One job, wherever it is shown. Self-polling: `polling` is false for
+   every terminal state, so the returned fragment carries no hx-trigger
+   and the browser stops on its own.
+
+   The id is stable per kind and playlist. In the console's ribbon that
+   is what lets a second click replace the entry rather than stack a
+   duplicate beside it. #}
+<div id="job-{{ kind }}-{{ playlist_id }}" class="job job-item"
      {% if polling %}hx-get="/jobs/{{ job_id }}"
      hx-trigger="every 1s"
      hx-swap="outerHTML"{% endif %}>
+  {% if playlist_name %}
+    {# The ribbon is global: a job has to say which playlist it is for. #}
+    <span class="job-scope">{{ playlist_name }}</span>
+  {% endif %}
   {% if state in ("pending", "running") %}
     {# Name what is actually happening. A hardcoded "Checking…" read as a
        hang through a five-minute import. #}
@@ -19,7 +30,10 @@
         <span class="job-error">{{ result.failed | length }} failed</span>
       {% endif %}
       {# Counts fit inline; which songs and why does not. #}
-      <a href="/jobs/{{ job_id }}/report">see report</a>
+      <button type="button"
+              hx-get="/jobs/{{ job_id }}/report"
+              hx-target="#inspector"
+              hx-swap="innerHTML">see report</button>
     {% elif result and result.missing %}
       <span class="job-new">{{ result.missing | length }} new song(s)</span>
     {% else %}
@@ -32,5 +46,8 @@
     <span class="job-error">{{ busy_label }} cancelled</span>
   {% elif state == "busy" %}
     <span class="job-running">Already running…{{ tick }}</span>
+  {% endif %}
+  {% if not polling %}
+    <button type="button" data-dismiss-job title="Dismiss">×</button>
   {% endif %}
 </div>

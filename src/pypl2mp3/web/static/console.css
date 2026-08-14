@@ -17,7 +17,7 @@ body {
   margin: 0;
   height: 100vh;
   display: grid;
-  grid-template-columns: 14rem minmax(0, 1fr) 22rem;
+  grid-template-columns: 18rem minmax(0, 1fr) 26rem;
   grid-template-rows: auto minmax(0, 1fr) auto;
   grid-template-areas:
     "header header header"
@@ -132,7 +132,7 @@ td.num { text-align: right; font-variant-numeric: tabular-nums;
   margin-top: 0.1rem;
 }
 .row-meta .playlist { overflow: hidden; text-overflow: ellipsis;
-                      white-space: nowrap; max-width: 22rem; }
+                      white-space: nowrap; max-width: 26rem; }
 .row-meta button, .row-meta a { font-size: inherit; }
 tr:hover .row-meta { opacity: 0.9; }
 
@@ -168,3 +168,26 @@ tr:hover .row-meta { opacity: 0.9; }
 #artist-list li[hidden] { display: none; }
 #nav .scope { margin: 0.1rem 0.3rem 0.4rem; font-size: 0.8em; opacity: 0.65; }
 #nav .scope button { all: unset; cursor: pointer; text-decoration: underline; }
+
+/* Job ribbon */
+
+#header { flex-wrap: wrap; }
+#jobs { flex-basis: 100%; display: flex; flex-direction: column; gap: 0.2rem; }
+#jobs:empty { display: none; }
+.job-item { display: flex; align-items: baseline; gap: 0.5rem;
+            padding: 0.15rem 0; }
+.job-scope { opacity: 0.55; font-size: 0.85em; max-width: 16rem;
+             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.job-item [data-dismiss-job] { all: unset; cursor: pointer; opacity: 0.5;
+                               padding: 0 0.3rem; }
+.job-item [data-dismiss-job]:hover { opacity: 1; }
+#nav .playlist-actions { margin: 0.2rem 0.3rem 0.8rem; display: flex;
+                         flex-wrap: wrap; gap: 0.3rem; }
+#nav .playlist-actions button { font-size: 0.8em; }
+
+/* Report, in the inspector */
+
+.report-list { list-style: none; padding: 0; margin: 0.3rem 0; }
+.report-list li { padding: 0.2rem 0; border-bottom: 1px solid var(--dim);
+                  font-size: 0.9em; }
+.report h3 { font-size: 0.9rem; margin: 0.8rem 0 0.2rem; }

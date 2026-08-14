@@ -1,6 +1,10 @@
 {# Playlist and artist pickers. Each entry writes into the filter form's
    hidden field and resubmits it, so the nav and the search box always
    describe the same query. #}
+{% set current_playlist =
+     (summaries | selectattr("playlist_id", "equalto", playlist) | first)
+     if playlist else none %}
+
 <ul>
   <li class="{% if not playlist %}current{% endif %}">
     <button type="button" data-playlist="">All</button>
@@ -21,6 +25,24 @@
   {% endfor %}
 </ul>
 
+{% if current_playlist %}
+  {# Both jobs land in the header ribbon, not here: this block is rebuilt
+     whenever the playlist changes, and a running import must not vanish
+     with it. #}
+  <p class="playlist-actions">
+    <button type="button"
+            hx-post="/playlists/{{ playlist }}/check"
+            hx-target="#jobs"
+            hx-swap="beforeend">Check for new songs</button>
+    <button type="button"
+            hx-post="/playlists/{{ playlist }}/import"
+            hx-target="#jobs"
+            hx-swap="beforeend"
+            hx-confirm="Download every song this playlist has and you do not? This can take a long time."
+    >Import new songs</button>
+  </p>
+{% endif %}
+
 {# Junk songs are left out of this list: their "artist" is whatever
    YouTube called the channel, which is the noise a preset list exists to
    avoid. Nearly three quarters of these have a single song, so the whole
@@ -30,9 +52,6 @@
    picking an artist from elsewhere would filter to nothing. That scope
    has to be stated: a bare count of 420 reads as "every artist", and an
    artist held only by another playlist reads as missing. #}
-{% set current_playlist =
-     (summaries | selectattr("playlist_id", "equalto", playlist) | first)
-     if playlist else none %}
 <h2>Artists — {{ artists | length }}</h2>
 {% if current_playlist %}
   <p class="scope">

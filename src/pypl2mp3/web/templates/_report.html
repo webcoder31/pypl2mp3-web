@@ -1,0 +1,68 @@
+{# What a run actually did, song by song. Shown in the inspector rather
+   than on a page of its own: the counts in the ribbon fit inline, which
+   songs arrived and which did not never will. #}
+<div class="report">
+  <p class="id">{{ job_id }} · {{ state }} · {{ elapsed }}s</p>
+
+  {% if error %}
+    <p class="job-error">The run itself failed: {{ error }}</p>
+  {% endif %}
+
+  {% if result.total_remote is defined %}
+    <p>
+      {{ result.total_remote }} in the playlist,
+      {{ result.already_local }} already here,
+      {{ result.imported | length }} imported,
+      {{ result.failed | length }} failed.
+    </p>
+  {% endif %}
+
+  {% if result.imported %}
+    <h3>Imported — {{ result.imported | length }}</h3>
+    <ul class="report-list">
+      {% for song in result.imported %}
+        <li>
+          {% if song.is_junk %}<span class="junk">⚠</span> {% endif %}
+          {{ song.artist }} - {{ song.title }}
+          <span class="id">
+            {% if song.score %}{{ song.score | round | int }}%{% else %}—{% endif %}
+          </span>
+          {# Imported without a Shazam match: on disk, but still junk and
+             worth a trip through the inspector. #}
+          {% if song.is_junk %}
+            <button type="button"
+                    hx-get="/fragments/inspector/{{ song.youtube_id }}"
+                    hx-target="#inspector"
+                    hx-swap="innerHTML">Fix</button>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  {% if result.failed %}
+    <h3>Failed — {{ result.failed | length }}</h3>
+    {% if result.failed_by_reason %}
+      <p>
+        {% for reason, count in result.failed_by_reason.items() %}
+          {{ count }} {{ reason }}{% if not loop.last %}, {% endif %}
+        {% endfor %}
+      </p>
+    {% endif %}
+    <ul class="report-list">
+      {% for item in result.failed %}
+        <li>
+          <a href="https://youtu.be/{{ item.youtube_id }}"
+             target="_blank" rel="noopener noreferrer"
+            >{{ item.youtube_id }}</a>
+          <span class="job-error">{{ item.reason }}</span>
+          <span class="id">{{ item.issue }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  {% if not result.imported and not result.failed %}
+    <p class="job-none">Nothing to report — no song needed importing.</p>
+  {% endif %}
+</div>

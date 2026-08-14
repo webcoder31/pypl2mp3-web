@@ -299,6 +299,30 @@
     dirty = true;
   });
 
+  // The ribbon appends, so starting the same job twice would stack two
+  // elements sharing one id. Keep the newest: it is at least as fresh,
+  // and a finished entry must not shadow a fresh run of the same job.
+  const jobs = document.getElementById("jobs");
+  if (jobs) {
+    document.body.addEventListener("htmx:afterSwap", function (event) {
+      if (event.target !== jobs) return;
+
+      const seen = new Set();
+      Array.from(jobs.children)
+        .reverse()
+        .forEach(function (entry) {
+          if (!entry.id) return;
+          if (seen.has(entry.id)) entry.remove();
+          else seen.add(entry.id);
+        });
+    });
+  }
+
+  document.addEventListener("click", function (event) {
+    const dismiss = event.target.closest("[data-dismiss-job]");
+    if (dismiss) dismiss.closest(".job-item").remove();
+  });
+
   // 450 artists, nearly three quarters of them with a single song. The
   // list has to be complete to be a preset list, so it needs a way to
   // be narrowed. Purely local: the names are already in the page.
