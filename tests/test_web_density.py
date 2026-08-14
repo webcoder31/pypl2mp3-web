@@ -270,11 +270,22 @@ async def test_every_control_is_drawn_by_the_stylesheet(tmp_path):
             (await client.get("/fragments/workbench/aaaaaaaaaaa")).text,
         ]
 
-    # Native appearance has to be switched off explicitly; without this
-    # the platform still draws the widget under our paint.
-    assert css.count("appearance: none") >= 2, (
-        "buttons and text inputs both need the platform chrome removed"
-    )
+    def block(selector):
+        found = re.search(re.escape(selector) + r"\s*\{(.*?)\n\}",
+                          css, re.DOTALL)
+        assert found, f"no rule for {selector}"
+        return found.group(1)
+
+    # Native appearance has to be switched off in each rule that paints a
+    # widget; the platform otherwise draws its own under ours. Counting
+    # occurrences across the file is not enough — one rule can hold both
+    # the prefixed and unprefixed form while another holds neither.
+    for selector in ("button",
+                     'input[type="search"], input[type="text"], '
+                     'input[type="url"]'):
+        assert "appearance: none" in block(selector), (
+            f"{selector} still wears the platform's chrome"
+        )
 
     # Every input type the templates actually use must be named.
     used = set()
@@ -283,9 +294,16 @@ async def test_every_control_is_drawn_by_the_stylesheet(tmp_path):
     used.discard("hidden")
 
     for kind in sorted(used):
-        assert f'input[type="{kind}"]' in css or (
-            kind == "checkbox" and "accent-color" in css
-        ), f"<input type={kind}> is left to the browser"
+        assert f'input[type="{kind}"]' in css, (
+            f"<input type={kind}> is left to the browser"
+        )
+
+    # A checkbox cannot be repainted; accent-color is the only handle on
+    # it, so naming the selector without it changes nothing.
+    if "checkbox" in used:
+        assert "accent-color" in block('input[type="checkbox"]'), (
+            "the checkbox keeps the platform's own colour"
+        )
 
     # And the states a control needs to feel like a control.
     for rule in ("button:hover", "button:active", ":focus-visible"):
