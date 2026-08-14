@@ -151,7 +151,7 @@ mesuré est chiffré, ce qui est un choix est motivé.
 
 ## Dettes ouvertes par ce qui est déjà livré
 
-### 1. La recherche vivante relance un parcours complet à chaque frappe
+### 1. (traité) La recherche vivante relançait un parcours à chaque frappe
 
 **Mesuré :** 1,4 s par parcours sur 927 morceaux, relancé à chaque pause
 de 300 ms dans la frappe. Le contrôle d'une empreinte du dépôt (nombre de
@@ -165,14 +165,7 @@ filtrage flou de `repository.py`, qui dériverait alors du CLI.
 
 **Débloque aussi :** le point 2.
 
-### 2. Les présélections d'artistes vieillissent après une correction
-
-`#nav` n'est pas rafraîchi par `songsChanged` : un morceau réparé
-n'apparaît sous son artiste qu'au rechargement de la page. Le rafraîchir
-coûterait 1,4 s à chaque sauvegarde — inacceptable pendant une série de
-corrections. Bloqué par le point 1.
-
-### 3. Aucune page n'a jamais été rendue par un moteur de navigateur
+### 2. Aucune page n'a jamais été rendue par un moteur de navigateur
 
 Tout le comportement JavaScript — suivi de l'inspecteur, garde sur la
 saisie non enregistrée, aperçu du suivant, sens de lecture, filtre de la
@@ -218,24 +211,18 @@ pour de bon.
 
 ## Reste à faire
 
-### 4. La passe « look »
+### 3. La passe « look »
 
 Décidée avec l'utilisateur : après l'ergonomie. Points déjà relevés —
 hauteur des lignes trop grande sur les titres longs, durée affichée
 `00:06:17` là où `6:17` suffit.
 
-### 5. Le CLI n'utilise pas `get_repository_songs`
-
-Les commandes CLI passent encore par `get_repository_song_files` et
-reconstruisent un `SongModel` par chemin. Le même gain d'environ 50 %
-qu'a eu la couche web les attend. Hors périmètre web.
-
-### 6. Le mode interactif de `import -p`
+### 4. Le mode interactif de `import -p`
 
 Seul cas qui justifierait un `WebInteraction` : le port `InteractionPort`
 existe, la console ne s'en sert pas.
 
-### 7. Une seule page subsiste
+### 5. Une seule page subsiste
 
 `report.html`, servie uniquement aux requêtes non-HTMX de
 `/jobs/{id}/report`. Une URL de compte rendu mise en favori doit
