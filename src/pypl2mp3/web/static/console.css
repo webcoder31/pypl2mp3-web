@@ -1,6 +1,6 @@
 /* The console's whole appearance.
  *
- * Two rules govern this file.
+ * Three rules govern this file.
  *
  * 1. #player is a grid area of its own, so no fragment swap can ever
  *    contain the <audio> element. A swap that did would recreate it and
@@ -10,6 +10,12 @@
  *    below, never a rule and never a second template. That is what makes
  *    the switch one attribute on <html> instead of a fork through the
  *    markup, the routes and the tests.
+ *
+ * 3. Every control is drawn here. A page that leaves buttons, inputs and
+ *    checkboxes to the browser gets the browser's chrome — bevels,
+ *    gradients, its own corner radius, its own focus ring — and no
+ *    amount of layout work rescues it. This file's first version styled
+ *    three controls out of nineteen and looked exactly like what it was.
  *
  * No web fonts: the console must not reach a host it does not serve, and
  * a test enforces it. The system stack, used deliberately.
@@ -25,89 +31,127 @@
    flash one density on its way to the other. */
 :root, :root[data-density="comfortable"] {
   /* Comfortable — the default. Two lines a song, room to click. */
-  --pane-nav: 17rem;
-  --pane-inspector: 25rem;
+  --pane-nav: 16.5rem;
+  --pane-inspector: 24rem;
 
-  --row-pad-y: 0.45rem;
-  --row-font: 0.95rem;
+  --row-pad-y: 0.5rem;
+  --row-font: var(--fs-base);
   --row-meta-display: block;
-  --row-meta-size: 0.78rem;
+  --row-meta-size: var(--fs-xs);
   --row-nowrap: normal;
   --row-overflow: visible;
 
-  --nav-row-pad: 0.28rem 0.35rem;
-  --nav-font: 0.9rem;
-  --nav-gap: 1rem;
+  --nav-row-pad: 0.3rem 0.45rem;
+  --nav-font: var(--fs-md);
+  --nav-gap: 1.15rem;
 
-  --cover-max: 100%;
-  --field-pad: 0.35rem 0.5rem;
+  --btn-pad: 0.3rem 0.6rem;
+  --field-pad: 0.38rem 0.55rem;
   --pane-pad: 0.9rem;
 
-  --toolbar-pad: 0.5rem 0.75rem;
+  --toolbar-pad: 0.5rem 0.85rem;
   --timeline-basis: 100%;
   --timeline-order: 9;
 }
 
 :root[data-density="compact"] {
   /* One line a song. On 900 songs this is 16 rows a screen instead of 7. */
-  --pane-nav: 14.5rem;
-  --pane-inspector: 22rem;
+  --pane-nav: 14rem;
+  --pane-inspector: 21rem;
 
-  --row-pad-y: 0.12rem;
-  --row-font: 0.85rem;
+  --row-pad-y: 0.14rem;
+  --row-font: var(--fs-sm);
   --row-meta-display: inline;
-  --row-meta-size: 0.8rem;
+  --row-meta-size: var(--fs-sm);
   --row-nowrap: nowrap;
   --row-overflow: hidden;
 
-  --nav-row-pad: 0.05rem 0.3rem;
-  --nav-font: 0.82rem;
-  --nav-gap: 0.6rem;
+  --nav-row-pad: 0.08rem 0.4rem;
+  --nav-font: var(--fs-sm);
+  --nav-gap: 0.7rem;
 
-  --cover-max: 100%;
-  --field-pad: 0.15rem 0.4rem;
-  --pane-pad: 0.5rem;
+  --btn-pad: 0.12rem 0.45rem;
+  --field-pad: 0.2rem 0.45rem;
+  --pane-pad: 0.6rem;
 
-  --toolbar-pad: 0.25rem 0.6rem;
+  --toolbar-pad: 0.3rem 0.7rem;
   --timeline-basis: auto;
   --timeline-order: 0;
 }
 
 /* ------------------------------------------------------------------
-   Palette — follows the system, both densities
+   Scale and palette
    ------------------------------------------------------------------ */
 
 :root {
   color-scheme: light dark;
-  --line: rgba(127, 127, 127, 0.3);
-  --dim: rgba(127, 127, 127, 0.09);
-  --accent: #0f766e;
-  --accent-soft: rgba(15, 118, 110, 0.12);
-  --junk: #a4530b;
-  --junk-soft: rgba(164, 83, 11, 0.12);
-  --ok: #0a7d3f;
-  --bad: #b00020;
+
+  /* Six steps. The first version had twelve arbitrary sizes, which is
+     not a scale — it is noise, and it reads as carelessness. */
+  --fs-xs: 0.6875rem;
+  --fs-sm: 0.75rem;
+  --fs-md: 0.8125rem;
+  --fs-base: 0.875rem;
+  --fs-lg: 1.0625rem;
+  --fs-xl: 1.375rem;
+
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Surfaces differ by lightness, not by having a border drawn round
+     them. Two levels are enough: the page, and the things on it. */
+  --bg: #f6f7f8;
+  --surface: #ffffff;
+  --sunken: #eef0f2;
+  --hover: rgba(16, 20, 26, 0.045);
+  --active: rgba(16, 20, 26, 0.085);
+
+  --line: rgba(16, 20, 26, 0.09);
+  --line-strong: rgba(16, 20, 26, 0.17);
+
+  --text: #16181c;
+  --text-2: #5b6169;
+  --text-3: #8b9199;
+
+  --accent: #0d7d6f;
+  --accent-text: #ffffff;
+  --accent-soft: rgba(13, 125, 111, 0.12);
+  --junk: #a35a09;
+  --junk-soft: rgba(163, 90, 9, 0.13);
+  --ok: #17803d;
+  --bad: #b3261e;
+
+  --shadow: 0 1px 2px rgba(16, 20, 26, 0.06);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --line: rgba(255, 255, 255, 0.15);
-    --dim: rgba(255, 255, 255, 0.035);
-    --accent: #4db6a8;
-    --accent-soft: rgba(77, 182, 168, 0.16);
-    --junk: #d59b3e;
-    --junk-soft: rgba(213, 155, 62, 0.14);
-    --ok: #4ea96f;
-    --bad: #e07070;
+    --bg: #0e1013;
+    --surface: #16191e;
+    --sunken: #0a0c0f;
+    --hover: rgba(255, 255, 255, 0.055);
+    --active: rgba(255, 255, 255, 0.095);
+
+    --line: rgba(255, 255, 255, 0.075);
+    --line-strong: rgba(255, 255, 255, 0.16);
+
+    --text: #e6e9ed;
+    --text-2: #99a1ab;
+    --text-3: #6b737d;
+
+    --accent: #3fbfae;
+    --accent-text: #06211d;
+    --accent-soft: rgba(63, 191, 174, 0.15);
+    --junk: #d99b3f;
+    --junk-soft: rgba(217, 155, 63, 0.14);
+    --ok: #4eab72;
+    --bad: #e4756c;
+
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   }
 }
 
 * { box-sizing: border-box; }
-
-/* No rounded corner anywhere is larger than this. The one big pill the
-   page used to show was the browser's own <audio controls>; it is gone,
-   replaced by the transport in #player. */
-button, input, .cover, .proposal, .job-item { border-radius: 2px; }
 
 body {
   margin: 0;
@@ -119,9 +163,103 @@ body {
     "header header header"
     "nav    list   inspector"
     "player player player";
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--font);
+  font-size: var(--fs-base);
   line-height: 1.45;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
 }
+
+::selection { background: var(--accent-soft); }
+
+/* Thin, quiet, present in both themes. The platform's overlay scrollbar
+   vanishes entirely, which on a list of 900 rows hides how far in you
+   are. */
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+*::-webkit-scrollbar { width: 9px; height: 9px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--line-strong);
+                             border: 3px solid transparent;
+                             background-clip: content-box; }
+*::-webkit-scrollbar-thumb:hover { background: var(--text-3);
+                                   border: 3px solid transparent;
+                                   background-clip: content-box; }
+
+/* ------------------------------------------------------------------
+   Controls — all of them, drawn here rather than by the browser
+   ------------------------------------------------------------------ */
+
+button {
+  -webkit-appearance: none;
+  appearance: none;
+  font: inherit;
+  font-size: var(--fs-md);
+  line-height: 1.35;
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  padding: var(--btn-pad);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s ease, color 0.12s ease,
+              border-color 0.12s ease;
+}
+button:hover { background: var(--hover); color: var(--text); }
+button:active { background: var(--active); }
+button:disabled { opacity: 0.4; cursor: default; }
+
+/* The one action a panel is really for. */
+button[type="submit"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+button[type="submit"]:hover { background: var(--accent);
+                              filter: brightness(1.08); }
+
+/* Buttons that live inside text — the nav, the rows, the ribbon. They
+   are links in everything but markup, and a bordered box round each
+   would turn a 900-row listing into a grid of chrome. */
+.quiet, #nav button, .row-actions button, .job-item button,
+#nav .scope button, .report-list button {
+  background: none;
+  border-color: transparent;
+  padding: var(--nav-row-pad);
+}
+.quiet:hover, #nav button:hover, .row-actions button:hover,
+.job-item button:hover, .report-list button:hover {
+  background: var(--hover);
+  border-color: transparent;
+}
+
+input[type="search"], input[type="text"], input[type="url"] {
+  -webkit-appearance: none;
+  appearance: none;
+  font: inherit;
+  font-size: var(--fs-md);
+  color: var(--text);
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: var(--field-pad);
+}
+input::placeholder { color: var(--text-3); }
+
+/* One focus treatment for everything, and never the platform's blue. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+input[type="checkbox"] { accent-color: var(--accent); margin: 0; }
+
+a { color: var(--accent); text-decoration-thickness: 1px;
+    text-underline-offset: 2px; }
 
 /* ------------------------------------------------------------------
    Header
@@ -129,44 +267,50 @@ body {
 
 #header {
   grid-area: header;
+  background: var(--surface);
   border-bottom: 1px solid var(--line);
-  padding: 0.45rem 0.75rem;
+  padding: 0.5rem 0.85rem;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.85rem;
   flex-wrap: wrap;
 }
 
 #header .brand {
+  font-size: var(--fs-sm);
   font-weight: 700;
-  letter-spacing: 0.09em;
-  font-size: 0.82rem;
+  letter-spacing: 0.11em;
+  color: var(--text-2);
 }
 #header .brand span { color: var(--accent); }
 
 #filters { display: flex; align-items: center; gap: 0.5rem; flex: 1;
            min-width: 0; }
-#filters input[type="search"] { flex: 1; max-width: 24rem; min-width: 6rem; }
-#filters label { display: flex; align-items: center; gap: 0.3rem;
-                 font-size: 0.85rem; white-space: nowrap; }
+#filters input[type="search"] { flex: 1; max-width: 26rem; min-width: 6rem; }
+#filters label { display: flex; align-items: center; gap: 0.35rem;
+                 font-size: var(--fs-md); color: var(--text-2);
+                 white-space: nowrap; cursor: pointer; }
 
-#counts { margin-left: auto; font-variant-numeric: tabular-nums;
-          font-size: 0.8rem; opacity: 0.7; white-space: nowrap; }
-#counts .junk { opacity: 1; }
+#counts { font-variant-numeric: tabular-nums; font-size: var(--fs-sm);
+          color: var(--text-3); white-space: nowrap; }
+#counts .junk { color: var(--junk); }
 
-/* Density switch. Two states, no dropdown: the choice is binary and
-   naming it costs less than hiding it behind a menu. */
-#density { display: flex; border: 1px solid var(--line); }
+/* A segmented control: one border round the pair, a hairline between.
+   Two states, no dropdown — the choice is binary, and naming both costs
+   less than hiding them behind a menu. */
+#density { display: flex; border: 1px solid var(--line-strong);
+           border-radius: 2px; overflow: hidden; }
 #density button {
-  all: unset;
-  cursor: pointer;
-  padding: 0.1rem 0.45rem;
-  font-size: 0.75rem;
-  white-space: nowrap;
+  border: none;
+  border-radius: 0;
+  padding: 0.2rem 0.6rem;
+  font-size: var(--fs-sm);
+  background: none;
 }
+#density button + button { border-left: 1px solid var(--line-strong); }
 #density button[aria-pressed="true"] {
   background: var(--accent);
-  color: Canvas;
+  color: var(--accent-text);
   font-weight: 600;
 }
 
@@ -176,57 +320,60 @@ body {
 
 #nav {
   grid-area: nav;
+  background: var(--surface);
   border-right: 1px solid var(--line);
   overflow-y: auto;
-  padding: 0.5rem 0.4rem;
+  padding: 0.6rem 0.4rem;
   font-size: var(--nav-font);
 }
 
 #nav ul { list-style: none; margin: 0 0 var(--nav-gap); padding: 0; }
-#nav li { display: flex; justify-content: space-between; gap: 0.4rem; }
+#nav li { display: flex; align-items: center; justify-content: space-between;
+          gap: 0.4rem; }
 #nav button {
-  all: unset;
-  cursor: pointer;
   flex: 1;
-  padding: var(--nav-row-pad);
+  text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
   border-left: 2px solid transparent;
+  font-size: inherit;
+  color: var(--text-2);
 }
-#nav button:hover { background: var(--dim); }
 #nav li.current button {
   font-weight: 600;
+  color: var(--text);
   background: var(--accent-soft);
   border-left-color: var(--accent);
 }
-#nav .count { font-variant-numeric: tabular-nums; opacity: 0.55;
-              font-size: 0.85em; white-space: nowrap; }
-#nav .count.junk { color: var(--junk); opacity: 1; }
+#nav .count { font-variant-numeric: tabular-nums; color: var(--text-3);
+              font-size: var(--fs-xs); white-space: nowrap;
+              padding-right: 0.35rem; }
+#nav .count.junk { color: var(--junk); }
 #nav h2 {
-  font-size: 0.68rem;
+  font-size: var(--fs-xs);
   text-transform: uppercase;
-  letter-spacing: 0.13em;
-  opacity: 0.5;
+  letter-spacing: 0.14em;
+  color: var(--text-3);
   font-weight: 600;
-  margin: 0 0 0.3rem 0.35rem;
+  margin: 0 0 0.35rem 0.5rem;
 }
-#nav .scope { margin: 0 0.35rem 0.4rem; font-size: 0.78rem; opacity: 0.6; }
-#nav .scope button { all: unset; cursor: pointer; color: var(--accent);
-                     border-bottom: 1px solid currentColor; }
-#nav .playlist-actions { margin: 0.3rem 0.35rem var(--nav-gap);
+#nav .scope { margin: 0 0.5rem 0.5rem; font-size: var(--fs-xs);
+              color: var(--text-3); }
+#nav .scope button { display: inline; padding: 0; color: var(--accent); }
+#nav .playlist-actions { margin: 0.3rem 0.4rem var(--nav-gap);
                          display: flex; flex-wrap: wrap; gap: 0.3rem; }
-#nav .playlist-actions button { font-size: 0.78rem; }
+#nav .playlist-actions button { background: var(--surface);
+                                border-color: var(--line-strong);
+                                padding: var(--btn-pad); }
 
-#artist-filter { width: calc(100% - 0.7rem); margin: 0 0.35rem 0.3rem;
-                 font-size: 0.85em; }
+#artist-filter { width: calc(100% - 0.8rem); margin: 0 0.4rem 0.35rem; }
 #artist-list li[hidden] { display: none; }
 
 /* ------------------------------------------------------------------
    Listing
    ------------------------------------------------------------------ */
 
-#list { grid-area: list; overflow-y: auto; }
+#list { grid-area: list; overflow-y: auto; background: var(--bg); }
 
 /* Pinned while the list scrolls. This, not a row of column headers on
    self-evident columns, is what needs to stay reachable. */
@@ -234,27 +381,28 @@ body {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: Canvas;
+  background: var(--bg);
   border-bottom: 1px solid var(--line);
   padding: var(--toolbar-pad);
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
 }
-#list .toolbar span { opacity: 0.65; font-size: 0.8rem;
-                      font-variant-numeric: tabular-nums; }
-#list .empty { padding: 1rem; opacity: 0.6; }
+#list .toolbar span { color: var(--text-3); font-size: var(--fs-sm);
+                      font-variant-numeric: tabular-nums;
+                      margin-right: 0.3rem; }
+#list .empty { padding: 1.5rem; color: var(--text-3); }
 
 table { border-collapse: collapse; width: 100%; }
 td {
   text-align: left;
-  padding: var(--row-pad-y) 0.6rem;
+  padding: var(--row-pad-y) 0.5rem;
   vertical-align: middle;
   font-size: var(--row-font);
-  border-bottom: 1px solid var(--dim);
+  border-bottom: 1px solid var(--line);
 }
 tbody tr { cursor: pointer; border-left: 2px solid transparent; }
-tbody tr:hover { background: var(--dim); }
+tbody tr:hover { background: var(--hover); }
 
 /* One line or two, decided by the values at the top of this file. */
 .row-cell {
@@ -265,38 +413,39 @@ tbody tr:hover { background: var(--dim); }
   max-width: 0;
   width: 100%;
 }
-.row-title { font-weight: 500; }
+.row-title { font-weight: 500; color: var(--text); }
 .row-meta {
   display: var(--row-meta-display);
   font-size: var(--row-meta-size);
-  opacity: 0.55;
+  color: var(--text-3);
 }
-.row-meta .playlist { margin-right: 0.5rem; }
+.row-meta .playlist { margin-right: 0.55rem; }
 
-.row-actions { width: 1%; white-space: nowrap; text-align: right; }
-.row-actions button { font-size: 0.78rem; }
-/* Reachable but quiet: on 900 rows these must not compete with titles. */
-.row-actions button { opacity: 0.45; }
-tr:hover .row-actions button, .row-actions button:focus-visible { opacity: 1; }
+.row-actions { width: 1%; white-space: nowrap; text-align: right;
+               padding-left: 0; }
+.row-actions button { font-size: var(--fs-xs); color: var(--text-3);
+                      opacity: 0; }
+tr:hover .row-actions button,
+.row-actions button:focus-visible { opacity: 1; }
 
 td.num {
   text-align: right;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   width: 1%;
-  opacity: 0.6;
-  font-size: 0.85em;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
 }
 
 tbody tr.is-junk { border-left-color: var(--junk); }
 tbody tr.is-junk .row-title { color: var(--junk); }
-tbody tr.playing { border-left-color: var(--accent); background: var(--accent-soft); }
+tbody tr.playing { border-left-color: var(--accent);
+                   background: var(--accent-soft); }
 tbody tr.playing .row-title { font-weight: 700; }
 
-.id { font-family: ui-monospace, "SF Mono", Menlo, monospace;
-      font-size: 0.85em; opacity: 0.8; }
+.id { font-family: var(--font-mono); font-size: 0.92em; }
 .junk { color: var(--junk); }
-.cover { max-width: var(--cover-max); }
+.cover { max-width: 100%; border-radius: 2px; display: block; }
 
 /* ------------------------------------------------------------------
    Inspector
@@ -304,57 +453,67 @@ tbody tr.playing .row-title { font-weight: 700; }
 
 #inspector {
   grid-area: inspector;
+  background: var(--surface);
   border-left: 1px solid var(--line);
   overflow-y: auto;
   padding: var(--pane-pad);
 }
 
-#inspector .cover { width: 100%; margin-bottom: 0.5rem; }
-.inspector-title { font-size: 1.05rem; line-height: 1.25; margin: 0.2rem 0; }
-#inspector label { display: block; margin: 0.4rem 0; font-size: 0.72rem;
-                   text-transform: uppercase; letter-spacing: 0.1em;
-                   opacity: 0.55; font-weight: 600; }
-#inspector input { display: block; width: 100%; margin-top: 0.2rem;
-                   padding: var(--field-pad); font-size: 0.9rem; }
-#inspector .filename { word-break: break-all; margin-top: 0.8rem;
-                       font-size: 0.7rem; opacity: 0.5; }
+#inspector .cover { width: 100%; margin-bottom: 0.7rem;
+                    box-shadow: var(--shadow); }
+.inspector-title { font-size: var(--fs-lg); line-height: 1.25;
+                   margin: 0.2rem 0 0.1rem; letter-spacing: -0.01em; }
+#inspector .id { color: var(--text-3); }
+#inspector label { display: block; margin: 0.55rem 0 0;
+                   font-size: var(--fs-xs); text-transform: uppercase;
+                   letter-spacing: 0.11em; color: var(--text-3);
+                   font-weight: 600; }
+#inspector input { display: block; width: 100%; margin-top: 0.25rem; }
+#inspector .filename { word-break: break-all; margin-top: 1rem;
+                       font-size: var(--fs-xs); color: var(--text-3);
+                       line-height: 1.5; }
+#inspector p { margin: 0.5rem 0; }
 
 /* Shazam's answer sits above the form: it is what you came for, the
    form is only where you agree with it. */
 .proposal {
   border: 1px solid var(--accent);
-  border-left-width: 3px;
+  border-left-width: 2px;
+  border-radius: 2px;
   background: var(--accent-soft);
-  padding: 0.4rem 0.6rem;
-  margin: 0.5rem 0;
+  padding: 0.5rem 0.65rem;
+  margin: 0.6rem 0;
 }
-.proposal-value { font-weight: 600; margin: 0.15rem 0 0.4rem; }
+.proposal .job-new { color: var(--accent); font-size: var(--fs-xs);
+                     text-transform: uppercase; letter-spacing: 0.1em; }
+.proposal-value { font-weight: 600; margin: 0.2rem 0 0.5rem;
+                  font-size: var(--fs-base); }
 
 /* ------------------------------------------------------------------
    Jobs
    ------------------------------------------------------------------ */
 
-#jobs { flex-basis: 100%; display: flex; flex-direction: column; gap: 0.15rem; }
+#jobs { flex-basis: 100%; display: flex; flex-direction: column; gap: 0.1rem; }
 #jobs:empty { display: none; }
-.job { font-size: 0.82rem; min-height: 1.2em; }
-.job-item { display: flex; align-items: baseline; gap: 0.5rem;
-            padding: 0.1rem 0; }
-.job-scope { opacity: 0.5; font-size: 0.85em; max-width: 15rem;
+.job { font-size: var(--fs-md); min-height: 1.2em; }
+.job-item { display: flex; align-items: baseline; gap: 0.55rem;
+            padding: 0.15rem 0; border-radius: 2px; }
+.job-scope { color: var(--text-3); font-size: var(--fs-sm); max-width: 15rem;
              overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.job-item [data-dismiss-job] { all: unset; cursor: pointer; opacity: 0.4;
-                               padding: 0 0.3rem; }
-.job-item [data-dismiss-job]:hover { opacity: 1; }
-.job-running { opacity: 0.75; }
+.job-item [data-dismiss-job] { margin-left: auto; color: var(--text-3);
+                               padding: 0 0.35rem; }
+.job-running { color: var(--text-2); }
 .job-new { color: var(--ok); font-weight: 600; }
-.job-none { opacity: 0.55; }
+.job-none { color: var(--text-3); }
 .job-error { color: var(--bad); }
 .htmx-request .job, .htmx-request.job { opacity: 0.5; }
 
 .report-list { list-style: none; padding: 0; margin: 0.3rem 0; }
-.report-list li { padding: 0.2rem 0; border-bottom: 1px solid var(--dim);
-                  font-size: 0.85rem; }
-.report h3 { font-size: 0.85rem; margin: 0.7rem 0 0.2rem;
-             text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.6; }
+.report-list li { padding: 0.35rem 0; border-bottom: 1px solid var(--line);
+                  font-size: var(--fs-md); }
+.report h3 { font-size: var(--fs-xs); margin: 1rem 0 0.3rem;
+             text-transform: uppercase; letter-spacing: 0.12em;
+             color: var(--text-3); }
 
 /* ------------------------------------------------------------------
    Player — the transport, drawn here rather than by the browser
@@ -362,35 +521,34 @@ tbody tr.playing .row-title { font-weight: 700; }
 
 #player {
   grid-area: player;
+  background: var(--surface);
   border-top: 1px solid var(--line);
-  padding: 0.4rem 0.75rem;
+  padding: 0.45rem 0.85rem;
   display: flex;
   align-items: center;
-  gap: 0.7rem;
+  gap: 0.75rem;
   flex-wrap: wrap;
 }
 
-#transport { display: flex; gap: 0.2rem; flex: 0 0 auto; }
+#transport { display: flex; gap: 0.25rem; flex: 0 0 auto; }
 #transport button {
-  all: unset;
-  cursor: pointer;
-  width: 1.9rem;
-  height: 1.5rem;
-  border: 1px solid var(--line);
+  width: 1.95rem;
+  height: 1.6rem;
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.8rem;
-  border-radius: 2px;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
 }
-#transport button:hover { background: var(--dim); }
 #transport [data-player-action="toggle"] {
   background: var(--accent);
-  color: Canvas;
+  color: var(--accent-text);
   border-color: var(--accent);
 }
 #player.idle #transport [data-player-action="toggle"] {
-  background: none; color: inherit; border-color: var(--line);
+  background: var(--surface); color: var(--text-3);
+  border-color: var(--line-strong);
 }
 
 /* What comes next, the way the CLI previews it before the current track
@@ -402,22 +560,23 @@ tbody tr.playing .row-title { font-weight: 700; }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.85rem;
-  opacity: 0.7;
+  font-size: var(--fs-md);
+  color: var(--text-2);
   font-variant-numeric: tabular-nums;
 }
 #player-next .k {
-  font-size: 0.62rem;
+  font-size: var(--fs-xs);
   font-weight: 700;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.16em;
   color: var(--accent);
-  opacity: 1;
-  margin-right: 0.4rem;
+  margin-right: 0.45rem;
 }
-#player.idle #player-next { opacity: 0.4; }
+#player.idle #player-next { color: var(--text-3); }
+#player.idle #player-next .k { color: var(--text-3); }
 
-#player-position { font-variant-numeric: tabular-nums; font-size: 0.78rem;
-                   opacity: 0.55; white-space: nowrap; flex: 0 0 auto; }
+#player-position { font-variant-numeric: tabular-nums;
+                   font-size: var(--fs-sm); color: var(--text-3);
+                   white-space: nowrap; flex: 0 0 auto; }
 
 /* Comfortable puts this on its own line; compact keeps it inline. One
    markup, two values. */
@@ -429,26 +588,31 @@ tbody tr.playing .row-title { font-weight: 700; }
   order: var(--timeline-order);
   min-width: 8rem;
 }
-#timeline .t { font-variant-numeric: tabular-nums; font-size: 0.72rem;
-               opacity: 0.5; white-space: nowrap; }
-/* Sharp edges, deliberately: a 3px bar with a 2px cursor, not a pill. */
+#timeline .t { font-variant-numeric: tabular-nums; font-size: var(--fs-xs);
+               color: var(--text-3); white-space: nowrap; }
+/* Sharp edges, deliberately: a 3px track and a 2px playhead, not a pill. */
 #seek {
   position: relative;
   flex: 1;
-  height: 11px;
+  height: 12px;
   cursor: pointer;
   display: flex;
   align-items: center;
   min-width: 0;
 }
 #seek .track { position: absolute; left: 0; right: 0; height: 3px;
-               background: var(--line); }
+               background: var(--line-strong); }
 #seek .fill { position: absolute; left: 0; height: 3px; width: 0;
-              background: currentColor; opacity: 0.55; }
-#seek .head { position: absolute; width: 2px; height: 11px; left: 0;
+              background: var(--text-3); }
+#seek .head { position: absolute; width: 2px; height: 12px; left: 0;
               background: var(--accent); }
+#seek:hover .fill { background: var(--text-2); }
 #player.idle #seek { cursor: default; }
 #player.idle #seek .head { display: none; }
+
+#player-video { font-size: var(--fs-sm); color: var(--text-3);
+                text-decoration: none; flex: 0 0 auto; }
+#player-video:hover { color: var(--accent); text-decoration: underline; }
 
 /* ------------------------------------------------------------------
    Workbench: the inspector, full frame
@@ -457,19 +621,24 @@ tbody tr.playing .row-title { font-weight: 700; }
 body.workbench-mode { grid-template-columns: 0 0 minmax(0, 1fr); }
 body.workbench-mode #nav,
 body.workbench-mode #list { display: none; }
-body.workbench-mode #inspector { border-left: none; padding: 1.5rem; }
+body.workbench-mode #inspector { border-left: none; padding: 2rem 1.5rem;
+                                 background: var(--bg); }
 
-.workbench { display: flex; gap: 2rem; align-items: flex-start;
-             max-width: 58rem; margin: 0 auto; }
+.workbench { display: flex; gap: 2.25rem; align-items: flex-start;
+             max-width: 56rem; margin: 0 auto; }
 .workbench-cover { flex: 0 0 17rem; }
-.workbench-cover .cover { width: 100%; }
+.workbench-cover .cover { width: 100%; box-shadow: var(--shadow); }
 .workbench-detail { flex: 1; min-width: 0; }
-.workbench-detail .inspector-title { font-size: 1.35rem; }
-.workbench-detail input { max-width: 30rem; }
-.workbench-actions { display: flex; gap: 0.5rem; margin-top: 0.8rem; }
-.workbench-actions button[type="submit"] { font-weight: 700; }
+.workbench-detail .inspector-title { font-size: var(--fs-xl);
+                                     letter-spacing: -0.015em; }
+.workbench-detail input { max-width: 28rem; }
+.workbench-actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
 
 @media (max-width: 60rem) {
   .workbench { flex-direction: column; }
   .workbench-cover { flex: none; max-width: 14rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 0.01ms !important; }
 }

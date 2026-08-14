@@ -248,3 +248,84 @@ async def test_a_junkized_row_matches_the_rows_around_it(tmp_path):
     assert 'class="playlist"' not in scoped.text, (
         "the replaced row shows a playlist its neighbours do not"
     )
+
+
+async def test_every_control_is_drawn_by_the_stylesheet(tmp_path):
+    """The check that should have existed from the start.
+
+    A page that leaves buttons, inputs or checkboxes to the browser gets
+    the browser's chrome — bevels, gradients, its own corner radius, its
+    own focus ring — and no amount of layout work rescues it. The first
+    version of console.css styled three controls out of nineteen, and
+    the result was reported as looking like a website from 2000.
+    """
+
+    _make_song(tmp_path, "UNKNOWN", "Song", "aaaaaaaaaaa", junk=True)
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+        pages = [
+            (await client.get("/")).text,
+            (await client.get("/fragments/inspector/aaaaaaaaaaa")).text,
+            (await client.get("/fragments/workbench/aaaaaaaaaaa")).text,
+        ]
+
+    # Native appearance has to be switched off explicitly; without this
+    # the platform still draws the widget under our paint.
+    assert css.count("appearance: none") >= 2, (
+        "buttons and text inputs both need the platform chrome removed"
+    )
+
+    # Every input type the templates actually use must be named.
+    used = set()
+    for page in pages:
+        used.update(re.findall(r'<input[^>]*type="([a-z]+)"', page))
+    used.discard("hidden")
+
+    for kind in sorted(used):
+        assert f'input[type="{kind}"]' in css or (
+            kind == "checkbox" and "accent-color" in css
+        ), f"<input type={kind}> is left to the browser"
+
+    # And the states a control needs to feel like a control.
+    for rule in ("button:hover", "button:active", ":focus-visible"):
+        assert rule in css, rule
+
+    # The platform's focus ring is the loudest default of all.
+    assert "outline: 2px solid var(--accent)" in css, (
+        "focus falls back to the operating system's blue ring"
+    )
+
+
+async def test_the_page_has_designed_surfaces(tmp_path):
+    """`Canvas` is the browser's own white. A flat white page with 1px
+    grey hairlines is the look this pass exists to leave behind."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    assert "background: Canvas" not in css, (
+        "a region still paints itself with the browser's default"
+    )
+    for name in ("--bg:", "--surface:", "--sunken:", "--hover:"):
+        assert name in css, name
+
+    dark = css[css.index("prefers-color-scheme: dark"):]
+    for name in ("--bg:", "--surface:", "--text:"):
+        assert name in dark, f"{name} has no dark value"
+
+
+async def test_type_sizes_come_from_a_scale(tmp_path):
+    """Twelve arbitrary sizes is not a scale; it is noise."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    steps = set(re.findall(r"(--fs-[a-z]+):", css))
+    assert 4 <= len(steps) <= 8, steps
+
+    literal = set(re.findall(r"font-size:\s*([\d.]+rem)", css))
+    scale = set(re.findall(r"--fs-[a-z]+:\s*([\d.]+rem)", css))
+    assert literal <= scale, (
+        f"sizes written outside the scale: {sorted(literal - scale)}"
+    )
