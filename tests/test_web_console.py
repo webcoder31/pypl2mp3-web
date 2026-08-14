@@ -453,7 +453,7 @@ async def test_the_nav_refetches_when_the_playlist_changes(tmp_path):
     nav = re.search(r'<nav[^>]*id="nav"[^>]*>', body, re.DOTALL)
     assert nav, "no nav element"
     assert 'hx-get="/fragments/nav"' in nav.group(0)
-    assert 'hx-trigger="playlistChanged from:body"' in nav.group(0)
+    assert "playlistChanged from:body" in nav.group(0)
     assert 'hx-include="#filters"' in nav.group(0), (
         "the refetch would lose the playlist it is meant to scope to"
     )
@@ -518,3 +518,22 @@ async def test_the_console_keeps_the_cli_s_playback_controls(tmp_path):
         "the queue does not advance when a song finishes"
     )
     assert "youtu.be/" in script, "no way to open the video"
+
+
+async def test_the_presets_refresh_when_a_song_is_fixed(tmp_path):
+    """A repaired junk song gains a real artist, which belongs in the
+    presets. This was once too expensive to do on every save; the
+    parsed-song cache brought a nav rebuild down to about 40ms."""
+
+    _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        body = (await client.get("/")).text
+
+    nav = re.search(r'<nav[^>]*id="nav"[^>]*>', body, re.DOTALL).group(0)
+    trigger = re.search(r'hx-trigger="([^"]+)"', nav).group(1)
+
+    assert "songsChanged from:body" in trigger, (
+        "a fixed song does not reach the artist list until a reload"
+    )
+    assert "playlistChanged from:body" in trigger, "the other trigger went"

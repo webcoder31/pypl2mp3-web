@@ -60,9 +60,13 @@
     {# Refetched on a playlist change only, never on a keystroke: the
        presets are scoped to the playlist, and rebuilding them costs a
        pass over its songs. #}
+    {# Rebuilt when the playlist changes, and when a save changes what
+       the repository holds: fixing a junk song gives it a real artist,
+       which belongs in the presets. Both were once too expensive to do
+       on a save; the parsed-song cache made a rebuild cost about 40ms. #}
     <nav id="nav" data-swap-region
          hx-get="/fragments/nav"
-         hx-trigger="playlistChanged from:body"
+         hx-trigger="playlistChanged from:body, songsChanged from:body"
          hx-include="#filters">{% include "_nav.html" %}</nav>
 
     {# songsChanged fires when a save changed what the repository holds.
