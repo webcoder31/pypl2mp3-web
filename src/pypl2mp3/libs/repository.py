@@ -17,6 +17,7 @@ from __future__ import annotations
 import math
 import random
 import re
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional
@@ -45,8 +46,77 @@ init(autoreset=True)
 
 # Match thresholds for filtering
 DEFAULT_FILTER_THRESHOLD = 45.0  # Default minimum match score for keyword filtering
+
+
 MIN_MATCH_THRESHOLD = 0.0        # Minimum allowed match threshold
 MAX_MATCH_THRESHOLD = 100.0      # Maximum allowed match threshold
+
+
+# ------------------------
+# Parsed song cache
+# ------------------------
+
+# Building a SongModel reads the file's ID3 tags. Over a 927-song
+# repository that is 1.3s, and a listing does it on every call — which
+# a search box filtering as you type makes once per keystroke.
+#
+# Keyed by path, validated by the file's modification time and size, so
+# a song edited or replaced outside this process is re-read. Everything
+# else — globbing, sorting, fuzzy scoring — comes to about 40ms, so a
+# warm listing costs that instead of 1.4s.
+#
+# The price is memory: roughly 71KB per song, since mutagen keeps the
+# tags and their embedded cover art. 64MB for this repository. That is
+# a fair trade for a single-user local tool and a bad one for a shared
+# server; this has always been the former.
+_song_cache: dict[Path, tuple[tuple[int, int], SongModel]] = {}
+
+# Guards the dict below. Only the event loop reaches it today, but the
+# alternative is re-deriving that fact every time something moves to a
+# worker thread.
+_song_cache_lock = threading.Lock()
+
+
+def _load_song(path: Path) -> SongModel:
+    """Parse a song's tags, or reuse the parse from last time."""
+
+    try:
+        info = path.stat()
+        stamp = (info.st_mtime_ns, info.st_size)
+    except OSError:
+        # Unreadable: let SongModel raise whatever it raises, uncached.
+        return SongModel(path)
+
+    with _song_cache_lock:
+        cached = _song_cache.get(path)
+        if cached is not None and cached[0] == stamp:
+            return cached[1]
+
+    song = SongModel(path)
+
+    with _song_cache_lock:
+        _song_cache[path] = (stamp, song)
+
+    return song
+
+
+def _forget_missing_songs(search_path: Path, live: set[Path]) -> None:
+    """Drop cached songs that are no longer on disk.
+
+    Fixing a junk song renames its file, so a session of corrections
+    would otherwise leave one dead entry behind per song. Scoped to the
+    path just enumerated: anything outside it was not looked at and its
+    absence here proves nothing.
+    """
+
+    with _song_cache_lock:
+        for path in [
+            path
+            for path in _song_cache
+            if path not in live and path.is_relative_to(search_path)
+        ]:
+            del _song_cache[path]
+
 
 # ------------------------
 # Exceptions
@@ -437,6 +507,14 @@ def _find_matching_songs(
             if get_song_id_from_filename(path.name)
     ]
 
+    # Only when the enumeration was unfiltered. With junk_only the glob
+    # pattern already excluded the tagged songs, so their absence from
+    # this list says nothing about whether they are still on disk —
+    # pruning on it would evict most of the cache on every junk listing.
+    if not junk_only:
+        _forget_missing_songs(search_path, set(song_files))
+
+
     # If no song files are found, return None
     if not song_files:
         return None
@@ -476,7 +554,7 @@ def _sort_songs_by_name(song_files: list[Path]) -> list[SongModel]:
     songs = []
     for path in song_files:
         try:
-            song = SongModel(path)
+            song = _load_song(path)
             songs.append({
                 "song": song,
                 "name": f"{song.artist} - {song.title}"
@@ -538,7 +616,7 @@ def _filter_and_sort_songs_by_match_score(
     matched_songs = []
     for path in song_files:
         try:
-            song = SongModel(path)
+            song = _load_song(path)
             match_level = get_match_score(song.artist, song.title, keywords)
             if match_level > 0:
                 matched_songs.append(
