@@ -1,198 +1,458 @@
-/* Layout only. The look comes later; this is the skeleton it will dress.
+/* The console's whole appearance.
  *
- * The one rule that matters here: #player is a grid area of its own, so
- * no fragment swap can ever contain the <audio> element. A swap that did
- * would recreate it and cut the sound.
+ * Two rules govern this file.
+ *
+ * 1. #player is a grid area of its own, so no fragment swap can ever
+ *    contain the <audio> element. A swap that did would recreate it and
+ *    cut the sound.
+ *
+ * 2. Everything that differs between the two densities is a *value*
+ *    below, never a rule and never a second template. That is what makes
+ *    the switch one attribute on <html> instead of a fork through the
+ *    markup, the routes and the tests.
+ *
+ * No web fonts: the console must not reach a host it does not serve, and
+ * a test enforces it. The system stack, used deliberately.
  */
+
+/* ------------------------------------------------------------------
+   Density
+   ------------------------------------------------------------------ */
+
+/* On :root, not body: the attribute is set by a script in the <head>,
+   before the first paint. Setting it on body would mean waiting for
+   console.js at the end of the document, and the page would visibly
+   flash one density on its way to the other. */
+:root, :root[data-density="comfortable"] {
+  /* Comfortable — the default. Two lines a song, room to click. */
+  --pane-nav: 17rem;
+  --pane-inspector: 25rem;
+
+  --row-pad-y: 0.45rem;
+  --row-font: 0.95rem;
+  --row-meta-display: block;
+  --row-meta-size: 0.78rem;
+  --row-nowrap: normal;
+  --row-overflow: visible;
+
+  --nav-row-pad: 0.28rem 0.35rem;
+  --nav-font: 0.9rem;
+  --nav-gap: 1rem;
+
+  --cover-max: 100%;
+  --field-pad: 0.35rem 0.5rem;
+  --pane-pad: 0.9rem;
+
+  --toolbar-pad: 0.5rem 0.75rem;
+  --timeline-basis: 100%;
+  --timeline-order: 9;
+}
+
+:root[data-density="compact"] {
+  /* One line a song. On 900 songs this is 16 rows a screen instead of 7. */
+  --pane-nav: 14.5rem;
+  --pane-inspector: 22rem;
+
+  --row-pad-y: 0.12rem;
+  --row-font: 0.85rem;
+  --row-meta-display: inline;
+  --row-meta-size: 0.8rem;
+  --row-nowrap: nowrap;
+  --row-overflow: hidden;
+
+  --nav-row-pad: 0.05rem 0.3rem;
+  --nav-font: 0.82rem;
+  --nav-gap: 0.6rem;
+
+  --cover-max: 100%;
+  --field-pad: 0.15rem 0.4rem;
+  --pane-pad: 0.5rem;
+
+  --toolbar-pad: 0.25rem 0.6rem;
+  --timeline-basis: auto;
+  --timeline-order: 0;
+}
+
+/* ------------------------------------------------------------------
+   Palette — follows the system, both densities
+   ------------------------------------------------------------------ */
 
 :root {
   color-scheme: light dark;
-  --line: rgba(127, 127, 127, 0.28);
-  --dim: rgba(127, 127, 127, 0.1);
+  --line: rgba(127, 127, 127, 0.3);
+  --dim: rgba(127, 127, 127, 0.09);
+  --accent: #0f766e;
+  --accent-soft: rgba(15, 118, 110, 0.12);
+  --junk: #a4530b;
+  --junk-soft: rgba(164, 83, 11, 0.12);
+  --ok: #0a7d3f;
+  --bad: #b00020;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --line: rgba(255, 255, 255, 0.15);
+    --dim: rgba(255, 255, 255, 0.035);
+    --accent: #4db6a8;
+    --accent-soft: rgba(77, 182, 168, 0.16);
+    --junk: #d59b3e;
+    --junk-soft: rgba(213, 155, 62, 0.14);
+    --ok: #4ea96f;
+    --bad: #e07070;
+  }
 }
 
 * { box-sizing: border-box; }
+
+/* No rounded corner anywhere is larger than this. The one big pill the
+   page used to show was the browser's own <audio controls>; it is gone,
+   replaced by the transport in #player. */
+button, input, .cover, .proposal, .job-item { border-radius: 2px; }
 
 body {
   margin: 0;
   height: 100vh;
   display: grid;
-  grid-template-columns: 18rem minmax(0, 1fr) 26rem;
+  grid-template-columns: var(--pane-nav) minmax(0, 1fr) var(--pane-inspector);
   grid-template-rows: auto minmax(0, 1fr) auto;
   grid-template-areas:
     "header header header"
     "nav    list   inspector"
     "player player player";
-  font-family: system-ui, sans-serif;
-  line-height: 1.5;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.45;
 }
+
+/* ------------------------------------------------------------------
+   Header
+   ------------------------------------------------------------------ */
 
 #header {
   grid-area: header;
   border-bottom: 1px solid var(--line);
-  padding: 0.6rem 1rem;
+  padding: 0.45rem 0.75rem;
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
+
+#header .brand {
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  font-size: 0.82rem;
+}
+#header .brand span { color: var(--accent); }
+
+#filters { display: flex; align-items: center; gap: 0.5rem; flex: 1;
+           min-width: 0; }
+#filters input[type="search"] { flex: 1; max-width: 24rem; min-width: 6rem; }
+#filters label { display: flex; align-items: center; gap: 0.3rem;
+                 font-size: 0.85rem; white-space: nowrap; }
+
+#counts { margin-left: auto; font-variant-numeric: tabular-nums;
+          font-size: 0.8rem; opacity: 0.7; white-space: nowrap; }
+#counts .junk { opacity: 1; }
+
+/* Density switch. Two states, no dropdown: the choice is binary and
+   naming it costs less than hiding it behind a menu. */
+#density { display: flex; border: 1px solid var(--line); }
+#density button {
+  all: unset;
+  cursor: pointer;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+#density button[aria-pressed="true"] {
+  background: var(--accent);
+  color: Canvas;
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------
+   Navigation
+   ------------------------------------------------------------------ */
 
 #nav {
   grid-area: nav;
   border-right: 1px solid var(--line);
   overflow-y: auto;
-  padding: 0.6rem;
+  padding: 0.5rem 0.4rem;
+  font-size: var(--nav-font);
 }
 
-#list {
-  grid-area: list;
-  overflow-y: auto;
-}
-
-#inspector {
-  grid-area: inspector;
-  border-left: 1px solid var(--line);
-  overflow-y: auto;
-  padding: 0.8rem;
-}
-
-#player {
-  grid-area: player;
-  border-top: 1px solid var(--line);
-  padding: 0.5rem 1rem;
-  display: flex;
-  align-items: center;
-  gap: 0.8rem;
-}
-
-#player audio { flex: 1; min-width: 0; }
-/* What comes next, the way the CLI previews it: dimmed, secondary to
-   the track you are actually hearing. */
-#player-next { flex: 0 1 30rem; overflow: hidden; text-overflow: ellipsis;
-               white-space: nowrap; opacity: 0.6; font-size: 0.9em;
-               font-variant-numeric: tabular-nums; }
-#player.idle #player-next { opacity: 0.4; }
-
-/* Navigation */
-
-#nav ul { list-style: none; margin: 0 0 1rem; padding: 0; }
-#nav li { display: flex; justify-content: space-between; gap: 0.5rem; }
+#nav ul { list-style: none; margin: 0 0 var(--nav-gap); padding: 0; }
+#nav li { display: flex; justify-content: space-between; gap: 0.4rem; }
 #nav button {
   all: unset;
   cursor: pointer;
   flex: 1;
-  padding: 0.15rem 0.3rem;
-  border-radius: 3px;
+  padding: var(--nav-row-pad);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  border-left: 2px solid transparent;
 }
 #nav button:hover { background: var(--dim); }
-#nav li.current button { font-weight: 700; background: var(--dim); }
-#nav .count { font-variant-numeric: tabular-nums; opacity: 0.6;
-              font-size: 0.85em; padding-top: 0.2rem; }
-#nav h2 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em;
-          opacity: 0.6; margin: 0.4rem 0.3rem; }
+#nav li.current button {
+  font-weight: 600;
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+}
+#nav .count { font-variant-numeric: tabular-nums; opacity: 0.55;
+              font-size: 0.85em; white-space: nowrap; }
+#nav .count.junk { color: var(--junk); opacity: 1; }
+#nav h2 {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+  opacity: 0.5;
+  font-weight: 600;
+  margin: 0 0 0.3rem 0.35rem;
+}
+#nav .scope { margin: 0 0.35rem 0.4rem; font-size: 0.78rem; opacity: 0.6; }
+#nav .scope button { all: unset; cursor: pointer; color: var(--accent);
+                     border-bottom: 1px solid currentColor; }
+#nav .playlist-actions { margin: 0.3rem 0.35rem var(--nav-gap);
+                         display: flex; flex-wrap: wrap; gap: 0.3rem; }
+#nav .playlist-actions button { font-size: 0.78rem; }
 
-/* Listing */
+#artist-filter { width: calc(100% - 0.7rem); margin: 0 0.35rem 0.3rem;
+                 font-size: 0.85em; }
+#artist-list li[hidden] { display: none; }
+
+/* ------------------------------------------------------------------
+   Listing
+   ------------------------------------------------------------------ */
+
+#list { grid-area: list; overflow-y: auto; }
 
 /* Pinned while the list scrolls. This, not a row of column headers on
-   two self-evident columns, is what needs to stay reachable. */
+   self-evident columns, is what needs to stay reachable. */
 #list .toolbar {
   position: sticky;
   top: 0;
   z-index: 2;
   background: Canvas;
   border-bottom: 1px solid var(--line);
-  padding: 0.4rem 0.6rem;
+  padding: var(--toolbar-pad);
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.5rem;
 }
-#list .toolbar span { opacity: 0.7; font-size: 0.85em;
+#list .toolbar span { opacity: 0.65; font-size: 0.8rem;
                       font-variant-numeric: tabular-nums; }
 #list .empty { padding: 1rem; opacity: 0.6; }
 
 table { border-collapse: collapse; width: 100%; }
-td { text-align: left; padding: 0.35rem 0.6rem; vertical-align: top; }
-tbody tr { cursor: pointer; }
-tbody tr:nth-child(odd) { background: var(--dim); }
-tbody tr.selected { outline: 2px solid currentColor; outline-offset: -2px; }
-tbody tr.playing .row-title { font-weight: 700; }
-tbody tr.playing .row-title::before { content: "▶ "; }
-td.num { text-align: right; font-variant-numeric: tabular-nums;
-         white-space: nowrap; width: 1%; opacity: 0.7; }
-
-.row-meta {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  font-size: 0.85em;
-  opacity: 0.6;
-  margin-top: 0.1rem;
+td {
+  text-align: left;
+  padding: var(--row-pad-y) 0.6rem;
+  vertical-align: middle;
+  font-size: var(--row-font);
+  border-bottom: 1px solid var(--dim);
 }
-.row-meta .playlist { overflow: hidden; text-overflow: ellipsis;
-                      white-space: nowrap; max-width: 26rem; }
-.row-meta button, .row-meta a { font-size: inherit; }
-tr:hover .row-meta { opacity: 0.9; }
+tbody tr { cursor: pointer; border-left: 2px solid transparent; }
+tbody tr:hover { background: var(--dim); }
 
-.id { font-family: ui-monospace, monospace; font-size: 0.85em; opacity: 0.7; }
-.junk { color: #b26a00; }
-.cover { max-width: 100%; border-radius: 4px; }
+/* One line or two, decided by the values at the top of this file. */
+.row-cell {
+  min-width: 0;
+  white-space: var(--row-nowrap);
+  overflow: var(--row-overflow);
+  text-overflow: ellipsis;
+  max-width: 0;
+  width: 100%;
+}
+.row-title { font-weight: 500; }
+.row-meta {
+  display: var(--row-meta-display);
+  font-size: var(--row-meta-size);
+  opacity: 0.55;
+}
+.row-meta .playlist { margin-right: 0.5rem; }
 
-/* Jobs */
+.row-actions { width: 1%; white-space: nowrap; text-align: right; }
+.row-actions button { font-size: 0.78rem; }
+/* Reachable but quiet: on 900 rows these must not compete with titles. */
+.row-actions button { opacity: 0.45; }
+tr:hover .row-actions button, .row-actions button:focus-visible { opacity: 1; }
 
-.job { font-size: 0.85em; min-height: 1.2em; }
-.job-running { opacity: 0.7; }
-.job-new { color: #0a7d3f; font-weight: 600; }
-.job-none { opacity: 0.6; }
-.job-error { color: #b00020; }
-.htmx-request .job, .htmx-request.job { opacity: 0.5; }
+td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  width: 1%;
+  opacity: 0.6;
+  font-size: 0.85em;
+}
 
-/* Inspector */
+tbody tr.is-junk { border-left-color: var(--junk); }
+tbody tr.is-junk .row-title { color: var(--junk); }
+tbody tr.playing { border-left-color: var(--accent); background: var(--accent-soft); }
+tbody tr.playing .row-title { font-weight: 700; }
 
-#inspector .cover { max-width: 100%; margin-bottom: 0.6rem; }
-.inspector-title { font-size: 1rem; margin: 0.2rem 0; }
-#inspector label { display: block; margin: 0.4rem 0; font-size: 0.85em;
-                   opacity: 0.8; }
-#inspector input { display: block; width: 100%; margin-top: 0.15rem; }
-#inspector .filename { word-break: break-all; margin-top: 1rem; }
-.proposal { border: 1px solid var(--line); border-radius: 4px;
-            padding: 0.4rem 0.6rem; margin: 0.4rem 0; }
-.proposal-value { font-weight: 600; margin: 0.2rem 0; }
+.id { font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: 0.85em; opacity: 0.8; }
+.junk { color: var(--junk); }
+.cover { max-width: var(--cover-max); }
 
-/* Artist presets */
+/* ------------------------------------------------------------------
+   Inspector
+   ------------------------------------------------------------------ */
 
-#artist-filter { width: 100%; margin: 0 0 0.3rem; font-size: 0.85em; }
-#artist-list { max-height: none; }
-#artist-list li[hidden] { display: none; }
-#nav .scope { margin: 0.1rem 0.3rem 0.4rem; font-size: 0.8em; opacity: 0.65; }
-#nav .scope button { all: unset; cursor: pointer; text-decoration: underline; }
+#inspector {
+  grid-area: inspector;
+  border-left: 1px solid var(--line);
+  overflow-y: auto;
+  padding: var(--pane-pad);
+}
 
-/* Job ribbon */
+#inspector .cover { width: 100%; margin-bottom: 0.5rem; }
+.inspector-title { font-size: 1.05rem; line-height: 1.25; margin: 0.2rem 0; }
+#inspector label { display: block; margin: 0.4rem 0; font-size: 0.72rem;
+                   text-transform: uppercase; letter-spacing: 0.1em;
+                   opacity: 0.55; font-weight: 600; }
+#inspector input { display: block; width: 100%; margin-top: 0.2rem;
+                   padding: var(--field-pad); font-size: 0.9rem; }
+#inspector .filename { word-break: break-all; margin-top: 0.8rem;
+                       font-size: 0.7rem; opacity: 0.5; }
 
-#header { flex-wrap: wrap; }
-#jobs { flex-basis: 100%; display: flex; flex-direction: column; gap: 0.2rem; }
+/* Shazam's answer sits above the form: it is what you came for, the
+   form is only where you agree with it. */
+.proposal {
+  border: 1px solid var(--accent);
+  border-left-width: 3px;
+  background: var(--accent-soft);
+  padding: 0.4rem 0.6rem;
+  margin: 0.5rem 0;
+}
+.proposal-value { font-weight: 600; margin: 0.15rem 0 0.4rem; }
+
+/* ------------------------------------------------------------------
+   Jobs
+   ------------------------------------------------------------------ */
+
+#jobs { flex-basis: 100%; display: flex; flex-direction: column; gap: 0.15rem; }
 #jobs:empty { display: none; }
+.job { font-size: 0.82rem; min-height: 1.2em; }
 .job-item { display: flex; align-items: baseline; gap: 0.5rem;
-            padding: 0.15rem 0; }
-.job-scope { opacity: 0.55; font-size: 0.85em; max-width: 16rem;
+            padding: 0.1rem 0; }
+.job-scope { opacity: 0.5; font-size: 0.85em; max-width: 15rem;
              overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.job-item [data-dismiss-job] { all: unset; cursor: pointer; opacity: 0.5;
+.job-item [data-dismiss-job] { all: unset; cursor: pointer; opacity: 0.4;
                                padding: 0 0.3rem; }
 .job-item [data-dismiss-job]:hover { opacity: 1; }
-#nav .playlist-actions { margin: 0.2rem 0.3rem 0.8rem; display: flex;
-                         flex-wrap: wrap; gap: 0.3rem; }
-#nav .playlist-actions button { font-size: 0.8em; }
-
-/* Report, in the inspector */
+.job-running { opacity: 0.75; }
+.job-new { color: var(--ok); font-weight: 600; }
+.job-none { opacity: 0.55; }
+.job-error { color: var(--bad); }
+.htmx-request .job, .htmx-request.job { opacity: 0.5; }
 
 .report-list { list-style: none; padding: 0; margin: 0.3rem 0; }
 .report-list li { padding: 0.2rem 0; border-bottom: 1px solid var(--dim);
-                  font-size: 0.9em; }
-.report h3 { font-size: 0.9rem; margin: 0.8rem 0 0.2rem; }
+                  font-size: 0.85rem; }
+.report h3 { font-size: 0.85rem; margin: 0.7rem 0 0.2rem;
+             text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.6; }
 
-/* Workbench: the inspector, full frame */
+/* ------------------------------------------------------------------
+   Player — the transport, drawn here rather than by the browser
+   ------------------------------------------------------------------ */
+
+#player {
+  grid-area: player;
+  border-top: 1px solid var(--line);
+  padding: 0.4rem 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+#transport { display: flex; gap: 0.2rem; flex: 0 0 auto; }
+#transport button {
+  all: unset;
+  cursor: pointer;
+  width: 1.9rem;
+  height: 1.5rem;
+  border: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  border-radius: 2px;
+}
+#transport button:hover { background: var(--dim); }
+#transport [data-player-action="toggle"] {
+  background: var(--accent);
+  color: Canvas;
+  border-color: var(--accent);
+}
+#player.idle #transport [data-player-action="toggle"] {
+  background: none; color: inherit; border-color: var(--line);
+}
+
+/* What comes next, the way the CLI previews it before the current track
+   has even started. What is playing is already the inspector's whole
+   job; this is the one thing the bar can say that nothing else does. */
+#player-next {
+  flex: 1 1 18rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+#player-next .k {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--accent);
+  opacity: 1;
+  margin-right: 0.4rem;
+}
+#player.idle #player-next { opacity: 0.4; }
+
+#player-position { font-variant-numeric: tabular-nums; font-size: 0.78rem;
+                   opacity: 0.55; white-space: nowrap; flex: 0 0 auto; }
+
+/* Comfortable puts this on its own line; compact keeps it inline. One
+   markup, two values. */
+#timeline {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 1 1 var(--timeline-basis);
+  order: var(--timeline-order);
+  min-width: 8rem;
+}
+#timeline .t { font-variant-numeric: tabular-nums; font-size: 0.72rem;
+               opacity: 0.5; white-space: nowrap; }
+/* Sharp edges, deliberately: a 3px bar with a 2px cursor, not a pill. */
+#seek {
+  position: relative;
+  flex: 1;
+  height: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+#seek .track { position: absolute; left: 0; right: 0; height: 3px;
+               background: var(--line); }
+#seek .fill { position: absolute; left: 0; height: 3px; width: 0;
+              background: currentColor; opacity: 0.55; }
+#seek .head { position: absolute; width: 2px; height: 11px; left: 0;
+              background: var(--accent); }
+#player.idle #seek { cursor: default; }
+#player.idle #seek .head { display: none; }
+
+/* ------------------------------------------------------------------
+   Workbench: the inspector, full frame
+   ------------------------------------------------------------------ */
 
 body.workbench-mode { grid-template-columns: 0 0 minmax(0, 1fr); }
 body.workbench-mode #nav,
@@ -200,12 +460,12 @@ body.workbench-mode #list { display: none; }
 body.workbench-mode #inspector { border-left: none; padding: 1.5rem; }
 
 .workbench { display: flex; gap: 2rem; align-items: flex-start;
-             max-width: 60rem; margin: 0 auto; }
-.workbench-cover { flex: 0 0 18rem; }
+             max-width: 58rem; margin: 0 auto; }
+.workbench-cover { flex: 0 0 17rem; }
 .workbench-cover .cover { width: 100%; }
 .workbench-detail { flex: 1; min-width: 0; }
-.workbench-detail .inspector-title { font-size: 1.4rem; }
-.workbench-detail input { max-width: 32rem; }
+.workbench-detail .inspector-title { font-size: 1.35rem; }
+.workbench-detail input { max-width: 30rem; }
 .workbench-actions { display: flex; gap: 0.5rem; margin-top: 0.8rem; }
 .workbench-actions button[type="submit"] { font-weight: 700; }
 

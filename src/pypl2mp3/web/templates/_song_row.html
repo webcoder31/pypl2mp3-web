@@ -1,53 +1,56 @@
 {# One song row. Rendered inside the listing, and returned on its own by
    the junkize route so the row can replace itself in place.
 
-   Two lines: what the song is, then everything about it that is not the
-   song. The playlist used to be a column of its own, forty characters of
-   identical folder name repeated down the page.
+   One markup for both densities. Compact lays .row-title and .row-meta
+   on a single line, comfortable stacks them — the difference is CSS
+   values under body[data-density], never a different template. That is
+   the whole reason the switch is cheap.
+
+   Actions live in their own cell so the title truncates against the
+   space it actually has, not against the buttons.
 
    The data- attributes are what console.js builds the play queue from:
-   the rows on screen *are* the queue. There used to be an <audio> here,
-   one per row — 915 of them in a full listing, none of which survived
-   leaving the page. The console has a single player instead. #}
-{# data-duration and data-junk feed the player bar's preview of what
-   comes next, the way the CLI prints it before the current track even
-   starts. #}
+   the rows on screen *are* the queue. data-duration and data-junk feed
+   the player bar's preview of what comes next. There used to be an
+   <audio> here, one per row — 915 in a full listing, none of which
+   survived leaving the page. #}
 <tr id="song-{{ song.youtube_id }}"
+    class="{% if song.is_junk %}is-junk{% endif %}"
     data-song-id="{{ song.youtube_id }}"
     data-label="{{ song.label }}"
-    data-duration="{{ song.duration }}"
+    data-duration="{{ song.short_duration }}"
     data-junk="{{ 1 if song.is_junk else 0 }}">
-  <td>
-    <div class="row-title">
+  <td class="row-cell">
+    <span class="row-title">
       {% if song.is_junk %}<span class="junk">⚠</span> {% endif %}
       {{ song.label }}
-    </div>
-    <div class="row-meta">
-      <span class="playlist">{{ song.playlist_name }}</span>
+    </span>
+    <span class="row-meta">
+      {% if show_playlist %}
+        <span class="playlist">{{ song.playlist_name }}</span>
+      {% endif %}
       <span class="id">{{ song.youtube_id }}</span>
-      {% if song.is_junk %}
-        {# Loads the panel without playing. Clicking the row does both,
-           which is usually what you want; this is for picking one out
-           of a listing you are already listening to. #}
-        <button type="button" class="fix-link"
-                hx-get="/fragments/inspector/{{ song.youtube_id }}"
-                hx-target="#inspector"
-                hx-swap="innerHTML">Fix</button>
-      {% else %}
-        <button type="button"
-          hx-post="/songs/{{ song.youtube_id }}/junkize"
-          hx-target="#song-{{ song.youtube_id }}"
-          hx-swap="outerHTML"
-          hx-confirm="Clear this song's metadata and mark it as junk? This cannot be undone."
-        >Junkize</button>
-      {% endif %}
-      {% if fixed %}
-        <span class="job-new">metadata fixed</span>
-      {% endif %}
-      {% if junkized %}
-        <span class="job-new">metadata cleared</span>
-      {% endif %}
-    </div>
+    </span>
   </td>
-  <td class="num">{{ song.duration }}</td>
+  <td class="row-actions">
+    {% if song.is_junk %}
+      {# Loads the panel without playing. Clicking the row does both,
+         which is usually what you want; this is for picking one out of
+         a listing you are already listening to. #}
+      <button type="button" class="fix-link"
+              hx-get="/fragments/inspector/{{ song.youtube_id }}"
+              hx-target="#inspector"
+              hx-swap="innerHTML">Fix</button>
+    {% else %}
+      <button type="button"
+        hx-post="/songs/{{ song.youtube_id }}/junkize"
+        hx-target="#song-{{ song.youtube_id }}"
+        hx-swap="outerHTML"
+        hx-confirm="Clear this song's metadata and mark it as junk? This cannot be undone."
+      >Junkize</button>
+    {% endif %}
+    {% if fixed %}<span class="job-new">metadata fixed</span>{% endif %}
+    {% if junkized %}<span class="job-new">metadata cleared</span>{% endif %}
+  </td>
+  <td class="num">{{ song.short_duration }}</td>
 </tr>

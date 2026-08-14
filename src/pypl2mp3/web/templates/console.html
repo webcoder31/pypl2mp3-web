@@ -4,6 +4,13 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>PYPL2MP3</title>
+    {# Applied before the first paint, so the chosen density never
+       flashes past on its way to being set. console.js loads at the end
+       of the body, far too late for that. #}
+    <script>
+      document.documentElement.dataset.density =
+        localStorage.getItem("pypl2mp3.density") || "comfortable";
+    </script>
     <script src="/static/htmx.min.js"></script>
     <link rel="stylesheet" href="/static/console.css">
   </head>
@@ -14,17 +21,18 @@
        and cut the sound. A test reads these attributes, so declaring a
        new region is enough to have the rule enforced on it. #}
 
-    {# One form holds the whole query. Everything that narrows the listing
-       — the search box, the junk flag, the playlist picked in the nav —
-       is a field of it, so the three can never drift apart. #}
     {# Deliberately not a swap region: it holds the job ribbon, and a
        running import must survive everything else on the page. #}
     <header id="header">
-      <strong>PYPL2MP3</strong>
+      <strong class="brand">PYPL<span>2</span>MP3</strong>
 
-      {# keyup filters as you type; `changed` keeps arrow keys and modifiers
-         from refetching an unchanged query. The form still submits, so
-         pressing enter is not a dead end. #}
+      {# One form holds the whole query. Everything that narrows the
+         listing — the search box, the junk flag, the playlist picked in
+         the nav — is a field of it, so the three can never drift apart.
+
+         keyup filters as you type; `changed` keeps arrow keys and
+         modifiers from refetching an unchanged query. The form still
+         submits, so pressing enter is not a dead end. #}
       <form id="filters"
             hx-get="/fragments/list"
             hx-target="#list"
@@ -42,8 +50,17 @@
         <button type="submit">Filter</button>
       </form>
 
-      <span class="id" id="counts">
-        {{ total_songs }} songs · {{ total_junk }} junk
+      {# Compact shows 16 songs a screen against 7. Which one suits
+         depends on the screen and on the task, so it is a switch rather
+         than a decision taken on your behalf. #}
+      <div id="density" role="group" aria-label="Row density">
+        <button type="button" data-density="comfortable">Comfortable</button>
+        <button type="button" data-density="compact">Compact</button>
+      </div>
+
+      <span id="counts">
+        {{ total_songs }} songs &middot;
+        <span class="junk">{{ total_junk }} junk</span>
       </span>
 
       {# Started jobs are appended here and poll themselves. They live in
@@ -57,9 +74,6 @@
       <div id="prefetch" hidden></div>
     </header>
 
-    {# Refetched on a playlist change only, never on a keystroke: the
-       presets are scoped to the playlist, and rebuilding them costs a
-       pass over its songs. #}
     {# Rebuilt when the playlist changes, and when a save changes what
        the repository holds: fixing a junk song gives it a real artist,
        which belongs in the presets. Both were once too expensive to do
@@ -82,19 +96,47 @@
       <p class="job-none">Select a song.</p>
     </aside>
 
-    {# The player is deliberately not a swap region. #}
+    {# The player is deliberately not a swap region.
+
+       Its transport is drawn here rather than by the browser: <audio
+       controls> renders a large rounded pill no stylesheet can reach,
+       and it was the one shape on the page that belonged to nobody's
+       design. The element stays; its chrome does not. #}
     <footer id="player" class="idle">
-      <button data-player-action="previous" title="Previous (←)">⏮</button>
-      <button data-player-action="toggle" title="Play / pause (space)">▶</button>
-      <button data-player-action="next" title="Next (→)">⏭</button>
+      <div id="transport">
+        <button type="button" data-player-action="previous"
+                title="Previous (left arrow)"
+                aria-label="Previous">&#9198;</button>
+        <button type="button" data-player-action="toggle"
+                title="Play / pause (space)"
+                aria-label="Play or pause">&#9654;</button>
+        <button type="button" data-player-action="next"
+                title="Next (right arrow)" aria-label="Next">&#9197;</button>
+      </div>
+
       {# What is playing is already the whole right-hand panel. What the
          bar can say that nothing else does is what comes next — the CLI
          prints it too, before the current track has even started. #}
-      <span id="player-next">Nothing playing</span>
-      <audio id="audio" controls></audio>
-      <span class="id" id="player-position"></span>
+      <span id="player-next"><span class="k" id="player-next-key">NEXT</span
+        ><span id="player-next-text">Nothing playing</span></span>
+
+      <div id="timeline">
+        <span class="t" id="player-elapsed">0:00</span>
+        <div id="seek" role="slider" aria-label="Seek"
+             aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+             tabindex="0">
+          <span class="track"></span>
+          <span class="fill"></span>
+          <span class="head"></span>
+        </div>
+        <span class="t" id="player-total">0:00</span>
+      </div>
+
+      <span id="player-position"></span>
       <a id="player-video" href="#" target="_blank"
          rel="noopener noreferrer" title="Watch on YouTube (tab)">video</a>
+
+      <audio id="audio"></audio>
     </footer>
 
     <script src="/static/console.js"></script>

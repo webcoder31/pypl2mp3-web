@@ -38,6 +38,21 @@ class SongSummary:
         return f"{self.artist} - {self.title}"
 
     @property
+    def short_duration(self) -> str:
+        """`6:17`, not `00:06:17`.
+
+        SongModel pads to a fixed eight characters so terminal columns
+        line up. On screen those leading zeros are three characters of
+        nothing, repeated down every row of a 900-row listing.
+        """
+
+        parts = self.duration.split(":")
+        while len(parts) > 2 and parts[0].strip("0") == "":
+            parts.pop(0)
+
+        return ":".join([parts[0].lstrip("0") or "0", *parts[1:]])
+
+    @property
     def playlist_name(self) -> str:
         """The playlist without its YouTube id.
 

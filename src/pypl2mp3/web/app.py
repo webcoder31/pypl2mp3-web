@@ -8,6 +8,7 @@ passed the wrong flag.
 
 import asyncio
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -379,6 +380,7 @@ def create_app(repository_path: Path) -> FastAPI:
                 "summaries": summaries,
                 "artists": list_artists(everything),
                 "songs": filtered,
+                "show_playlist": not playlist,
                 "playlist": playlist,
                 "query": q,
                 "junk_only": bool(junk),
@@ -431,8 +433,26 @@ def create_app(repository_path: Path) -> FastAPI:
         return templates.TemplateResponse(
             request,
             "_list.html",
-            {"songs": _selection(playlist, q, junk, match, artist)},
+            {
+                "songs": _selection(playlist, q, junk, match, artist),
+                # Repeating one playlist's name down 874 rows teaches
+                # nothing. It earns its place only when the selection
+                # spans more than one.
+                "show_playlist": not playlist,
+            },
         )
+
+    def _current_playlist(request) -> str:
+        """The playlist the browser is looking at, if any.
+
+        Routes that answer with one row rather than a whole listing need
+        it to render that row like its neighbours. htmx sends the page's
+        address in HX-Current-URL; there is nowhere else to read it from.
+        """
+
+        current = request.headers.get("HX-Current-URL", "")
+
+        return parse_qs(urlparse(current).query).get("playlist", [""])[0]
 
     def _summary_or_404(youtube_id: str):
         try:
@@ -643,7 +663,14 @@ def create_app(repository_path: Path) -> FastAPI:
             return templates.TemplateResponse(
                 request,
                 "_song_row.html",
-                {"song": song, "junkized": True},
+                {
+                    "song": song,
+                    "junkized": True,
+                    # The replaced row has to match its neighbours, and
+                    # only the page knows whether a playlist is
+                    # selected. HX-Current-URL is where htmx puts it.
+                    "show_playlist": not _current_playlist(request),
+                },
             )
 
         return {

@@ -16,9 +16,57 @@
 (function () {
   "use strict";
 
+  // ---------------------------------------------------------------
+  // Density
+  //
+  // Compact and comfortable differ only in CSS values under
+  // :root[data-density], so switching is one attribute — no second
+  // template, no reload, and nothing in the DOM moves. In particular the
+  // <audio> element is untouched, so the music does not stop.
+  //
+  // The attribute is on <html> because a script in the <head> sets it
+  // before the first paint; this only keeps it in step and remembers it.
+  // ---------------------------------------------------------------
+
+  const DENSITY_KEY = "pypl2mp3.density";
+
+  function applyDensity(name) {
+    const density = name === "compact" ? "compact" : "comfortable";
+    document.documentElement.dataset.density = density;
+
+    document.querySelectorAll("#density button[data-density]").forEach(
+      function (button) {
+        button.setAttribute(
+          "aria-pressed", String(button.dataset.density === density)
+        );
+      }
+    );
+
+    return density;
+  }
+
+  applyDensity(document.documentElement.dataset.density);
+
+  document.addEventListener("click", function (event) {
+    const pick = event.target.closest("#density button[data-density]");
+    if (!pick) return;
+
+    try {
+      localStorage.setItem(DENSITY_KEY, applyDensity(pick.dataset.density));
+    } catch (error) {
+      // Private browsing refuses localStorage. The switch still works
+      // for this page; it just will not be remembered.
+    }
+  });
+
   const audio = document.getElementById("audio");
   const bar = document.getElementById("player");
   const upNext = document.getElementById("player-next");
+  const nextKey = document.getElementById("player-next-key");
+  const nextText = document.getElementById("player-next-text");
+  const elapsed = document.getElementById("player-elapsed");
+  const total = document.getElementById("player-total");
+  const seek = document.getElementById("seek");
   const position = document.getElementById("player-position");
   const videoLink = document.getElementById("player-video");
   const toggle = document.querySelector('[data-player-action="toggle"]');
@@ -63,7 +111,8 @@
 
     if (!current) {
       bar.classList.add("idle");
-      upNext.textContent = "Nothing playing";
+      nextKey.textContent = "NEXT";
+      nextText.textContent = "Nothing playing";
       upNext.title = "";
       position.textContent = "";
       return;
@@ -80,16 +129,12 @@
     // can say that nothing else does is what comes next.
     const following =
       queue[(index + direction + queue.length) % queue.length];
-    const arrow = direction < 0 ? "NEXT ←" : "NEXT →";
-    upNext.textContent = following
-      ? arrow +
-        "  " +
-        following.duration +
-        "  " +
-        following.label +
+    nextKey.textContent = direction < 0 ? "NEXT ←" : "NEXT →";
+    nextText.textContent = following
+      ? following.duration + "  " + following.label +
         (following.junk ? " (JUNK)" : "")
       : "";
-    upNext.title = upNext.textContent;
+    upNext.title = nextKey.textContent + " " + nextText.textContent;
   }
 
   // Set when the inspector's form has edits nobody has saved. The panel
@@ -206,6 +251,85 @@
 
   audio.addEventListener("pause", function () {
     toggle.textContent = "▶";
+  });
+
+  // ---------------------------------------------------------------
+  // The transport
+  //
+  // Everything <audio controls> used to draw, drawn here instead: it
+  // rendered a large rounded pill that no stylesheet can reach, and it
+  // was the one shape on the page nobody had designed.
+  // ---------------------------------------------------------------
+
+  function clock(seconds) {
+    if (!isFinite(seconds) || seconds < 0) return "0:00";
+
+    const whole = Math.floor(seconds);
+    const s = String(whole % 60).padStart(2, "0");
+    const m = Math.floor(whole / 60) % 60;
+    const h = Math.floor(whole / 3600);
+
+    // Hours only when there are hours: a fixed 00:06:17 is three
+    // characters of nothing, repeated on every row.
+    return h ? h + ":" + String(m).padStart(2, "0") + ":" + s : m + ":" + s;
+  }
+
+  function paintTime() {
+    const length = audio.duration;
+    const done = audio.currentTime;
+    const ratio = isFinite(length) && length > 0 ? done / length : 0;
+    const percent = Math.max(0, Math.min(1, ratio)) * 100;
+
+    elapsed.textContent = clock(done);
+    total.textContent = clock(length);
+    seek.querySelector(".fill").style.width = percent + "%";
+    seek.querySelector(".head").style.left = percent + "%";
+    seek.setAttribute("aria-valuenow", Math.round(percent));
+  }
+
+  audio.addEventListener("timeupdate", paintTime);
+  audio.addEventListener("loadedmetadata", paintTime);
+  audio.addEventListener("emptied", paintTime);
+
+  function seekTo(event) {
+    if (!isFinite(audio.duration) || audio.duration <= 0) return;
+
+    const box = seek.getBoundingClientRect();
+    const ratio = (event.clientX - box.left) / box.width;
+    audio.currentTime = Math.max(0, Math.min(1, ratio)) * audio.duration;
+    paintTime();
+  }
+
+  seek.addEventListener("mousedown", function (event) {
+    seekTo(event);
+
+    function drag(moved) { seekTo(moved); }
+    function stop() {
+      window.removeEventListener("mousemove", drag);
+      window.removeEventListener("mouseup", stop);
+    }
+
+    window.addEventListener("mousemove", drag);
+    window.addEventListener("mouseup", stop);
+  });
+
+  // The bar is a slider, so arrows nudge the position rather than change
+  // track. Stopping propagation is what keeps the document handler below
+  // from doing both.
+  seek.addEventListener("keydown", function (event) {
+    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+    if (!isFinite(audio.duration)) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    audio.currentTime = Math.max(
+      0,
+      Math.min(
+        audio.duration,
+        audio.currentTime + (event.key === "ArrowRight" ? 5 : -5)
+      )
+    );
+    paintTime();
   });
 
   // A song that leaves the listing — filtered out, junkized — would keep
