@@ -20,6 +20,7 @@ import re
 import tempfile
 import asyncio
 import time
+import weakref
 from types import SimpleNamespace
 from typing import Any, Callable, Optional, Union
 import urllib.request
@@ -525,6 +526,29 @@ class SongModel:
 
     # Date of last request to Shazam API (class property)
     last_shazam_request_time = 0
+
+    # Guards the timestamp above: the 15s gap is enforced by reading it
+    # and then sleeping, which only holds if one coroutine is in that
+    # sequence at a time. See shazam_song.
+    #
+    # One lock per event loop, created on demand. An asyncio.Lock binds
+    # to the loop that first awaits it, so a single module-level one
+    # would raise the moment a second loop touched it — which is what a
+    # process calling asyncio.run() more than once does.
+    _shazam_locks: "weakref.WeakKeyDictionary" = weakref.WeakKeyDictionary()
+
+
+    @classmethod
+    def shazam_lock(cls) -> asyncio.Lock:
+        """The Shazam throttle's mutex, for the running event loop."""
+
+        loop = asyncio.get_running_loop()
+        lock = cls._shazam_locks.get(loop)
+        if lock is None:
+            lock = asyncio.Lock()
+            cls._shazam_locks[loop] = lock
+
+        return lock
 
 
     @staticmethod
@@ -1532,34 +1556,41 @@ class SongModel:
                 ) from exc
 
         # Submit song to Shazam API for recognition.
-        try:
-            # Wait for 15s min since last request to Shazam API.
-            diff_time = time.time() - SongModel.last_shazam_request_time
-            if diff_time < 15:
-                # Awaited, not slept: this sits in an async body, and a web
-                # server sharing the loop must stay responsive for the 15s.
-                await asyncio.sleep(15 - diff_time)
-
-            # Call Shazam API to recognize song and get metadata
-            shazam_metadata = \
-                await self.shazam_client.recognize_song(str(self.path))
-            SongModel.last_shazam_request_time = time.time()
-        except:
-            # If Shazam API call fails, wait for 35s before retry
-            diff_time = time.time() - SongModel.last_shazam_request_time
-            if diff_time < 35:
-                await asyncio.sleep(35 - diff_time)
-
-            # Retry Shazam API call
-            # If it fails again, raise an error
+        #
+        # Held across the wait *and* the call. Reading the timestamp and
+        # then sleeping is not mutual exclusion: two coroutines both
+        # measure the same gap, both decide they may go, and both fire.
+        # One caller at a time made that harmless; a web UI that
+        # identifies songs ahead of the one on screen does not.
+        async with SongModel.shazam_lock():
             try:
+                # Wait for 15s min since last request to Shazam API.
+                diff_time = time.time() - SongModel.last_shazam_request_time
+                if diff_time < 15:
+                    # Awaited, not slept: this sits in an async body, and a
+                    # web server sharing the loop must stay responsive.
+                    await asyncio.sleep(15 - diff_time)
+
+                # Call Shazam API to recognize song and get metadata
                 shazam_metadata = \
                     await self.shazam_client.recognize_song(str(self.path))
                 SongModel.last_shazam_request_time = time.time()
-            except Exception as exc:
-                raise SongModelException(
-                    f"Shazam API seems out of service"
-                ) from exc
+            except:
+                # If Shazam API call fails, wait for 35s before retry
+                diff_time = time.time() - SongModel.last_shazam_request_time
+                if diff_time < 35:
+                    await asyncio.sleep(35 - diff_time)
+
+                # Retry Shazam API call
+                # If it fails again, raise an error
+                try:
+                    shazam_metadata = \
+                        await self.shazam_client.recognize_song(str(self.path))
+                    SongModel.last_shazam_request_time = time.time()
+                except Exception as exc:
+                    raise SongModelException(
+                        f"Shazam API seems out of service"
+                    ) from exc
             
         # Update song state and related MP3 file according to Shazam metadata 
         # and compare returned artist and title with current artist and title 
