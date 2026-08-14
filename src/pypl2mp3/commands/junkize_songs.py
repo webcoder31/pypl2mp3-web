@@ -17,7 +17,7 @@ from pathlib import Path
 from colorama import Fore, Style, init
 
 # pypl2mp3 libs
-from pypl2mp3.libs.repository import get_repository_song_files
+from pypl2mp3.libs.repository import get_repository_songs
 from pypl2mp3.libs.song import SongModel
 from pypl2mp3.libs.utils import (
     CountFormatter, 
@@ -52,7 +52,10 @@ def junkize_songs(args: any) -> None:
     prompt = args.prompt
     
     # Get list of songs matching criteria
-    song_files = get_repository_song_files(
+    # Asks for the models, not the paths: selecting and sorting has
+    # already parsed every candidate, so the models exist by now and
+    # rebuilding one per path would double the work.
+    songs = get_repository_songs(
         Path(args.repo),
         keywords=args.keywords,
         filter_match_threshold=args.match,
@@ -62,30 +65,29 @@ def junkize_songs(args: any) -> None:
     # Check if some songs match selection crieria
     # iI none, then return
     try:
-        check_and_display_song_selection_result(song_files)
+        check_and_display_song_selection_result(songs)
     except SystemExit:
         return
 
     if not prompt and not _confirm_bulk_operation():
         return
 
-    _process_songs(song_files, prompt, args.verbose)
+    _process_songs(songs, prompt, args.verbose)
 
 
-def _process_songs(song_files: list[Path], prompt: bool, verbose: bool) -> None:
+def _process_songs(songs: list[SongModel], prompt: bool, verbose: bool) -> None:
     """
     Process each song file for make it "junk".
 
     Args:
-        song_files: List of paths to song files
+        songs: Songs to work through, already parsed
         prompt: Whether to prompt for confirmation for each song
     """
 
-    count_formatter = CountFormatter(len(song_files))
+    count_formatter = CountFormatter(len(songs))
 
-    for index, song_file in enumerate(song_files, 1):
+    for index, song in enumerate(songs, 1):
         counter = count_formatter.format(index)
-        song = SongModel(song_file)
         
         print(
             f"\n{format_song_display(song, counter)}  "

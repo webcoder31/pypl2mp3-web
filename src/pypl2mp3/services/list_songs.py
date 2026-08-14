@@ -71,10 +71,9 @@ def list_songs(
         legitimate answer, not an error.
     """
 
-    # get_repository_songs rather than get_repository_song_files: selecting
-    # and sorting already parsed every candidate, so asking for the models
-    # avoids reopening all of them. Measured at 1.2s saved over a 915-song
-    # repository.
+    # Asks for the models, not the paths: selecting and sorting has
+    # already parsed every candidate, so rebuilding one per path would
+    # double the work. Measured at 1.2s over a 915-song repository.
     songs = get_repository_songs(
         Path(repository_path),
         junk_only=junk_only,

@@ -317,61 +317,6 @@ def get_repository_playlist(
     )
 
 
-def get_repository_song_files(
-    repository_path: Path,
-    junk_only: bool = False,
-    keywords: str = "",
-    filter_match_threshold: float = DEFAULT_FILTER_THRESHOLD,
-    song_index: Optional[int] = None,
-    playlist_identifier: Optional[str] = None,
-) -> list[Path] | None:
-    """
-    Search and retrieve song files matching specified criteria.
-
-    Thin wrapper over `get_repository_songs`, kept for callers that only
-    need paths. Note that finding these paths already parsed every
-    candidate MP3: if you are about to build a SongModel from each path
-    returned here, call `get_repository_songs` instead and halve the work.
-
-    Performs a flexible search across the repository or within a specific playlist,
-    with support for filtering by keywords, junk status, and specific indices.
-    Uses fuzzy string matching for keyword filtering with customizable threshold.
-
-    Args:
-        repository_path (Path): Root path of the repository
-        junk_only (bool, optional): If True, only return songs marked as junk.
-            Defaults to False.
-        keywords (str, optional): Search terms to filter songs. Defaults to "".
-        filter_match_threshold (float, optional): Minimum match score (0-100)
-            for keyword filtering. Defaults to DEFAULT_FILTER_THRESHOLD.
-        song_index (Optional[int], optional): Specific song index to retrieve.
-            1-based indexing, 0 for random selection. Defaults to None.
-        playlist_identifier (Optional[str], optional): Limit search to this
-            playlist. Accepts ID, URL or index. Defaults to None.
-
-    Returns:
-        list[Path] | None: List of paths to matching song files, or None if
-            no matches found. Files are ordered by:
-            - Match score (if keywords provided)
-            - Artist/title (if no keywords)
-
-    Raises:
-        RepositoryException: When provided song index is out of range
-        ValueError: When filter_match_threshold is not between 0 and 100
-    """
-
-    songs = get_repository_songs(
-        repository_path,
-        junk_only=junk_only,
-        keywords=keywords,
-        filter_match_threshold=filter_match_threshold,
-        song_index=song_index,
-        playlist_identifier=playlist_identifier,
-    )
-
-    return None if songs is None else [song.path for song in songs]
-
-
 def get_repository_songs(
     repository_path: Path,
     junk_only: bool = False,

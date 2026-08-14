@@ -38,7 +38,7 @@ import pygame
 
 # pypl2mp3 libs
 from pypl2mp3.libs.exceptions import AppBaseException
-from pypl2mp3.libs.repository import get_repository_song_files
+from pypl2mp3.libs.repository import get_repository_songs
 from pypl2mp3.libs.song import SongModel
 from pypl2mp3.libs.utils import (
     LabelFormatter, 
@@ -64,7 +64,7 @@ class PlayerState:
     """
     Maintains the state of the music player.
     Attributes:
-        song_files: List of song file paths
+        songs: The selection being played, already parsed
         song_count: Total number of songs
         current_index: Index of the currently playing song
         current_url: URL of the currently playing song
@@ -75,7 +75,7 @@ class PlayerState:
         verbose: Flag for verbose output
         player_thread: Thread instance for running the player
     """
-    song_files: list[Path] = None
+    songs: list[SongModel] = None
     song_count: int = 0
     current_index: int = -1
     current_url: Optional[str] = None
@@ -234,8 +234,8 @@ def _run_playback_loop() -> None:
             player.current_index, player.play_direction, player.song_count
         )
                 
-        current_file = player.song_files[player.current_index]
-        current_song = SongModel(current_file)
+        current_song = player.songs[player.current_index]
+        current_file = current_song.path
         player.current_url = f"https://youtu.be/{current_song.youtube_id}"
 
         counter = player.count_formatter.format(player.current_index + 1)
@@ -245,7 +245,7 @@ def _run_playback_loop() -> None:
             player.current_index, player.play_direction, player.song_count
         )
 
-        next_song = SongModel(player.song_files[next_index])
+        next_song = player.songs[next_index]
         _display_song_information(next_song, "", is_next=True)
 
         try:
@@ -292,7 +292,11 @@ def play_songs(args: any) -> None:
     """
     
     player.verbose = args.verbose
-    player.song_files = get_repository_song_files(
+    # Asks for the models, not the paths: selecting and sorting has
+    # already parsed every candidate. The loop below needs a model per
+    # song anyway — one for what is playing, one for the preview of what
+    # comes next.
+    player.songs = get_repository_songs(
         Path(args.repo),
         keywords=args.keywords,
         filter_match_threshold=args.match,
@@ -303,13 +307,13 @@ def play_songs(args: any) -> None:
     # Check if some songs match selection crieria
     # iI none, then return
     try:
-        check_and_display_song_selection_result(player.song_files)
+        check_and_display_song_selection_result(player.songs)
     except SystemExit as exc:
         return
 
     # Handle shuffle option
     if args.shuffle:
-        random.shuffle(player.song_files)
+        random.shuffle(player.songs)
 
     # Display available keyboard controls
     _display_controls()
@@ -318,7 +322,7 @@ def play_songs(args: any) -> None:
     pygame.mixer.init()
 
     # Prepare the player
-    player.song_count = len(player.song_files)
+    player.song_count = len(player.songs)
     player.count_formatter = CountFormatter(player.song_count)
 
     # Start the player

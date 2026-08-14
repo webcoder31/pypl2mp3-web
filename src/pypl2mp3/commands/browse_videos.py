@@ -18,7 +18,7 @@ import webbrowser
 from colorama import Fore, Style, init
 
 # pypl2mp3 libs
-from pypl2mp3.libs.repository import get_repository_song_files
+from pypl2mp3.libs.repository import get_repository_songs
 from pypl2mp3.libs.song import SongModel
 from pypl2mp3.libs.utils import (
     LabelFormatter, 
@@ -46,7 +46,10 @@ def browse_videos(args: any) -> None:
             - verbose: Verbose output flag
     """
 
-    song_files = get_repository_song_files(
+    # Asks for the models, not the paths: selecting and sorting has
+    # already parsed every candidate, so the models exist by now and
+    # rebuilding one per path would double the work.
+    songs = get_repository_songs(
         Path(args.repo),
         keywords=args.keywords,
         filter_match_threshold=args.match,
@@ -56,14 +59,13 @@ def browse_videos(args: any) -> None:
     # Check if some songs match selection crieria
     # If none, then return
     try:
-        check_and_display_song_selection_result(song_files)
+        check_and_display_song_selection_result(songs)
     except SystemExit:
         return
 
-    count_formatter = CountFormatter(len(song_files))
+    count_formatter = CountFormatter(len(songs))
 
-    for index, song_file in enumerate(song_files, 1):
-        song = SongModel(song_file)
+    for index, song in enumerate(songs, 1):
         counter = count_formatter.format(index)
         
         print(f"\n{format_song_display(song, counter)}")

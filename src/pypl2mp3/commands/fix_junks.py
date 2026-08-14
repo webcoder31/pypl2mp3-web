@@ -24,7 +24,7 @@ from pytubefix import YouTube
 # pypl2mp3 libs
 from pypl2mp3.libs.exceptions import AppBaseException
 from pypl2mp3.libs.logger import logger
-from pypl2mp3.libs.repository import get_repository_song_files
+from pypl2mp3.libs.repository import get_repository_songs
 from pypl2mp3.libs.song import SongModel, ProgressBarInterface
 from pypl2mp3.libs.utils import (
     LabelFormatter, 
@@ -686,7 +686,10 @@ async def fix_junks(args: any) -> None:
             - playlist: Playlist identifier
     """
     
-    song_files = get_repository_song_files(
+    # Asks for the models, not the paths: selecting and sorting has
+    # already parsed every candidate, so the models exist by now and
+    # rebuilding one per path would double the work.
+    songs = get_repository_songs(
         Path(args.repo),
         keywords=args.keywords,
         filter_match_threshold=args.match,
@@ -697,12 +700,12 @@ async def fix_junks(args: any) -> None:
     # Check if some songs match selection crieria
     # iI none, then return
     try:
-        check_and_display_song_selection_result(song_files)
+        check_and_display_song_selection_result(songs)
     except SystemExit:
         return
 
     tagger = JunkSongTagger(
-        len(song_files),
+        len(songs),
         prompt_confirm=args.prompt,
         shazam_threshold=args.thresh
     )
@@ -710,16 +713,16 @@ async def fix_junks(args: any) -> None:
     print(f"\n{Fore.MAGENTA}NOTE: Type CTRL+C twice to exit.\n")
 
     if not args.prompt and prompt_user(
-        f"bout to fix {len(song_files)} junk songs automatically. " \
+        f"bout to fix {len(songs)} junk songs automatically. " \
             + "Do you want to proceed",
         ["yes", "no"]
     ) != "yes":
 
         return
 
-    for song_index, song_file in enumerate(song_files, 1):
+    for song_index, song in enumerate(songs, 1):
         try:
-            await tagger._process_single_song(SongModel(song_file), song_index)
+            await tagger._process_single_song(song, song_index)
         except KeyboardInterrupt:
             # Handle keyboard interrupt gracefully
             tagger._print_report()
@@ -727,7 +730,7 @@ async def fix_junks(args: any) -> None:
         except Exception as exc:
             # Handle any exceptions that occur during processing
             # and skip to the next song.
-            logger.error(exc, f"Error processing \"{song_file}\"")
+            logger.error(exc, f"Error processing \"{song.path}\"")
             continue
 
     # Print final report

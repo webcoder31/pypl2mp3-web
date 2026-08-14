@@ -18,7 +18,7 @@ from pathlib import Path
 from colorama import Fore, init
 
 # pypl2mp3 libs
-from pypl2mp3.libs.repository import get_repository_song_files
+from pypl2mp3.libs.repository import get_repository_songs
 from pypl2mp3.libs.song import SongModel
 from pypl2mp3.libs.utils import (
     CountFormatter, 
@@ -47,7 +47,10 @@ def list_songs(args: any) -> None:
         FileNotFoundError: If the repository path doesn't exist
     """
 
-    song_files = get_repository_song_files(
+    # Asks for the models, not the paths: selecting and sorting has
+    # already parsed every candidate, so the models exist by now and
+    # rebuilding one per path would double the work.
+    songs = get_repository_songs(
         Path(args.repo),
         keywords=args.keywords,
         filter_match_threshold=args.match,
@@ -57,30 +60,29 @@ def list_songs(args: any) -> None:
     # Check if some songs match selection crieria
     # iI none, then return
     try:
-        check_and_display_song_selection_result(song_files)
+        check_and_display_song_selection_result(songs)
     except SystemExit:
         return
     
     if not args.verbose:
         print()
     
-    _display_songs(song_files, args.verbose)
+    _display_songs(songs, args.verbose)
 
 
-def _display_songs(song_files: list[Path], verbose: bool) -> None:
+def _display_songs(songs: list[SongModel], verbose: bool) -> None:
     """
     Display song information with optional verbose details.
 
     Args:
-        song_files: List of paths to song files
+        songs: Songs to work through, already parsed
         verbose: Whether to show detailed information
     """
 
-    count_formatter = CountFormatter(len(song_files))
+    count_formatter = CountFormatter(len(songs))
     
-    for index, song_file in enumerate(song_files, 1):
+    for index, song in enumerate(songs, 1):
         counter = count_formatter.format(index)
-        song = SongModel(song_file)
         
         print(("", "\n")[verbose] + format_song_display(song, counter))
         
