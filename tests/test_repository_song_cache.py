@@ -209,3 +209,47 @@ def test_an_unreadable_file_is_not_cached(tmp_path, parses):
         repository._load_song(missing)
 
     assert missing not in repository._song_cache
+
+
+def test_a_rewrite_that_preserves_the_mtime_is_still_seen(tmp_path, parses):
+    """Some tools restore a file's timestamp after rewriting it.
+
+    Validation is (mtime, size), not mtime alone — this is what the size
+    half is for. Growing the audio rather than the tags: mutagen pads its
+    ID3 block, so a longer artist name often leaves the size untouched.
+    """
+
+    path = _make_song(tmp_path, "UNKNOWN", "aaaaaaaaaaa")
+    stamp = path.stat()
+
+    list_songs(tmp_path)
+    parses.clear()
+
+    with path.open("ab") as handle:
+        handle.write(_MP3_FRAME * 8)
+    os.utime(path, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+
+    assert path.stat().st_size != stamp.st_size, "the fixture proves nothing"
+    assert path.stat().st_mtime_ns == stamp.st_mtime_ns, (
+        "the fixture proves nothing: the timestamp moved too"
+    )
+
+    list_songs(tmp_path)
+
+    assert parses, (
+        "served a stale parse: the timestamp was put back, so only the "
+        "size gives the change away"
+    )
+
+
+def test_a_song_deleted_after_being_cached_is_not_served_from_it(tmp_path):
+    """Stale is worse than absent: the file is gone."""
+
+    path = _make_song(tmp_path, "ARTIST", "aaaaaaaaaaa")
+    list_songs(tmp_path)
+    assert path in repository._song_cache
+
+    path.unlink()
+
+    with pytest.raises(Exception):
+        repository._load_song(path)
