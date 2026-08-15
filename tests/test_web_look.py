@@ -385,14 +385,20 @@ async def test_the_layout_puts_the_song_above_the_listing(tmp_path):
     assert '"main   nav"' in areas
 
     # The inspector and the listing share one column, in that order.
-    main = re.search(r'<div id="main">(.*?)</div>\s*<nav', body, re.DOTALL)
+    # What sits between them is the transport, asserted separately.
+    main = re.search(r'<div id="main">(.*?)\n    </div>', body, re.DOTALL)
     assert main, "the two are not in one column"
     assert main.group(1).index('id="inspector"') < main.group(1).index('id="list"')
 
-    # And the inspector takes only the height it needs, so with nothing
-    # selected the listing has the whole column.
-    rows = re.search(r"#main \{(.*?)\n\}", css, re.DOTALL).group(1)
-    assert "grid-template-rows: auto minmax(0, 1fr)" in rows, rows
+    # The listing is the only row that grows: everything above it takes
+    # the height it needs, so with nothing selected it has the column.
+    rows = re.search(r"grid-template-rows:\s*([^;]+)", 
+                     re.search(r"#main \{(.*?)\n\}", css, re.DOTALL).group(1)
+                     ).group(1)
+    assert rows.endswith("minmax(0, 1fr)"), rows
+    assert "1fr" not in rows.replace("minmax(0, 1fr)", ""), (
+        f"more than the listing grows: {rows}"
+    )
 
 
 async def test_the_listing_is_placed_by_its_own_column(tmp_path):
