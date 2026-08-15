@@ -73,6 +73,12 @@
 
   --shadow: 0 1px 2px rgba(16, 26, 26, 0.07);
 
+  /* The listing's header. Tinted rather than merely lighter: it and the
+     rows beneath it are both surfaces, so a difference in lightness
+     alone reads as a rendering artefact. A trace of the accent says the
+     row belongs to the selection it describes. */
+  --header-bg: #e6f0ec;
+
   /* Spacing, on a scale, for the same reason the type sizes are: values
      chosen per rule drift, and that drift is what reads as careless.
      Five steps, each a comfortable multiple of the last. */
@@ -137,6 +143,8 @@
     --score-low: #e0817a;
 
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+
+    --header-bg: #1b2523;
   }
 }
 
@@ -383,7 +391,7 @@ a { color: var(--accent); text-decoration-thickness: 1px;
    queue counter in it there is nothing for the server to render, so it
    stays out of the fragment that gets swapped. */
 #toolbar {
-  background: var(--surface);
+  background: var(--header-bg);
   border-bottom: 1px solid var(--line);
   padding: var(--space-3) var(--block-pad-x);
   display: flex;
@@ -394,8 +402,11 @@ a { color: var(--accent); text-decoration-thickness: 1px;
 
 /* Where you are in the queue, and what follows. The two read as one
    line, and the actions gather at the far end. */
+/* --text-2, not --text-3: the tinted header is lighter than the rows,
+   and the dimmest step fell to 3.1:1 against it — under the threshold
+   for text this size. It carries a count, so it has to be read. */
 #player-position { font-variant-numeric: tabular-nums;
-                   font-size: var(--fs-sm); color: var(--text-3);
+                   font-size: var(--fs-sm); color: var(--text-2);
                    white-space: nowrap; flex: 0 0 auto; }
 #player-next {
   flex: 1;

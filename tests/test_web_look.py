@@ -826,3 +826,52 @@ async def test_the_player_carries_no_second_video_link(tmp_path):
     # The keyboard shortcut has to survive the link it used to read.
     assert 'window.open(\n            "https://youtu.be/" + queue[index].id'\
         in script, "tab no longer knows which video to open"
+
+
+async def test_the_listing_header_is_tinted_apart_from_its_rows(tmp_path):
+    """Header and rows are both surfaces, so a difference in lightness
+    alone reads as a rendering artefact. A trace of the accent says the
+    row belongs to the selection it describes."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    bar = re.search(r"#toolbar \{(.*?)\n\}", css, re.DOTALL).group(1)
+    assert "background: var(--header-bg)" in bar, bar
+
+    listing = re.search(r"#list \{([^}]*)\}", css).group(1)
+    assert "--header-bg" not in listing, "the header no longer stands apart"
+
+    for theme, block in (
+        ("light", css[: css.index("prefers-color-scheme: dark")]),
+        ("dark", css[css.index("prefers-color-scheme: dark") :]),
+    ):
+        value = re.search(r"--header-bg:\s*#([0-9a-fA-F]{6})", block)
+        assert value, f"{theme} has no header colour"
+
+        red, green, blue = (
+            int(value.group(1)[i : i + 2], 16) for i in (0, 2, 4)
+        )
+        assert green > red and green >= blue, (
+            f"{theme} #{value.group(1)} is not green-tinted"
+        )
+        # Tinted, not coloured: a saturated band would shout louder than
+        # anything it contains.
+        assert max(red, green, blue) - min(red, green, blue) <= 24, (
+            f"{theme} #{value.group(1)} is too saturated for a background"
+        )
+
+
+async def test_the_count_survives_the_lighter_header(tmp_path):
+    """Measured in a browser: the dimmest text step fell to 3.1:1 on the
+    tinted band, under the threshold for text this size. The counter
+    carries a number, so it has to be read."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    rule = re.search(r"#player-position \{(.*?)\}", css, re.DOTALL).group(1)
+    assert "var(--text-2)" in rule, rule
+    assert "var(--text-3)" not in rule, (
+        "the count is back on the dimmest step, which the header washes out"
+    )
