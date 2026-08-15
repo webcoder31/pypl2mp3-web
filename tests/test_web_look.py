@@ -1030,3 +1030,25 @@ async def test_ordinary_buttons_sit_back(tmp_path):
     assert "border: 1px solid var(--line)" in rule, (
         "the border is still the strong one, which reads as a raised key"
     )
+
+
+async def test_the_cover_is_a_fixed_square(tmp_path):
+    """YouTube art arrives in every shape. A box that resized with it
+    made the fields below jump each time you changed song."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    size = re.search(r"--cover-size:\s*([^;]+);", css).group(1).strip()
+    assert size == "285px", size
+
+    rule = re.search(
+        r"\.inspector-cover \.cover \{([^}]*)\}", css, re.DOTALL
+    ).group(1)
+    assert "width: var(--cover-size)" in rule, rule
+    assert "height: var(--cover-size)" in rule, (
+        "only the width is pinned, so a 16:9 thumbnail still sets the height"
+    )
+    assert "object-fit: cover" in rule, (
+        "without it a non-square image is stretched to fit the box"
+    )

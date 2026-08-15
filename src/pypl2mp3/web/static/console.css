@@ -95,7 +95,10 @@
   --block-pad-y: var(--space-4);
 
   --pane-nav: 16rem;
-  --cover-size: 17rem;
+  /* A fixed square. YouTube art arrives in every shape, and a box that
+     resized with it made the fields below jump each time you changed
+     song. */
+  --cover-size: 285px;
 
   --row-pad-y: var(--space-2);
   --row-pad-x: var(--block-pad-x);
@@ -520,7 +523,11 @@ tbody tr.playing td.num { color: var(--accent); }
 
 #inspector-body { display: flex; gap: var(--space-5); align-items: flex-start; }
 .inspector-cover { flex: 0 0 var(--cover-size); }
-.inspector-cover .cover { width: 100%; box-shadow: var(--shadow); }
+/* object-fit: cover — a 16:9 thumbnail fills the square and loses its
+   edges, rather than sitting in the middle of two empty bands. */
+.inspector-cover .cover { width: var(--cover-size);
+                          height: var(--cover-size);
+                          object-fit: cover; box-shadow: var(--shadow); }
 .inspector-detail { flex: 1; min-width: 0; max-width: 34rem; }
 .inspector-tools { display: flex; align-items: center; gap: 0.75rem; }
 .inspector-actions { display: flex; align-items: baseline; gap: 0.7rem;
