@@ -134,3 +134,46 @@ def test_the_network_trap_actually_fires(monkeypatch):
 
     with pytest.raises(AssertionError, match="network access"):
         socket.getaddrinfo("example.invalid", 80)
+
+
+def test_a_playlist_name_splits_into_owner_and_title(tmp_path):
+    """Folders are named "Owner - Title"."""
+
+    (tmp_path / "Thierry Thiers - What I listen now [PL0001]").mkdir()
+
+    summary = list_playlists(tmp_path)[0]
+
+    assert summary.owner == "Thierry Thiers"
+    assert summary.title == "What I listen now"
+
+
+def test_only_the_first_separator_splits(tmp_path):
+    """A title may well contain another one; it belongs to the title."""
+
+    (tmp_path / "Thierry Thiers - Best of - Live [PL0001]").mkdir()
+
+    summary = list_playlists(tmp_path)[0]
+
+    assert summary.owner == "Thierry Thiers"
+    assert summary.title == "Best of - Live"
+
+
+def test_a_name_without_a_separator_is_all_title(tmp_path):
+    """Better a title that reads like an owner than a nameless playlist."""
+
+    (tmp_path / "Roadtrip [PL0001]").mkdir()
+
+    summary = list_playlists(tmp_path)[0]
+
+    assert summary.owner == ""
+    assert summary.title == "Roadtrip"
+
+
+def test_an_empty_title_falls_back_to_the_whole_name(tmp_path):
+    """"Owner - " has a separator and nothing after it."""
+
+    (tmp_path / "Thierry Thiers -  [PL0001]").mkdir()
+
+    summary = list_playlists(tmp_path)[0]
+
+    assert summary.title, "the entry would render as a blank line"

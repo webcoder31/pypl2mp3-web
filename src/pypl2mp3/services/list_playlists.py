@@ -32,6 +32,31 @@ class PlaylistSummary:
 
         return self.total_songs - self.junk_songs
 
+    @property
+    def owner(self) -> str:
+        """Who the playlist belongs to, or "" if the name does not say.
+
+        A folder is named "Owner - Title", so the split is on the first
+        separator only: a title may well contain another one, and
+        "Best of - Live" belongs to the title, not to a second owner.
+        """
+
+        owner, separator, _ = self.name.partition(" - ")
+
+        return owner.strip() if separator else ""
+
+    @property
+    def title(self) -> str:
+        """The playlist itself, without whose it is.
+
+        The whole name when there is no separator: better a title that
+        happens to read like an owner than a playlist with no name.
+        """
+
+        _, separator, title = self.name.partition(" - ")
+
+        return (title.strip() if separator else self.name.strip()) or self.name
+
 
 def list_playlists(repository_path: Path) -> list[PlaylistSummary]:
     """Summarize each playlist in the repository, sorted in natural order.

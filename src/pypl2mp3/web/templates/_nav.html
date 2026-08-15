@@ -15,9 +15,17 @@
 <h2>Playlists</h2>
 <ul>
   {% for summary in summaries %}
+    {# Title first, owner beneath: a repository's playlists usually share
+       one owner, so leading with it makes every entry start with the
+       same words and the titles line up where nobody reads. #}
     <li class="{% if playlist == summary.playlist_id %}current{% endif %}">
       <button type="button" data-playlist="{{ summary.playlist_id }}"
-              title="{{ summary.name }}">{{ summary.name }}</button>
+              title="{{ summary.name }}">
+        <span class="pl-title">{{ summary.title }}</span>
+        {% if summary.owner %}
+          <span class="pl-owner">{{ summary.owner }}</span>
+        {% endif %}
+      </button>
       <span class="count {% if summary.junk_songs %}junk{% endif %}">
         {{ summary.total_songs }}{% if summary.junk_songs %} ⚠{% endif %}
       </span>
@@ -55,7 +63,7 @@
 <h2>Artists — {{ artists | length }}</h2>
 {% if current_playlist %}
   <p class="scope">
-    in {{ current_playlist.name }} ·
+    in {{ current_playlist.title }} ·
     <button type="button" data-playlist="">all playlists</button>
   </p>
 {% endif %}

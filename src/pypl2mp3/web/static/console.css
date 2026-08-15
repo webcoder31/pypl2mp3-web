@@ -350,6 +350,7 @@ a { color: var(--accent); text-decoration-thickness: 1px;
           gap: 0.4rem; }
 #nav button {
   flex: 1;
+  min-width: 0;
   text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -357,6 +358,14 @@ a { color: var(--accent); text-decoration-thickness: 1px;
   font-size: inherit;
   color: var(--text-2);
 }
+
+/* A playlist is an owner and a title. Each truncates on its own line,
+   so a long title never pushes the owner out of sight. */
+.pl-title, .pl-owner { display: block; overflow: hidden;
+                       text-overflow: ellipsis; white-space: nowrap; }
+.pl-owner { font-size: var(--fs-xs); color: var(--text-3);
+            margin-top: 0.05rem; }
+#nav li.current .pl-owner { color: var(--text-2); }
 #nav li.current button {
   font-weight: 600;
   color: var(--text);

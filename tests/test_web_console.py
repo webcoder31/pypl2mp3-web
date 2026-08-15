@@ -433,7 +433,9 @@ async def test_the_presets_say_when_they_only_cover_one_playlist(tmp_path):
 
     note = re.search(r'<p class="scope">(.*?)</p>', scoped, re.DOTALL)
     assert note, "nothing says the presets cover one playlist"
-    assert "Owner - Alpha" in note.group(1), "the note does not name it"
+    # The title, not the whole folder name: every playlist here belongs
+    # to the same owner, so repeating it says nothing.
+    assert "Alpha" in note.group(1), "the note does not name it"
     assert "all playlists" in note.group(1), "no way back to everything"
 
     assert 'class="scope"' not in whole, (
@@ -537,3 +539,31 @@ async def test_the_presets_refresh_when_a_song_is_fixed(tmp_path):
         "a fixed song does not reach the artist list until a reload"
     )
     assert "playlistChanged from:body" in trigger, "the other trigger went"
+
+
+async def test_the_nav_leads_with_the_title_not_the_owner(tmp_path):
+    """A repository's playlists usually share one owner. Leading with it
+    makes every entry start with the same words and files the titles
+    where nobody reads."""
+
+    (tmp_path / "Thierry Thiers - What I listen now [PL0001]").mkdir()
+    (tmp_path / "Thierry Thiers - mid90s [PL0002]").mkdir()
+
+    async with _client(create_app(tmp_path)) as client:
+        body = (await client.get("/fragments/nav")).text
+
+    titles = {
+        found.strip()
+        for found in re.findall(r'class="pl-title">([^<]*)<', body)
+    }
+    owners = {
+        found.strip()
+        for found in re.findall(r'class="pl-owner">([^<]*)<', body)
+    }
+
+    assert titles == {"What I listen now", "mid90s"}, titles
+    assert owners == {"Thierry Thiers"}, owners
+
+    # And the title comes first in the document, not merely in the CSS.
+    first = body.index('class="pl-title"')
+    assert first < body.index('class="pl-owner"')
