@@ -630,7 +630,10 @@ tbody tr.playing td.num { color: var(--accent); }
 #timeline .t { font-variant-numeric: tabular-nums; font-size: var(--fs-xs);
                color: var(--text-3); white-space: nowrap; }
 
-/* Sharp edges, deliberately: a 3px track and a 2px playhead, not a pill. */
+/* Sharp edges, deliberately: a 3px track, not a pill. No playhead —
+   where the colour changes is the position, and a marker on top of that
+   boundary only draws a second line saying the same thing. The box
+   stays 12px tall so there is something to click. */
 #seek {
   position: relative;
   flex: 1;
@@ -644,11 +647,8 @@ tbody tr.playing td.num { color: var(--accent); }
                background: var(--line-strong); }
 #seek .fill { position: absolute; left: 0; height: 3px; width: 0;
               background: var(--accent); opacity: 0.75; }
-#seek .head { position: absolute; width: 2px; height: 12px; left: 0;
-              background: var(--accent); }
 #seek:hover .fill { opacity: 1; }
 #player.idle #seek { cursor: default; }
-#player.idle #seek .head { display: none; }
 
 
 /* ------------------------------------------------------------------

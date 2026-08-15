@@ -251,7 +251,6 @@
     elapsed.textContent = clock(done);
     total.textContent = clock(length);
     seek.querySelector(".fill").style.width = percent + "%";
-    seek.querySelector(".head").style.left = percent + "%";
     seek.setAttribute("aria-valuenow", Math.round(percent));
   }
 

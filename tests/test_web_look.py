@@ -778,8 +778,13 @@ async def test_the_scrub_bar_keeps_its_own_line(tmp_path):
     seek = re.search(r"#seek \{(.*?)\n\}", css, re.DOTALL)
     assert seek, "the scrub bar has no rule at all"
     assert "position: relative" in seek.group(1)
-    for part in ("#seek .track", "#seek .fill", "#seek .head"):
+    for part in ("#seek .track", "#seek .fill"):
         assert part in css, part
+
+    # No playhead: where the colour changes *is* the position, and a
+    # marker sitting on that boundary draws a second line saying the
+    # same thing.
+    assert "#seek .head" not in css
 
 
 async def test_the_player_is_one_row(tmp_path):
