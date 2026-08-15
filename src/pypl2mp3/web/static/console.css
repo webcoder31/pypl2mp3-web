@@ -98,7 +98,7 @@
   /* A fixed square. YouTube art arrives in every shape, and a box that
      resized with it made the fields below jump each time you changed
      song. */
-  --cover-size: 285px;
+  --cover-size: 280px;
 
   --row-pad-y: var(--space-2);
   --row-pad-x: var(--block-pad-x);

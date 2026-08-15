@@ -1040,7 +1040,7 @@ async def test_the_cover_is_a_fixed_square(tmp_path):
         css = (await client.get("/static/console.css")).text
 
     size = re.search(r"--cover-size:\s*([^;]+);", css).group(1).strip()
-    assert size == "285px", size
+    assert size == "280px", size
 
     rule = re.search(
         r"\.inspector-cover \.cover \{([^}]*)\}", css, re.DOTALL
