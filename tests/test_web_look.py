@@ -1214,6 +1214,32 @@ async def test_the_side_column_scales_with_the_window(tmp_path):
     )
 
 
+async def test_the_unfiltered_row_names_what_it_covers(tmp_path):
+    """It used to read "All", one word sitting above a list of playlists
+    where it could as easily have meant "all of them selected" as "none
+    of them filtering".
+
+    Both halves are asserted, not the sentence: the wording may change,
+    but a row that says only "all songs" leaves out that they come from
+    every playlist, and one that says only "all playlists" describes the
+    list underneath it rather than the selection.
+    """
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        nav = (await client.get("/fragments/nav")).text
+
+    row = re.search(
+        r'<button[^>]*data-playlist=""[^>]*>(.*?)</button>', nav, re.DOTALL
+    )
+    assert row, nav
+    label = re.search(r'class="entry">(.*?)</span>', row.group(1), re.DOTALL)
+    words = label.group(1).lower()
+    assert "song" in words, f"{words!r} does not say what it selects"
+    assert "playlist" in words, f"{words!r} does not say where from"
+
+
 async def test_a_nav_row_is_one_button(tmp_path):
     """The count used to sit outside it, so the highlight stopped short
     of the row's edge — and hovering the count lit up something a click

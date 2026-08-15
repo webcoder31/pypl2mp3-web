@@ -10,9 +10,12 @@
      if playlist else none %}
 
 <ul>
+  {# Spelled out rather than "All": alone above a list of playlists, that
+     word could as easily have meant all of them selected as none of them
+     filtering. The row says which. #}
   <li class="{% if not playlist %}current{% endif %}">
     <button type="button" data-playlist="">
-      <span class="entry">All</span>
+      <span class="entry">All songs in all playlists</span>
       <span class="count">{{ total_songs }}</span>
     </button>
   </li>
