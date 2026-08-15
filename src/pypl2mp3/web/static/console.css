@@ -20,8 +20,8 @@
    Scale and palette
    ------------------------------------------------------------------ */
 
-:root {
-  color-scheme: light dark;
+:root, :root[data-theme="light"] {
+  color-scheme: light;
 
   /* Six steps. The first version had twelve arbitrary sizes, which is
      not a scale — it is noise, and it reads as carelessness. */
@@ -110,42 +110,46 @@
   --field-pad: var(--space-2) var(--space-3);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0d1214;
-    --surface: #141b1e;
-    --sunken: #090e10;
-    --hover: rgba(126, 214, 199, 0.06);
-    --active: rgba(126, 214, 199, 0.11);
+/* Dark is an attribute, not a media query. The switch has three
+   settings — follow the system, light, dark — and a media query can
+   only express the first. A script in the <head> resolves the choice
+   before the first paint and writes it here. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
 
-    --line: rgba(160, 200, 200, 0.09);
-    --line-strong: rgba(160, 200, 200, 0.18);
+  --bg: #0d1214;
+  --surface: #141b1e;
+  --sunken: #090e10;
+  --hover: rgba(126, 214, 199, 0.06);
+  --active: rgba(126, 214, 199, 0.11);
 
-    /* Softened deliberately. Near-white on near-black glares, and on a
-       listing of 900 rows every line is shouting. This ramp reads as
-       light grey with a trace of the page's hue, which is what a long
-       session wants. */
-    --text: #c3ccce;
-    --text-2: #8b9799;
-    --text-3: #66716f;
+  --line: rgba(160, 200, 200, 0.09);
+  --line-strong: rgba(160, 200, 200, 0.18);
 
-    --accent: #46c9b1;
-    --accent-text: #04211c;
-    --accent-soft: rgba(70, 201, 177, 0.15);
-    --junk: #e0a24a;
-    --junk-soft: rgba(224, 162, 74, 0.14);
-    --ok: #5cba7d;
-    --bad: #e0817a;
-    --busy: #6ba8de;
+  /* Softened deliberately. Near-white on near-black glares, and on a
+     listing of 900 rows every line is shouting. This ramp reads as
+     light grey with a trace of the page's hue, which is what a long
+     session wants. */
+  --text: #c3ccce;
+  --text-2: #8b9799;
+  --text-3: #66716f;
 
-    --score-high: #5cba7d;
-    --score-mid: #e0a24a;
-    --score-low: #e0817a;
+  --accent: #46c9b1;
+  --accent-text: #04211c;
+  --accent-soft: rgba(70, 201, 177, 0.15);
+  --junk: #e0a24a;
+  --junk-soft: rgba(224, 162, 74, 0.14);
+  --ok: #5cba7d;
+  --bad: #e0817a;
+  --busy: #6ba8de;
 
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --score-high: #5cba7d;
+  --score-mid: #e0a24a;
+  --score-low: #e0817a;
 
-    --header-bg: #1b2523;
-  }
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+
+  --header-bg: #1b2523;
 }
 
 * { box-sizing: border-box; }
@@ -306,6 +310,24 @@ a { color: var(--accent); text-decoration-thickness: 1px;
   grid-template-rows: auto auto auto minmax(0, 1fr);
   min-height: 0;
   min-width: 0;
+}
+
+/* A segmented control: one border round the set, hairlines between.
+   Three states named in full — a cycling button hides two of them. */
+#theme { display: flex; border: 1px solid var(--line-strong);
+         border-radius: 2px; overflow: hidden; flex: 0 0 auto; }
+#theme button {
+  border: none;
+  border-radius: 0;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--fs-sm);
+  background: none;
+}
+#theme button + button { border-left: 1px solid var(--line-strong); }
+#theme button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
 }
 
 /* ------------------------------------------------------------------

@@ -16,6 +16,63 @@
 (function () {
   "use strict";
 
+  // ---------------------------------------------------------------
+  // Theme
+  //
+  // Three settings: follow the system, light, dark. The middle of those
+  // is why the palette is an attribute rather than a media query — a
+  // query cannot express "unless the reader said otherwise".
+  //
+  // The <head> resolved and applied the stored choice before the first
+  // paint. This keeps the buttons in step, remembers a new choice, and
+  // follows the system while the choice is to follow it.
+  // ---------------------------------------------------------------
+
+  const THEME_KEY = "pypl2mp3.theme";
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)");
+
+  function applyTheme(choice) {
+    const wanted = ["auto", "light", "dark"].includes(choice)
+      ? choice
+      : "auto";
+    const dark = wanted === "dark" || (wanted === "auto" && prefersDark.matches);
+
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+    document.documentElement.dataset.themeChoice = wanted;
+
+    document.querySelectorAll("#theme button[data-theme-choice]").forEach(
+      function (button) {
+        button.setAttribute(
+          "aria-pressed", String(button.dataset.themeChoice === wanted)
+        );
+      }
+    );
+
+    return wanted;
+  }
+
+  applyTheme(document.documentElement.dataset.themeChoice);
+
+  // Only while the choice is to follow: an explicit light or dark must
+  // survive the system changing under it.
+  prefersDark.addEventListener("change", function () {
+    if (document.documentElement.dataset.themeChoice === "auto") {
+      applyTheme("auto");
+    }
+  });
+
+  document.addEventListener("click", function (event) {
+    const pick = event.target.closest("#theme button[data-theme-choice]");
+    if (!pick) return;
+
+    try {
+      localStorage.setItem(THEME_KEY, applyTheme(pick.dataset.themeChoice));
+    } catch (error) {
+      // Private browsing refuses localStorage. The switch still works
+      // for this page; it just will not be remembered.
+    }
+  });
+
   const audio = document.getElementById("audio");
   const bar = document.getElementById("player");
   const toolbar = document.getElementById("toolbar");

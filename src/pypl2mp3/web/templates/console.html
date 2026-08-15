@@ -4,6 +4,18 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>PYPL2MP3</title>
+    {# Resolved before the first paint, so the page never shows one
+       theme on its way to the other. console.js loads at the end of the
+       body, far too late for that. #}
+    <script>
+      (function () {
+        var stored = localStorage.getItem("pypl2mp3.theme") || "auto";
+        var dark = stored === "dark" || (stored === "auto" &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+        document.documentElement.dataset.themeChoice = stored;
+      })();
+    </script>
     <script src="/static/htmx.min.js"></script>
     <link rel="stylesheet" href="/static/console.css">
   </head>
@@ -42,6 +54,14 @@
         </label>
         <button type="submit">Filter</button>
       </form>
+
+      {# Three settings, not two: following the system is a preference
+         in its own right, and a two-state toggle silently drops it. #}
+      <div id="theme" role="group" aria-label="Colour theme">
+        <button type="button" data-theme-choice="auto">Auto</button>
+        <button type="button" data-theme-choice="light">Light</button>
+        <button type="button" data-theme-choice="dark">Dark</button>
+      </div>
 
       <span id="counts">
         {{ total_songs }} songs &middot;

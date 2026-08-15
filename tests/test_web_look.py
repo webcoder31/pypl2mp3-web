@@ -29,6 +29,22 @@ def _make_song(repo: Path, artist, title, vid, junk=False, playlist=PLAYLIST):
     )
 
 
+
+def _dark_block(css: str) -> str:
+    """The dark palette.
+
+    It used to live in a `prefers-color-scheme` query; the theme switch
+    turned it into an attribute, because a media query cannot express
+    "unless the reader said otherwise".
+    """
+
+    found = re.search(
+        r':root\[data-theme="dark"\] \{(.*?)\n\}', css, re.DOTALL
+    )
+    assert found, "no dark palette"
+
+    return found.group(1)
+
 def _client(app):
     return httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
@@ -223,7 +239,7 @@ async def test_the_page_has_designed_surfaces(tmp_path):
     for name in ("--bg:", "--surface:", "--sunken:", "--hover:"):
         assert name in css, name
 
-    dark = css[css.index("prefers-color-scheme: dark"):]
+    dark = _dark_block(css)
     for name in ("--bg:", "--surface:", "--text:"):
         assert name in dark, f"{name} has no dark value"
 
@@ -251,7 +267,7 @@ async def test_dark_text_is_not_near_white(tmp_path):
     async with _client(create_app(tmp_path)) as client:
         css = (await client.get("/static/console.css")).text
 
-    dark = css[css.index("prefers-color-scheme: dark"):]
+    dark = _dark_block(css)
     value = re.search(r"--text:\s*#([0-9a-fA-F]{6})", dark).group(1)
     channels = [int(value[i:i + 2], 16) for i in (0, 2, 4)]
 
@@ -292,7 +308,7 @@ async def test_a_shazam_score_is_coloured_by_confidence(tmp_path, monkeypatch):
     for band in ("--score-high", "--score-mid", "--score-low"):
         assert band in css, band
 
-    dark = css[css.index("prefers-color-scheme: dark"):]
+    dark = _dark_block(css)
     for band in ("--score-high", "--score-mid", "--score-low"):
         assert band in dark, f"{band} has no dark value"
 
@@ -843,8 +859,10 @@ async def test_the_listing_header_is_tinted_apart_from_its_rows(tmp_path):
     assert "--header-bg" not in listing, "the header no longer stands apart"
 
     for theme, block in (
-        ("light", css[: css.index("prefers-color-scheme: dark")]),
-        ("dark", css[css.index("prefers-color-scheme: dark") :]),
+        ("light", re.search(
+            r':root, :root\[data-theme="light"\] \{(.*?)\n\}',
+            css, re.DOTALL).group(1)),
+        ("dark", _dark_block(css)),
     ):
         value = re.search(r"--header-bg:\s*#([0-9a-fA-F]{6})", block)
         assert value, f"{theme} has no header colour"
@@ -874,4 +892,88 @@ async def test_the_count_survives_the_lighter_header(tmp_path):
     assert "var(--text-2)" in rule, rule
     assert "var(--text-3)" not in rule, (
         "the count is back on the dimmest step, which the header washes out"
+    )
+
+
+async def test_the_theme_offers_three_settings(tmp_path):
+    """Following the system is a preference in its own right, and a
+    two-state toggle silently drops it."""
+
+    async with _client(create_app(tmp_path)) as client:
+        body = (await client.get("/")).text
+
+    choices = re.findall(r'data-theme-choice="(\w+)"', body)
+    assert choices == ["auto", "light", "dark"], choices
+
+
+async def test_the_theme_is_an_attribute_not_a_media_query(tmp_path):
+    """A media query cannot express "unless the reader said otherwise",
+    which is exactly what the middle setting means."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    assert "prefers-color-scheme" not in css, (
+        "the palette still answers to the system regardless of the switch"
+    )
+    assert ':root[data-theme="dark"]' in css
+    assert ':root, :root[data-theme="light"]' in css
+
+
+async def test_both_themes_define_the_same_colours(tmp_path):
+    """A colour named in one and missing from the other falls back to
+    whatever the light block said — a difference nobody chose."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    def names(selector):
+        block = re.search(
+            re.escape(selector) + r"\s*\{(.*?)\n\}", css, re.DOTALL
+        )
+        assert block, selector
+        return set(re.findall(r"(--[\w-]+)\s*:", block.group(1)))
+
+    light = names(':root, :root[data-theme="light"]')
+    dark = names(':root[data-theme="dark"]')
+
+    assert dark, "the dark block defines nothing"
+    assert dark <= light, f"only in dark: {sorted(dark - light)}"
+
+    # Every colour the light block names must have a dark value; the
+    # scale and the spacing are shared on purpose.
+    colours = {
+        name for name in light
+        if not name.startswith(("--fs-", "--space-", "--font", "--pane-",
+                                "--row-", "--nav-", "--btn-", "--field-",
+                                "--toolbar-", "--block-", "--cover-"))
+    }
+    assert colours <= dark, f"no dark value for: {sorted(colours - dark)}"
+
+
+async def test_the_theme_is_applied_before_the_first_paint(tmp_path):
+    """console.js loads at the end of the document. Waiting for it would
+    show one theme and then visibly snap to the other."""
+
+    async with _client(create_app(tmp_path)) as client:
+        body = (await client.get("/")).text
+
+    head = body[: body.index("</head>")]
+    assert "pypl2mp3.theme" in head
+    assert "prefers-color-scheme" in head, (
+        "auto cannot resolve without asking the system"
+    )
+    assert "documentElement.dataset.theme" in head
+
+
+async def test_an_explicit_theme_ignores_the_system_changing(tmp_path):
+    """Auto follows; light and dark were asked for and must hold."""
+
+    async with _client(create_app(tmp_path)) as client:
+        script = (await client.get("/static/console.js")).text
+
+    handler = script[script.index('prefersDark.addEventListener("change"') :]
+    handler = handler[: handler.index("\n  });")]
+    assert 'themeChoice === "auto"' in handler, (
+        "the system overrides a choice the reader made explicitly"
     )
