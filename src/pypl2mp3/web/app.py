@@ -15,12 +15,14 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
+    JSONResponse,
     RedirectResponse,
 )
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from pypl2mp3.libs.song import SongModel
+from pypl2mp3.libs.waveform import WaveformError, peaks_for
 from pypl2mp3.services.check_new_songs import check_new_songs
 from pypl2mp3.services.list_artists import list_artists
 from pypl2mp3.services.list_playlists import list_playlists
@@ -91,6 +93,14 @@ def create_app(repository_path: Path) -> FastAPI:
     templates = Jinja2Templates(directory=str(package_root / "templates"))
 
     app.state.jobs = JobRegistry()
+
+    # Waveform extractions in flight, by song. Two requests for the same
+    # song — a double click, or the player and a reload racing — would
+    # otherwise each run ffmpeg and each write the file, and the second
+    # write could land on top of the first. They share one task instead.
+    # Per app rather than module-level: every app has its own event loop,
+    # and a task belongs to the loop that created it.
+    app.state.peak_jobs: dict[str, asyncio.Task] = {}
 
     def _count_reasons(failures) -> dict[str, int]:
         counts: dict[str, int] = {}
@@ -663,6 +673,42 @@ def create_app(repository_path: Path) -> FastAPI:
         return FileResponse(
             song_file, media_type="audio/mpeg", filename=song_file.name
         )
+
+    @app.get("/songs/{youtube_id}/peaks")
+    async def song_peaks(youtube_id: str) -> Response:
+        """Serve one song's waveform, as one loudness per bar.
+
+        Values run 0 to 1 rather than the 0 to 255 stored in the file:
+        the endpoint should be readable on its own, and 400 short decimals
+        cost under 3 KB over a loopback interface.
+
+        Decoding blocks for about half a second the first time, so it goes
+        to a thread. Every later request reads the tag and returns at once.
+        """
+
+        try:
+            song_file = find_song_file(app.state.repository_path, youtube_id)
+        except SongNotFound:
+            raise HTTPException(status_code=404, detail="unknown song")
+
+        jobs = app.state.peak_jobs
+        task = jobs.get(youtube_id)
+        if task is None:
+            task = asyncio.create_task(asyncio.to_thread(peaks_for, song_file))
+            jobs[youtube_id] = task
+            task.add_done_callback(lambda _: jobs.pop(youtube_id, None))
+
+        try:
+            # Shielded so that a listener skipping to the next song — which
+            # cancels this request — does not also kill a decode that other
+            # listeners, or the next request for this song, are waiting on.
+            peaks = await asyncio.shield(task)
+        except WaveformError as error:
+            # No waveform is not a broken page: the player falls back to
+            # the plain bar, which seeks exactly as well.
+            raise HTTPException(status_code=404, detail=str(error))
+
+        return JSONResponse([round(value / 255, 3) for value in peaks])
 
     @app.post("/songs/{youtube_id}/junkize")
     def junkize(youtube_id: str, request: Request):
