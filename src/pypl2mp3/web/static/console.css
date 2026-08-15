@@ -365,18 +365,23 @@ a { color: var(--accent); text-decoration-thickness: 1px;
 }
 
 #nav ul { list-style: none; margin: 0 0 var(--nav-gap); padding: 0; }
-#nav li { display: flex; align-items: center; justify-content: space-between;
-          gap: 0.4rem; }
+/* The button is the row. The highlight and the hit area are then the
+   same rectangle, so hovering anywhere along it — the count included —
+   lights up something a click will actually act on. */
 #nav button {
-  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
   min-width: 0;
   text-align: left;
-  overflow: hidden;
-  text-overflow: ellipsis;
   border-left: 2px solid transparent;
   font-size: inherit;
   color: var(--text-2);
 }
+#nav button .entry { min-width: 0; overflow: hidden;
+                     text-overflow: ellipsis; white-space: nowrap; }
 
 /* A playlist is an owner and a title. Each truncates on its own line,
    so a long title never pushes the owner out of sight. */
@@ -393,7 +398,7 @@ a { color: var(--accent); text-decoration-thickness: 1px;
 }
 #nav .count { font-variant-numeric: tabular-nums; color: var(--text-3);
               font-size: var(--fs-xs); white-space: nowrap;
-              padding-right: 0.35rem; }
+              flex: 0 0 auto; }
 #nav .count.junk { color: var(--junk); }
 #nav h2 {
   font-size: var(--fs-xs);

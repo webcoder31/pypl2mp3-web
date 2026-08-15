@@ -1,14 +1,20 @@
 {# Playlist and artist pickers. Each entry writes into the filter form's
    hidden field and resubmits it, so the nav and the search box always
-   describe the same query. #}
+   describe the same query.
+
+   The count sits inside the button rather than beside it, so the row
+   that lights up on hover and the row you can click are the same row.
+   Outside, the highlight promised something the count did not honour. #}
 {% set current_playlist =
      (summaries | selectattr("playlist_id", "equalto", playlist) | first)
      if playlist else none %}
 
 <ul>
   <li class="{% if not playlist %}current{% endif %}">
-    <button type="button" data-playlist="">All</button>
-    <span class="count">{{ total_songs }}</span>
+    <button type="button" data-playlist="">
+      <span class="entry">All</span>
+      <span class="count">{{ total_songs }}</span>
+    </button>
   </li>
 </ul>
 
@@ -21,14 +27,16 @@
     <li class="{% if playlist == summary.playlist_id %}current{% endif %}">
       <button type="button" data-playlist="{{ summary.playlist_id }}"
               title="{{ summary.name }}">
-        <span class="pl-title">{{ summary.title }}</span>
-        {% if summary.owner %}
-          <span class="pl-owner">{{ summary.owner }}</span>
-        {% endif %}
+        <span class="entry">
+          <span class="pl-title">{{ summary.title }}</span>
+          {% if summary.owner %}
+            <span class="pl-owner">{{ summary.owner }}</span>
+          {% endif %}
+        </span>
+        <span class="count {% if summary.junk_songs %}junk{% endif %}">
+          {{ summary.total_songs }}{% if summary.junk_songs %} ⚠{% endif %}
+        </span>
       </button>
-      <span class="count {% if summary.junk_songs %}junk{% endif %}">
-        {{ summary.total_songs }}{% if summary.junk_songs %} ⚠{% endif %}
-      </span>
     </li>
   {% endfor %}
 </ul>
@@ -73,8 +81,10 @@
   {% for entry in artists %}
     <li class="{% if artist == entry.name %}current{% endif %}">
       <button type="button" data-artist="{{ entry.name }}"
-              title="{{ entry.name }}">{{ entry.name }}</button>
-      <span class="count">{{ entry.song_count }}</span>
+              title="{{ entry.name }}">
+        <span class="entry">{{ entry.name }}</span>
+        <span class="count">{{ entry.song_count }}</span>
+      </button>
     </li>
   {% endfor %}
 </ul>

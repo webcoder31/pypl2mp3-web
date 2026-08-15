@@ -1169,3 +1169,50 @@ async def test_the_side_column_scales_with_the_window(tmp_path):
         f"{ceiling}rem is unreachable below 3000px, so it is not a "
         "ceiling but a decoration"
     )
+
+
+async def test_a_nav_row_is_one_button(tmp_path):
+    """The count used to sit outside it, so the highlight stopped short
+    of the row's edge — and hovering the count lit up something a click
+    there would not act on."""
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        nav = (await client.get("/fragments/nav")).text
+        css = (await client.get("/static/console.css")).text
+
+    rows = re.findall(r"<li[^>]*>(.*?)</li>", nav, re.DOTALL)
+    assert rows, "no rows"
+    for row in rows:
+        if "count" not in row:
+            continue
+        button = re.search(r"<button.*?</button>", row, re.DOTALL)
+        assert button, row
+        assert "count" in button.group(0), (
+            "the count is outside the button, so part of the row is not "
+            "clickable while all of it lights up"
+        )
+
+    rule = re.search(r"#nav button \{(.*?)\n\}", css, re.DOTALL).group(1)
+    assert "width: 100%" in rule, (
+        f"the button does not span its row: {rule}"
+    )
+    assert "justify-content: space-between" in rule, rule
+
+
+async def test_the_nav_label_truncates_and_the_count_does_not(tmp_path):
+    """453 artists, some with very long names, and a count that must
+    stay readable at the right edge."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    entry = re.search(r"#nav button \.entry \{([^}]*)\}", css).group(1)
+    assert "text-overflow: ellipsis" in entry, entry
+    assert "min-width: 0" in entry, (
+        "without it a long name refuses to shrink and pushes the count out"
+    )
+
+    count = re.search(r"#nav \.count \{([^}]*)\}", css, re.DOTALL).group(1)
+    assert "flex: 0 0 auto" in count, count
