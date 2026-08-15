@@ -82,6 +82,7 @@
   const elapsed = document.getElementById("player-elapsed");
   const total = document.getElementById("player-total");
   const seek = document.getElementById("seek");
+  const waveform = document.getElementById("waveform");
   const position = document.getElementById("player-position");
   const toggle = document.querySelector('[data-player-action="toggle"]');
   const filters = document.getElementById("filters");
@@ -209,6 +210,7 @@
     // Wrap rather than stop, the way the CLI's play loops its selection.
     index = (i + queue.length) % queue.length;
     audio.src = "/songs/" + queue[index].id + "/audio";
+    loadWaveform(queue[index].id);
     paint();
 
     // The song being judged is the song being heard: one cursor, not two.
@@ -310,6 +312,96 @@
     return h ? h + ":" + String(m).padStart(2, "0") + ":" + s : m + ":" + s;
   }
 
+  // ---------------------------------------------------------------
+  // The waveform
+  //
+  // Peaks come from the server, which computes them once per song and
+  // keeps them in the MP3's tags. They are decoration over a control
+  // that already works: nothing below touches how #seek is operated,
+  // and a song whose peaks never arrive keeps the plain bar.
+  // ---------------------------------------------------------------
+
+  const brush = waveform.getContext("2d");
+  let peaks = null;
+
+  // Skipping through a playlist leaves slower requests in flight behind
+  // faster ones. Without this, the waveform you end up looking at is
+  // whichever response happened to land last, not the song playing.
+  let wanted = 0;
+
+  function loadWaveform(id) {
+    const mine = ++wanted;
+
+    peaks = null;
+    seek.classList.remove("has-waveform");
+
+    window.fetch("/songs/" + id + "/peaks")
+      .then(function (response) {
+        return response.ok ? response.json() : null;
+      })
+      .then(function (data) {
+        if (mine !== wanted) return;
+
+        peaks = data && data.length ? data : null;
+        // The second argument is what makes this a set rather than a
+        // toggle, and it has to be a real boolean: passing undefined
+        // flips the class instead of clearing it.
+        seek.classList.toggle("has-waveform", peaks !== null);
+        paintWaveform();
+      })
+      .catch(function () {
+        // Offline, aborted, malformed: the plain bar is already there.
+      });
+  }
+
+  function paintWaveform() {
+    if (!peaks) return;
+
+    // Backing store in device pixels, or the bars come out blurred on
+    // exactly the displays where a 2px bar needs to be sharp.
+    const dpr = window.devicePixelRatio || 1;
+    const box = waveform.getBoundingClientRect();
+    const width = Math.round(box.width * dpr);
+    const height = Math.round(box.height * dpr);
+    if (!width || !height) return;
+
+    if (waveform.width !== width) waveform.width = width;
+    if (waveform.height !== height) waveform.height = height;
+
+    // Read at paint time rather than cached: the theme switch, the
+    // system following it, and a stylesheet edit all change these, and
+    // there is no invalidation to forget.
+    const palette = getComputedStyle(document.documentElement);
+    const played = palette.getPropertyValue("--accent").trim();
+    const rest = palette.getPropertyValue("--line-strong").trim();
+
+    const length = audio.duration;
+    const done = isFinite(length) && length > 0
+      ? Math.max(0, Math.min(1, audio.currentTime / length))
+      : 0;
+    const edge = Math.round(done * peaks.length);
+
+    const slot = width / peaks.length;
+    // One device-independent pixel of air between bars, and never less
+    // than one device pixel of bar.
+    const bar = Math.max(1, slot - dpr);
+
+    brush.clearRect(0, 0, width, height);
+
+    function paintBars(from, to, colour) {
+      brush.fillStyle = colour;
+      for (let i = from; i < to; i++) {
+        // Silence still draws a hairline: the bar is the control, and a
+        // gap in it would read as a gap in the song.
+        const tall = Math.max(dpr, peaks[i] * height);
+        brush.fillRect(i * slot, (height - tall) / 2, bar, tall);
+      }
+    }
+
+    paintBars(0, edge, played);
+    paintBars(edge, peaks.length, rest);
+  }
+
   function paintTime() {
     const length = audio.duration;
     const done = audio.currentTime;
@@ -320,11 +412,27 @@
     total.textContent = clock(length);
     seek.querySelector(".fill").style.width = percent + "%";
     seek.setAttribute("aria-valuenow", Math.round(percent));
+    paintWaveform();
   }
 
   audio.addEventListener("timeupdate", paintTime);
   audio.addEventListener("loadedmetadata", paintTime);
   audio.addEventListener("emptied", paintTime);
+
+  // The bar is fluid: the window, the nav's clamp and the workbench all
+  // change its width, and a canvas does not reflow with its box.
+  if (window.ResizeObserver) {
+    new ResizeObserver(paintWaveform).observe(seek);
+  }
+
+  // Watching the attribute rather than hooking applyTheme: every way the
+  // palette can change ends up here — the switch, the system moving
+  // under "auto", anything added later — and there is no second place to
+  // remember. Hooking the function would also have run it during setup,
+  // before the canvas exists.
+  new MutationObserver(paintWaveform).observe(document.documentElement, {
+    attributeFilter: ["data-theme"],
+  });
 
   function seekTo(event) {
     if (!isFinite(audio.duration) || audio.duration <= 0) return;

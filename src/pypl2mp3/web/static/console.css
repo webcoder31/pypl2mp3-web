@@ -103,6 +103,10 @@
      resized with it made the fields below jump each time you changed
      song. */
   --cover-size: 280px;
+  /* Tall enough for the shape of a song to read, short enough that the
+     player bar stays a bar. Held whether or not a waveform has arrived,
+     so peaks landing mid-song do not move the page. */
+  --wave-height: 38px;
 
   --row-pad-y: var(--space-2);
   --row-pad-x: var(--block-pad-x);
@@ -705,12 +709,16 @@ tbody tr.playing td.num { color: var(--accent); }
 
 /* Sharp edges, deliberately: a 3px track, not a pill. No playhead —
    where the colour changes is the position, and a marker on top of that
-   boundary only draws a second line saying the same thing. The box
-   stays 12px tall so there is something to click. */
+   boundary only draws a second line saying the same thing.
+
+   The box is as tall as a waveform whether or not one has arrived, so
+   that peaks landing a moment after the song starts do not shove the
+   listing down the page. Empty, it is a 3px line in a tall clickable
+   box, which is what it already was at 12px. */
 #seek {
   position: relative;
   flex: 1;
-  height: 12px;
+  height: var(--wave-height);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -722,6 +730,14 @@ tbody tr.playing td.num { color: var(--accent); }
               background: var(--accent); opacity: 0.75; }
 #seek:hover .fill { opacity: 1; }
 #player.idle #seek { cursor: default; }
+
+/* The two ways of drawing the same position never show together: the
+   plain bar is the fallback, and the waveform replaces it outright
+   rather than sitting on top of it. */
+#waveform { display: none; width: 100%; height: 100%; }
+#seek.has-waveform .track,
+#seek.has-waveform .fill { display: none; }
+#seek.has-waveform #waveform { display: block; }
 
 
 /* ------------------------------------------------------------------

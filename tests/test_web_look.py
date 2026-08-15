@@ -953,7 +953,8 @@ async def test_both_themes_define_the_same_colours(tmp_path):
         name for name in light
         if not name.startswith(("--fs-", "--space-", "--font", "--pane-",
                                 "--row-", "--nav-", "--btn-", "--field-",
-                                "--toolbar-", "--block-", "--cover-"))
+                                "--toolbar-", "--block-", "--cover-",
+                                "--wave-"))
     }
     assert colours <= dark, f"no dark value for: {sorted(colours - dark)}"
 
@@ -1305,3 +1306,89 @@ async def test_the_nav_label_truncates_and_the_count_does_not(tmp_path):
 
     count = re.search(r"#nav \.count \{([^}]*)\}", css, re.DOTALL).group(1)
     assert "flex: 0 0 auto" in count, count
+
+
+async def test_the_waveform_is_drawn_inside_the_slider(tmp_path):
+    """The claim the whole feature rests on.
+
+    Click, drag and the arrow keys are bound to #seek and measured from
+    its box. Drawing the waveform inside it means none of that had to be
+    rewritten; drawing it beside #seek would have left a picture you
+    cannot seek on and a control you cannot see.
+    """
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        page = (await client.get("/")).text
+
+    seek = re.search(r'<div id="seek"(.*?)</div>', page, re.DOTALL)
+    assert seek, "no seek bar at all"
+    assert 'id="waveform"' in seek.group(1), (
+        "the canvas is outside the slider, so the bars and the hit area "
+        "are two different rectangles"
+    )
+
+
+async def test_the_plain_bar_stays_as_the_fallback(tmp_path):
+    """Peaks take half a second to compute the first time, and a file
+    that cannot be decoded never gets any. Neither case may leave an
+    empty box where the position used to be."""
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        page = (await client.get("/")).text
+        css = (await client.get("/static/console.css")).text
+
+    seek = re.search(r'<div id="seek"(.*?)</div>', page, re.DOTALL).group(1)
+    assert 'class="track"' in seek and 'class="fill"' in seek, (
+        "the fallback bar was deleted along with the redesign"
+    )
+
+    # Hidden by a rule, not by markup: the fallback has to be in the page
+    # already when a fetch fails.
+    hidden = re.search(
+        r"#seek\.has-waveform \.track,\s*\n?#seek\.has-waveform \.fill \{"
+        r"([^}]*)\}",
+        css,
+    )
+    assert hidden and "display: none" in hidden.group(1), css[-600:]
+
+
+async def test_a_waveform_arriving_does_not_move_the_page(tmp_path):
+    """It arrives a beat after the song starts. If the box grew to fit
+    it, every play would shove the listing down and back."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    box = re.search(r"\n#seek \{([^}]*)\}", css).group(1)
+    assert "height: var(--wave-height)" in box, box
+
+    for selector, body in re.findall(
+        r"\n([^\n{}]+(?:,\n[^\n{}]+)*)\{([^}]*)\}", css
+    ):
+        if "has-waveform" in selector:
+            assert "height:" not in body, (
+                f"{selector.strip()} resizes the box when peaks land: {body}"
+            )
+
+
+async def test_the_waveform_is_decoration_over_a_working_control(tmp_path):
+    """The canvas carries no information a screen reader can use — the
+    slider already reports the position as a number. Announcing it twice
+    is worse than not announcing it."""
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        page = (await client.get("/")).text
+
+    seek = re.search(r'<div id="seek"(.*?)</div>', page, re.DOTALL)
+    assert 'role="slider"' in seek.group(0)
+    assert 'tabindex="0"' in seek.group(0)
+    assert 'aria-valuenow' in seek.group(0)
+
+    canvas = re.search(r"<canvas[^>]*>", seek.group(1)).group(0)
+    assert "aria-hidden" in canvas, canvas
