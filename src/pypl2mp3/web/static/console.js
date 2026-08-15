@@ -372,7 +372,7 @@
     // system following it, and a stylesheet edit all change these, and
     // there is no invalidation to forget.
     const palette = getComputedStyle(document.documentElement);
-    const played = palette.getPropertyValue("--accent").trim();
+    const played = palette.getPropertyValue("--wave-played").trim();
     const rest = palette.getPropertyValue("--line-strong").trim();
 
     const length = audio.duration;

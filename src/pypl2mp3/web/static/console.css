@@ -59,6 +59,16 @@
   --accent: #0a8f7c;
   --accent-text: #ffffff;
   --accent-soft: rgba(10, 143, 124, 0.13);
+  /* Its own variable rather than an alpha on the accent: over a light
+     background low alpha lightens, over a dark one it darkens, so one
+     opacity cannot mean "lighter" in both themes.
+
+     The waveform is 400 bars of solid colour, and the weight the accent
+     carries on a single button is too much spread across all of them.
+     Each theme lightens the way its background allows: paler here,
+     where paler recedes towards the page; greyer in the dark, where a
+     paler green would only glow harder. */
+  --wave-played: #3fb5a1;
   --junk: #b4610a;
   --junk-soft: rgba(180, 97, 10, 0.13);
   --ok: #167f45;
@@ -148,6 +158,7 @@
   --accent: #46c9b1;
   --accent-text: #04211c;
   --accent-soft: rgba(70, 201, 177, 0.15);
+  --wave-played: #97bbb3;
   --junk: #e0a24a;
   --junk-soft: rgba(224, 162, 74, 0.14);
   --ok: #5cba7d;
