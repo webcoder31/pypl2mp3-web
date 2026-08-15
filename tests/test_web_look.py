@@ -1118,3 +1118,28 @@ async def test_shuffle_says_whether_the_queue_is_shuffled(tmp_path):
         "a fill would make the report look like the primary action"
     )
     assert "color: var(--accent)" in pressed
+
+
+async def test_the_inspector_uses_the_width_it_has(tmp_path):
+    """It was capped at 34rem, which broke a 70-character title over two
+    lines while 600px of the column sat empty beside it."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    detail = re.search(
+        r"\.inspector-detail \{([^}]*)\}", css, re.DOTALL
+    ).group(1)
+    assert "max-width" not in detail, (
+        f"the panel is capped again, and the title with it: {detail}"
+    )
+
+    # The cap moves to the fields, which is what it was for: a text box
+    # a thousand pixels wide is unreadable, a title is not.
+    label = re.search(
+        r"#inspector label, \.workbench-detail label \{(.*?)\n\}",
+        css, re.DOTALL,
+    ).group(1)
+    assert "max-width" in label, (
+        "nothing stops the fields stretching the whole column"
+    )
