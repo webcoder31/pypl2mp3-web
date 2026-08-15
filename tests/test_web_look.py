@@ -1143,3 +1143,29 @@ async def test_the_inspector_uses_the_width_it_has(tmp_path):
     assert "max-width" in label, (
         "nothing stops the fields stretching the whole column"
     )
+
+
+async def test_the_side_column_scales_with_the_window(tmp_path):
+    """Fixed at 16rem it was cramped on a wide screen and still took a
+    fifth of a narrow one. Bounded on both sides: the floor keeps the
+    longest playlist name legible, the ceiling stops it eating the
+    listing on a very wide display."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    value = re.search(r"--pane-nav:\s*([^;]+);", css).group(1).strip()
+    clamp = re.match(
+        r"clamp\(\s*([\d.]+)rem\s*,\s*([\d.]+)vw\s*,\s*([\d.]+)rem\s*\)", value
+    )
+    assert clamp, f"{value} is not bounded on both sides"
+
+    floor, preferred, ceiling = (float(g) for g in clamp.groups())
+    assert floor < ceiling, value
+    # A floor below what it replaced would be a narrowing, not a widening.
+    assert floor >= 16, f"the floor {floor}rem is under the old fixed width"
+    # And it must actually reach the ceiling on a screen someone owns.
+    assert ceiling * 16 / (preferred / 100) <= 3000, (
+        f"{ceiling}rem is unreachable below 3000px, so it is not a "
+        "ceiling but a decoration"
+    )

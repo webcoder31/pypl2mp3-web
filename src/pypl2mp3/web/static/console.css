@@ -94,7 +94,11 @@
   --block-pad-x: var(--space-5);
   --block-pad-y: var(--space-4);
 
-  --pane-nav: 16rem;
+  /* Relative, bounded. Fixed at 16rem it was cramped on a wide screen
+     and still took a fifth of a narrow one. The floor keeps the longest
+     playlist name legible; the ceiling stops it eating the listing on a
+     very wide display. */
+  --pane-nav: clamp(17rem, 20vw, 26rem);
   /* A fixed square. YouTube art arrives in every shape, and a box that
      resized with it made the fields below jump each time you changed
      song. */
