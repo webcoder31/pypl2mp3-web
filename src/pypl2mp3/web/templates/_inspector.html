@@ -36,13 +36,17 @@
     <form hx-post="/songs/{{ song.youtube_id }}/fix"
           hx-target="#inspector"
           hx-swap="innerHTML">
+      {# Labels beside the fields, not above them: three stacked pairs
+         cost twice the height for a form that already competes with the
+         listing underneath it. #}
       <label>Artist
         <input type="text" name="artist" value="{{ song.artist }}"></label>
       <label>Title
         <input type="text" name="title" value="{{ song.title }}"></label>
-      <label>Cover art URL
+      <label>Cover
         <input type="url" name="cover_art_url"
-               placeholder="leave empty to keep the current one"></label>
+               placeholder="https://… — leave empty to keep the current one">
+      </label>
       <p class="inspector-actions">
         <button type="submit">Save</button>
         {% if not song.is_junk %}

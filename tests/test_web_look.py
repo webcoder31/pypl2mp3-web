@@ -446,3 +446,74 @@ async def test_the_inspector_shows_a_short_duration(tmp_path):
         panel = (await client.get("/fragments/inspector/aaaaaaaaaaa")).text
 
     assert "00:00:00" not in panel, "the padded form is back"
+
+
+async def test_a_label_sits_beside_its_field(tmp_path):
+    """Three stacked pairs cost twice the height, in a panel that shares
+    its column with the listing."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    rule = re.search(
+        r"#inspector label, \.workbench-detail label \{(.*?)\n\}",
+        css, re.DOTALL,
+    )
+    assert rule, "no rule for the label rows"
+    block = rule.group(1)
+
+    assert "display: grid" in block, (
+        "flex leaves the label's bare text node in the flow, so each "
+        "input starts wherever its word ended"
+    )
+    columns = re.search(r"grid-template-columns:\s*([^;]+)", block).group(1)
+    assert re.match(r"^[\d.]+rem\s", columns), (
+        f"the label column is not a fixed width ({columns!r}), so the "
+        "three inputs will not share a left edge"
+    )
+
+
+async def test_the_cover_field_is_short_and_says_it_wants_a_url(tmp_path):
+    _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        panel = (await client.get("/fragments/inspector/aaaaaaaaaaa")).text
+
+    label = re.search(r"<label>([^<]*)<input[^>]*cover_art_url", panel,
+                      re.DOTALL)
+    assert label, "no cover field"
+    assert label.group(1).strip() == "Cover", label.group(1)
+
+    placeholder = re.search(
+        r'name="cover_art_url"[^>]*placeholder="([^"]*)"', panel, re.DOTALL
+    )
+    assert placeholder, "the field says nothing about what it wants"
+    assert "http" in placeholder.group(1), (
+        f"{placeholder.group(1)!r} does not say a URL is expected"
+    )
+
+
+async def test_the_two_panels_keep_the_same_fields(tmp_path):
+    """The inspector and the workbench edit the same three tags. Letting
+    their markup drift is how one of them quietly stops matching."""
+
+    _make_song(tmp_path, "UNKNOWN", "Something", "aaaaaaaaaaa", junk=True)
+
+    async with _client(create_app(tmp_path)) as client:
+        panels = [
+            (await client.get(f"/fragments/{which}/aaaaaaaaaaa")).text
+            for which in ("inspector", "workbench")
+        ]
+
+    def fields(page):
+        return re.findall(
+            r"<label>\s*([^<]*?)\s*<input[^>]*name=\"(\w+)\"[^>]*"
+            r"(?:placeholder=\"([^\"]*)\")?",
+            page,
+            re.DOTALL,
+        )
+
+    assert fields(panels[0]), "no fields in the inspector"
+    assert fields(panels[0]) == fields(panels[1]), (
+        f"inspector {fields(panels[0])} vs workbench {fields(panels[1])}"
+    )

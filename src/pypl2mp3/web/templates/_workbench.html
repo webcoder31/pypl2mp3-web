@@ -33,13 +33,17 @@
     <form hx-post="/songs/{{ song.youtube_id }}/fix"
           hx-target="#prefetch"
           hx-swap="none">
+      {# Labels beside the fields, not above them: three stacked pairs
+         cost twice the height for a form that already competes with the
+         listing underneath it. #}
       <label>Artist
         <input type="text" name="artist" value="{{ song.artist }}"></label>
       <label>Title
         <input type="text" name="title" value="{{ song.title }}"></label>
-      <label>Cover art URL
+      <label>Cover
         <input type="url" name="cover_art_url"
-               placeholder="leave empty to keep the current one"></label>
+               placeholder="https://… — leave empty to keep the current one">
+      </label>
       <p class="workbench-actions">
         <button type="submit">Save &amp; next</button>
         <button type="button" data-player-action="next">Skip</button>

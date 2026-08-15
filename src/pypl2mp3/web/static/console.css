@@ -462,11 +462,34 @@ tbody tr.playing td.num { color: var(--accent); }
 .inspector-title { font-size: var(--fs-lg); line-height: 1.25;
                    margin: 0.2rem 0 0.1rem; letter-spacing: -0.01em; }
 #inspector .id { color: var(--text-3); }
-#inspector label { display: block; margin: 0.55rem 0 0;
-                   font-size: var(--fs-xs); text-transform: uppercase;
-                   letter-spacing: 0.11em; color: var(--text-3);
-                   font-weight: 600; }
-#inspector input { display: block; width: 100%; margin-top: 0.25rem; }
+/* Label beside its field. The label column is fixed so the three
+   inputs share one left edge — ragged starts read as three unrelated
+   controls rather than one form. */
+#inspector label, .workbench-detail label {
+  /* Grid, not flex: the label's text is a bare text node, and grid
+     makes it an item of its own. Flex would leave it in the flow and
+     the three inputs would start wherever their word ended. */
+  display: grid;
+  grid-template-columns: 3.6rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.7rem;
+  margin: 0.4rem 0 0;
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  color: var(--text-3);
+  font-weight: 600;
+}
+#inspector label > input, .workbench-detail label > input {
+  min-width: 0;
+  /* Back to sentence case: the label is shouting, the value is not. */
+  font-size: var(--fs-md);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  color: var(--text);
+}
+
 #inspector .filename { word-break: break-all; margin-top: 1rem;
                        font-size: var(--fs-xs); color: var(--text-3);
                        line-height: 1.5; }
