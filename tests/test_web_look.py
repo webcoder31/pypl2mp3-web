@@ -708,10 +708,17 @@ async def test_the_playlist_buttons_say_what_they_do(tmp_path):
     assert "flex-direction: column" in block, block
 
     # They inherit the nav's flex: 1, which is what split the width.
-    button = re.search(
-        r"#nav \.playlist-actions button \{([^}]*)\}", css
-    ).group(1)
-    assert "flex: none" in button, button
+    # Read every rule that names them, not the first: they are also
+    # filled by a rule they share with Save, and which of the two comes
+    # first in the file is not what this test is about.
+    declared = "".join(
+        body
+        for selector, body in re.findall(
+            r"\n([^\n{}]+(?:,\n[^\n{}]+)*)\{([^}]*)\}", css
+        )
+        if "#nav .playlist-actions button" in selector
+    )
+    assert "flex: none" in declared, declared
 
 
 async def test_the_toolbar_carries_the_queue_readout(tmp_path):
@@ -998,23 +1005,59 @@ async def test_the_theme_switch_marks_its_choice_in_text(tmp_path):
     )
 
 
-async def test_only_writing_earns_a_filled_button(tmp_path):
+def _filled_selectors(css):
+    """Every selector painted with the accent as a background."""
+
+    rules = re.findall(r"\n([^\n{}]+(?:,\n[^\n{}]+)*)\{([^}]*)\}", css)
+
+    return [
+        line.strip()
+        for selector, body in rules
+        if re.search(r"^\s*background: var\(--accent\);", body, re.M)
+        for line in selector.split(",")
+        if line.strip()
+    ]
+
+
+async def test_the_filter_button_is_not_filled(tmp_path):
     """Filtering is not a commitment and had no business looking like
-    one; saving renames a file on disk."""
+    one: the listing narrows as you type and the button only repeats it.
+
+    Stated as a ban rather than a whitelist, so a fourth panel that
+    deserves a filled button can have one without editing this test —
+    but nothing may quietly fill every submit button on the page.
+    """
 
     async with _client(create_app(tmp_path)) as client:
         css = (await client.get("/static/console.css")).text
 
-    filled = re.findall(
-        r"([^\n{}]*button\[type=\"submit\"\][^\n{}]*)\{[^}]*"
-        r"background: var\(--accent\)",
-        css,
-    )
+    filled = _filled_selectors(css)
     assert filled, "nothing is filled at all"
     for selector in filled:
-        assert "#inspector" in selector or ".workbench-detail" in selector, (
-            f"{selector.strip()} fills every submit button, Filter included"
+        assert "#filters" not in selector, f"{selector} fills Filter"
+        assert selector != 'button[type="submit"]', (
+            "this fills every submit button on the page, Filter included"
         )
+
+
+async def test_a_playlist_button_is_filled_like_save(tmp_path):
+    """Fetching a playlist's new songs is the point of the pane it sits
+    in, the way saving is the point of the inspector. The two share one
+    rule rather than two matching ones, so they cannot drift apart."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    filled = _filled_selectors(css)
+    save = '#inspector button[type="submit"]'
+    assert save in filled, filled
+    assert "#nav .playlist-actions button" in filled, (
+        "Check and Import are as quiet as the artist rows above them"
+    )
+
+    rules = re.findall(r"\n([^\n{}]+(?:,\n[^\n{}]+)*)\{", css)
+    shared = [r for r in rules if save in r and ".playlist-actions" in r]
+    assert shared, "they are filled by two separate rules that can drift"
 
 
 async def test_ordinary_buttons_sit_back(tmp_path):

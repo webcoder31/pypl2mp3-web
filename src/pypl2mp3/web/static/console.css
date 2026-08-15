@@ -217,17 +217,22 @@ button:hover { background: var(--hover); color: var(--text); }
 button:active { background: var(--active); }
 button:disabled { opacity: 0.4; cursor: default; }
 
-/* Only where the click writes something. Filtering is not a
-   commitment and had no business looking like one. */
+/* Filled where the click is the point of the panel it sits in: saving
+   a song, and fetching a playlist's new ones. Everything else is a way
+   of getting to one of those. Filtering in particular is not a
+   commitment and had no business looking like one — the listing filters
+   as you type and the button only repeats it. */
 #inspector button[type="submit"],
-.workbench-detail button[type="submit"] {
+.workbench-detail button[type="submit"],
+#nav .playlist-actions button {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-text);
   font-weight: 600;
 }
 #inspector button[type="submit"]:hover,
-.workbench-detail button[type="submit"]:hover {
+.workbench-detail button[type="submit"]:hover,
+#nav .playlist-actions button:hover {
   background: var(--accent);
   filter: brightness(1.08);
 }
@@ -418,9 +423,8 @@ a { color: var(--accent); text-decoration-thickness: 1px;
 #nav .playlist-actions { margin: var(--space-2) 0 var(--nav-gap);
                          display: flex; flex-direction: column;
                          align-items: stretch; gap: var(--space-1); }
-#nav .playlist-actions button { flex: none; border-color: var(--line);
-                                padding: var(--btn-pad);
-                                text-align: center; }
+#nav .playlist-actions button { flex: none; padding: var(--btn-pad);
+                                justify-content: center; }
 
 #artist-filter { width: 100%; margin: 0 0 var(--space-2); }
 #artist-list li[hidden] { display: none; }
