@@ -620,3 +620,72 @@ async def test_the_transport_sits_under_the_song_it_plays(tmp_path):
     assert "grid-template-areas" in css and "player" not in re.search(
         r"grid-template-areas:(.*?);", css, re.DOTALL
     ).group(1), "the page grid still reserves a row for it"
+
+
+async def test_spacing_comes_from_a_scale(tmp_path):
+    """Padding chosen per rule drifts, and that drift is what reads as
+    careless — the same argument as the type scale."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    steps = set(re.findall(r"(--space-\d):", css))
+    assert 4 <= len(steps) <= 7, steps
+
+    scale = set(re.findall(r"--space-\d:\s*([\d.]+rem)", css))
+    literal = {
+        value
+        for declaration in re.findall(r"\bpadding:\s*([^;]+)", css)
+        for value in declaration.split()
+        if value.endswith("rem")
+    }
+    assert literal <= scale, (
+        f"padding written outside the scale: {sorted(literal - scale)}"
+    )
+
+
+async def test_every_main_block_shares_one_inset(tmp_path):
+    """Four panels with four different margins read as four boxes that
+    happen to touch, rather than as one page."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    def horizontal(selector):
+        block = re.search(
+            re.escape(selector) + r"\s*\{(.*?)\n\}", css, re.DOTALL
+        ).group(1)
+        value = re.search(r"\bpadding:\s*([^;]+)", block).group(1).split()
+        # padding: a | a b | a b c | a b c d — the left is the 4th, or
+        # the 2nd, or the 1st.
+        return value[3] if len(value) == 4 else value[1] if len(value) > 1 \
+            else value[0]
+
+    insets = {
+        selector: horizontal(selector)
+        for selector in ("#header", "#nav", "#inspector", "#player")
+    }
+    assert set(insets.values()) == {"var(--block-pad-x)"}, insets
+
+    # And the listing's rows line up with them, or the left edge of the
+    # page zigzags between the panel above and the row below.
+    assert "--row-pad-x: var(--block-pad-x)" in css
+
+
+async def test_the_playlist_buttons_say_what_they_do(tmp_path):
+    """Side by side in a 16rem column they came out as "Check fo…" and
+    "Import n…", which is two truncations and no information."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    block = re.search(
+        r"#nav \.playlist-actions \{([^}]*)\}", css
+    ).group(1)
+    assert "flex-direction: column" in block, block
+
+    # They inherit the nav's flex: 1, which is what split the width.
+    button = re.search(
+        r"#nav \.playlist-actions button \{([^}]*)\}", css
+    ).group(1)
+    assert "flex: none" in button, button

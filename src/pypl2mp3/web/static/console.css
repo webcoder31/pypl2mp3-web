@@ -73,25 +73,35 @@
 
   --shadow: 0 1px 2px rgba(16, 26, 26, 0.07);
 
-  /* Spacing and sizes, in one place. There used to be a second set of
-     these behind a compact/comfortable switch. The layout that replaced
-     it gives the listing the whole width of the main column, which is
-     what compact was buying — so one set is enough. */
-  --pane-nav: 15.5rem;
-  --pane-pad: 1rem;
+  /* Spacing, on a scale, for the same reason the type sizes are: values
+     chosen per rule drift, and that drift is what reads as careless.
+     Five steps, each a comfortable multiple of the last. */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+
+  /* One horizontal inset for every main block, so the panels share a
+     margin and read as one page rather than four boxes that happen to
+     touch. The vertical is theirs to choose. */
+  --block-pad-x: var(--space-5);
+  --block-pad-y: var(--space-4);
+
+  --pane-nav: 16rem;
   --cover-size: 17rem;
 
-  --row-pad-y: 0.45rem;
+  --row-pad-y: var(--space-2);
+  --row-pad-x: var(--block-pad-x);
   --row-font: var(--fs-base);
   --row-meta-size: var(--fs-xs);
 
-  --nav-row-pad: 0.28rem 0.45rem;
+  --nav-row-pad: var(--space-1) var(--space-2);
   --nav-font: var(--fs-md);
-  --nav-gap: 1.1rem;
+  --nav-gap: var(--space-5);
 
-  --btn-pad: 0.3rem 0.6rem;
-  --field-pad: 0.38rem 0.55rem;
-  --toolbar-pad: 0.45rem 0.85rem;
+  --btn-pad: var(--space-1) var(--space-3);
+  --field-pad: var(--space-2) var(--space-3);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -249,10 +259,10 @@ a { color: var(--accent); text-decoration-thickness: 1px;
   grid-area: header;
   background: var(--bg);
   border-bottom: 1px solid var(--line);
-  padding: 0.5rem 0.85rem;
+  padding: var(--block-pad-y) var(--block-pad-x);
   display: flex;
   align-items: center;
-  gap: 0.85rem;
+  gap: var(--space-4);
   flex-wrap: wrap;
 }
 
@@ -299,7 +309,7 @@ a { color: var(--accent); text-decoration-thickness: 1px;
   background: var(--bg);
   border-left: 1px solid var(--line);
   overflow-y: auto;
-  padding: 0.6rem 0.4rem;
+  padding: var(--block-pad-y) var(--block-pad-x);
   font-size: var(--nav-font);
 }
 
@@ -341,18 +351,23 @@ a { color: var(--accent); text-decoration-thickness: 1px;
   color: var(--accent);
   opacity: 0.75;
   font-weight: 600;
-  margin: 0 0 0.35rem 0.5rem;
+  margin: 0 0 var(--space-2) var(--space-1);
 }
-#nav .scope { margin: 0 0.5rem 0.5rem; font-size: var(--fs-xs);
+#nav .scope { margin: 0 var(--space-1) var(--space-2); font-size: var(--fs-xs);
               color: var(--text-3); }
 #nav .scope button { display: inline; padding: 0; color: var(--accent); }
-#nav .playlist-actions { margin: 0.3rem 0.4rem var(--nav-gap);
-                         display: flex; flex-wrap: wrap; gap: 0.3rem; }
-#nav .playlist-actions button { background: var(--surface);
+/* Stacked, not side by side. They inherit the nav's `flex: 1`, and in a
+   column this narrow that splits the width in two and truncates both
+   labels — "Check fo…" and "Import n…" say nothing. */
+#nav .playlist-actions { margin: var(--space-2) 0 var(--nav-gap);
+                         display: flex; flex-direction: column;
+                         align-items: stretch; gap: var(--space-1); }
+#nav .playlist-actions button { flex: none; background: var(--surface);
                                 border-color: var(--line-strong);
-                                padding: var(--btn-pad); }
+                                padding: var(--btn-pad);
+                                text-align: center; }
 
-#artist-filter { width: calc(100% - 0.8rem); margin: 0 0.4rem 0.35rem; }
+#artist-filter { width: 100%; margin: 0 0 var(--space-2); }
 #artist-list li[hidden] { display: none; }
 
 /* ------------------------------------------------------------------
@@ -372,10 +387,10 @@ a { color: var(--accent); text-decoration-thickness: 1px;
   z-index: 2;
   background: var(--surface);
   border-bottom: 1px solid var(--line);
-  padding: var(--toolbar-pad);
+  padding: var(--space-3) var(--block-pad-x);
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--space-2);
 }
 #list .toolbar span { color: var(--text-3); font-size: var(--fs-sm);
                       font-variant-numeric: tabular-nums;
@@ -385,7 +400,7 @@ a { color: var(--accent); text-decoration-thickness: 1px;
 table { border-collapse: collapse; width: 100%; }
 td {
   text-align: left;
-  padding: var(--row-pad-y) 0.5rem;
+  padding: var(--row-pad-y) var(--row-pad-x);
   vertical-align: middle;
   font-size: var(--row-font);
   border-bottom: 1px solid var(--line);
@@ -410,7 +425,7 @@ tbody tr:hover { background: var(--hover); }
 .row-meta .playlist { margin-right: 0.55rem; }
 
 .row-actions { width: 1%; white-space: nowrap; text-align: right;
-               padding-left: 0; }
+               padding-left: 0; padding-right: var(--space-3); }
 .row-actions button { font-size: var(--fs-xs); color: var(--text-3);
                       opacity: 0; }
 tr:hover .row-actions button,
@@ -442,12 +457,12 @@ tbody tr.playing td.num { color: var(--accent); }
 
 #inspector {
   background: var(--bg);
-  padding: var(--pane-pad);
+  padding: var(--space-5) var(--block-pad-x) var(--space-4);
   min-width: 0;
 }
 #inspector > .job-none { margin: 0; }
 
-#inspector-body { display: flex; gap: 1.25rem; align-items: flex-start; }
+#inspector-body { display: flex; gap: var(--space-5); align-items: flex-start; }
 .inspector-cover { flex: 0 0 var(--cover-size); }
 .inspector-cover .cover { width: 100%; box-shadow: var(--shadow); }
 .inspector-detail { flex: 1; min-width: 0; max-width: 34rem; }
@@ -504,7 +519,7 @@ tbody tr.playing td.num { color: var(--accent); }
   border-left: 2px solid var(--accent);
   border-radius: 2px;
   background: var(--accent-soft);
-  padding: 0.5rem 0.65rem;
+  padding: var(--space-2) var(--space-3);
   margin: 0.6rem 0;
 }
 .score { font-size: var(--fs-xs); font-weight: 700;
@@ -523,11 +538,11 @@ tbody tr.playing td.num { color: var(--accent); }
 #jobs:empty { display: none; }
 .job { font-size: var(--fs-md); min-height: 1.2em; }
 .job-item { display: flex; align-items: baseline; gap: 0.55rem;
-            padding: 0.15rem 0; border-radius: 2px; }
+            padding: var(--space-1) 0; border-radius: 2px; }
 .job-scope { color: var(--text-3); font-size: var(--fs-sm); max-width: 15rem;
              overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .job-item [data-dismiss-job] { margin-left: auto; color: var(--text-3);
-                               padding: 0 0.35rem; }
+                               padding: 0 var(--space-1); }
 .job-running { color: var(--busy); }
 .job-item .job-scope { color: var(--text-3); }
 .job-new { color: var(--ok); font-weight: 600; }
@@ -536,7 +551,7 @@ tbody tr.playing td.num { color: var(--accent); }
 .htmx-request .job, .htmx-request.job { opacity: 0.5; }
 
 .report-list { list-style: none; padding: 0; margin: 0.3rem 0; }
-.report-list li { padding: 0.35rem 0; border-bottom: 1px solid var(--line);
+.report-list li { padding: var(--space-1) 0; border-bottom: 1px solid var(--line);
                   font-size: var(--fs-md); }
 .report h3 { font-size: var(--fs-xs); margin: 1rem 0 0.3rem;
              text-transform: uppercase; letter-spacing: 0.12em;
@@ -552,10 +567,10 @@ tbody tr.playing td.num { color: var(--accent); }
 #player {
   background: var(--bg);
   border-bottom: 1px solid var(--line);
-  padding: 0.45rem 0.85rem;
+  padding: var(--space-3) var(--block-pad-x) var(--space-4);
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--space-4);
   flex-wrap: wrap;
 }
 
@@ -652,7 +667,7 @@ body.workbench-mode #nav,
 body.workbench-mode #list { display: none; }
 body.workbench-mode #main { grid-template-rows: minmax(0, 1fr) auto; }
 body.workbench-mode #inspector { border-bottom: none; overflow-y: auto;
-                                 padding: 2rem 1.5rem; }
+                                 padding: var(--space-5); }
 
 .workbench { display: flex; gap: 2.25rem; align-items: flex-start;
              max-width: 56rem; margin: 0 auto; }
