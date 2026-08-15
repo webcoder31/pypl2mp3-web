@@ -474,7 +474,16 @@
 
   document.addEventListener("click", function (event) {
     const dismiss = event.target.closest("[data-dismiss-job]");
-    if (dismiss) dismiss.closest(".job-item").remove();
+    if (!dismiss) return;
+
+    dismiss.closest(".job-item").remove();
+
+    // Every swap leaves the whitespace around its fragment behind, so
+    // dismissing the last job left #jobs holding a dozen text nodes and
+    // no elements. That is not `:empty`, so the rule that hides it no
+    // longer matched — and because it spans the header's full width, it
+    // went on reserving a flex line and the gap that separates one.
+    if (jobs && !jobs.children.length) jobs.replaceChildren();
   });
 
   // 450 artists, nearly three quarters of them with a single song. The

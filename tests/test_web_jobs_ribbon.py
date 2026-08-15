@@ -300,3 +300,46 @@ async def test_a_junk_import_is_fixable_from_the_report(tmp_path, monkeypatch):
     assert "/fragments/inspector/aaaaaaaaaaa" in fragment, (
         "no way to repair the song the report just flagged"
     )
+
+
+async def test_dismissing_the_last_job_leaves_no_gap(tmp_path):
+    """Measured in a browser: the header went 70px, 113px with a job,
+    then 86px after dismissing it — sixteen it never gave back.
+
+    Every swap leaves the whitespace around its fragment behind, so the
+    container ended up holding a dozen text nodes and no elements. That
+    is not `:empty`, so the rule that hides it stopped matching, and
+    because the ribbon spans the header's full width it went on
+    reserving a flex line and the gap that separates one.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+        script = (await client.get("/static/console.js")).text
+
+    assert "#jobs:empty { display: none; }" in css, (
+        "nothing hides the ribbon when it holds nothing"
+    )
+
+    handler = script[script.index("[data-dismiss-job]") :]
+    handler = handler[: handler.index("\n  });")]
+    assert "replaceChildren()" in handler, (
+        "the leftover text nodes stay, so :empty never matches again"
+    )
+    assert "jobs.children.length" in handler, (
+        "clearing unconditionally would drop the jobs still running"
+    )
+
+
+async def test_dismissing_one_of_two_jobs_keeps_the_other(tmp_path):
+    """The clear must be conditional: two playlists can be busy at once."""
+
+    async with _client(create_app(tmp_path)) as client:
+        script = (await client.get("/static/console.js")).text
+
+    handler = script[script.index("[data-dismiss-job]") :]
+    handler = handler[: handler.index("\n  });")]
+
+    guard = re.search(r"if \(([^)]*)\)\s*jobs\.replaceChildren", handler)
+    assert guard, handler
+    assert "!jobs.children.length" in guard.group(1), guard.group(1)
