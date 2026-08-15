@@ -232,8 +232,19 @@
 
   // Setting the queue: the visible listing becomes what plays, which is
   // what every music player does when you start a track from a view.
-  function setQueue(entries, startAt) {
+  // Whether the queue standing right now is in a random order. Not a
+  // mode that changes what `move` does — shuffling reorders the queue
+  // once, and this says so. Without it there is no way to tell a
+  // shuffled queue from an ordered one.
+  let inRandomOrder = false;
+
+  function setQueue(entries, startAt, randomOrder) {
     queue = entries;
+    inRandomOrder = Boolean(randomOrder);
+
+    const button = document.querySelector('[data-queue-action="shuffle"]');
+    if (button) button.setAttribute("aria-pressed", String(inRandomOrder));
+
     // A fresh selection plays forward, whichever way the last one ended.
     direction = 1;
     // A findIndex that missed returns -1, which play() would wrap round
@@ -402,7 +413,12 @@
 
       const action = queueButton.dataset.queueAction;
       if (action === "workbench") document.body.classList.add("workbench-mode");
-      setQueue(action === "shuffle" ? shuffled(entries) : entries);
+
+      // Pressing it again reshuffles rather than putting the queue back
+      // in order: the button says what order the queue is in, and after
+      // a second press it is still a random one.
+      const random = action === "shuffle";
+      setQueue(random ? shuffled(entries) : entries, 0, random);
       return;
     }
 
@@ -419,7 +435,7 @@
       else if (action === "toggle") {
         if (!queue.length) {
           const entries = queueFromRows();
-          if (entries.length) setQueue(entries);
+          if (entries.length) setQueue(entries, 0, false);
         } else if (audio.paused) {
           audio.play();
         } else {
@@ -438,7 +454,8 @@
         entries,
         entries.findIndex(function (entry) {
           return entry.id === row.dataset.songId;
-        })
+        }),
+        false
       );
     }
   });

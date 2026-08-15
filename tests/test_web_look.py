@@ -1052,3 +1052,55 @@ async def test_the_cover_is_a_fixed_square(tmp_path):
     assert "object-fit: cover" in rule, (
         "without it a non-square image is stretched to fit the box"
     )
+
+
+async def test_the_toolbar_icons_are_drawn_not_typed(tmp_path):
+    """⤨ and ⚒ exist in Unicode but not in every system font, and where
+    they do they render at whatever size that font decided — which was
+    too small to read."""
+
+    async with _client(create_app(tmp_path)) as client:
+        body = (await client.get("/")).text
+        css = (await client.get("/static/console.css")).text
+
+    bar = re.search(r'<div id="toolbar">(.*?)</div>', body, re.DOTALL).group(1)
+    assert bar.count("<svg") == 3, "not every action has a drawn icon"
+    assert "⤨" not in bar and "⚒" not in bar and "▶" not in bar, bar
+
+    # Sized against the label, not in absolute pixels: an icon smaller
+    # than the word beside it is the problem being fixed.
+    icon = re.search(r"\.icon \{([^}]*)\}", css).group(1)
+    assert "em" in icon, icon
+    assert "currentColor" in bar, "the icons do not follow the text colour"
+
+
+async def test_shuffle_says_whether_the_queue_is_shuffled(tmp_path):
+    """It reorders the queue once rather than switching a mode on, so
+    the honest state to report is what order the queue is in."""
+
+    async with _client(create_app(tmp_path)) as client:
+        body = (await client.get("/")).text
+        script = (await client.get("/static/console.js")).text
+        css = (await client.get("/static/console.css")).text
+
+    button = re.search(
+        r'<button[^>]*data-queue-action="shuffle"[^>]*>', body, re.DOTALL
+    ).group(0)
+    assert 'aria-pressed="false"' in button, button
+
+    assert 'button.setAttribute("aria-pressed"' in script, (
+        "nothing ever updates the state it starts in"
+    )
+    # Every other way of building a queue leaves it in order, and must
+    # say so — otherwise the light stays on after Play all.
+    assert script.count("setQueue(") >= 4
+    assert "setQueue(entries, 0, false)" in script
+    assert re.search(r"setQueue\(\s*entries,\s*entries\.findIndex", script)
+
+    pressed = re.search(
+        r'#toolbar button\[aria-pressed="true"\] \{([^}]*)\}', css
+    ).group(1)
+    assert "background" not in pressed, (
+        "a fill would make the report look like the primary action"
+    )
+    assert "color: var(--accent)" in pressed

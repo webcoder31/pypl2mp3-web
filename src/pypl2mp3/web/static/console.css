@@ -319,6 +319,19 @@ a { color: var(--accent); text-decoration-thickness: 1px;
   min-width: 0;
 }
 
+/* Icons follow the text they sit with: sized in em, coloured with
+   currentColor, so they never end up smaller than the label beside them
+   the way a font glyph does. */
+.icon { width: 1.15em; height: 1.15em; flex: 0 0 auto; }
+#toolbar button { display: inline-flex; align-items: center;
+                  gap: var(--space-2); }
+
+/* Shuffle reports what order the queue is in, not what a click will do.
+   Text and outline, no fill — the same treatment as the theme switch,
+   for the same reason. */
+#toolbar button[aria-pressed="true"] { color: var(--accent);
+                                       border-color: var(--accent); }
+
 /* Three states named in full — a cycling button hides two of them —
    but drawn as text. This is a preference, not an action: a filled
    segment would give it the weight of the one button on the page that

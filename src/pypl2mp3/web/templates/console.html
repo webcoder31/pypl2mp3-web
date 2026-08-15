@@ -137,11 +137,37 @@
         <span id="player-position"></span>
         <span id="player-next"><span class="k" id="player-next-key">NEXT</span
           ><span id="player-next-text">Nothing playing</span></span>
-        <button type="button" data-queue-action="play">▶ Play all</button>
-        <button type="button" data-queue-action="shuffle">⤨ Shuffle</button>
+        {# Inline SVG rather than glyphs. ⤨ and ⚒ exist in Unicode but
+           not in every system font, and where they do they render at
+           whatever size that font decided — which was too small to
+           read. These follow the text colour and the text size. #}
+        <button type="button" data-queue-action="play">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"
+               fill="currentColor"><path d="M5 3.2 13 8l-8 4.8Z"/></svg>
+          Play all
+        </button>
+        <button type="button" data-queue-action="shuffle"
+                aria-pressed="false"
+                title="Play this selection in a random order">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"
+               fill="none" stroke="currentColor" stroke-width="1.4"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1.5 4h3l7 8h3M1.5 12h3l7-8h3"/>
+            <path d="M11.8 1.8 14.5 4l-2.7 2.2"/>
+            <path d="M11.8 9.8 14.5 12l-2.7 2.2"/>
+          </svg>
+          Shuffle
+        </button>
         <button type="button" data-queue-action="workbench"
-                title="Judge this selection one song at a time"
-        >⚒ Workbench</button>
+                title="Judge this selection one song at a time">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"
+               fill="none" stroke="currentColor" stroke-width="1.4"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8.6 1.8H2.2v6.4l6 6 6.4-6.4z"/>
+            <circle cx="5.2" cy="5.2" r="1.1"/>
+          </svg>
+          Workbench
+        </button>
       </div>
 
       {# songsChanged fires when a save changed what the repository
