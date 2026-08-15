@@ -770,10 +770,54 @@ async def test_the_scrub_bar_keeps_its_own_line(tmp_path):
 
     timeline = re.search(r"#timeline \{(.*?)\n\}", css, re.DOTALL)
     assert timeline, "the timeline has no rule at all"
-    assert "flex: 1 1 100%" in timeline.group(1), timeline.group(1)
+    assert re.search(r"flex:\s*1\b", timeline.group(1)), (
+        f"the bar does not take the room the buttons leave: "
+        f"{timeline.group(1)}"
+    )
 
     seek = re.search(r"#seek \{(.*?)\n\}", css, re.DOTALL)
     assert seek, "the scrub bar has no rule at all"
     assert "position: relative" in seek.group(1)
     for part in ("#seek .track", "#seek .fill", "#seek .head"):
         assert part in css, part
+
+
+async def test_the_player_is_one_row(tmp_path):
+    """Three small buttons over a full-width bar spent a row on very
+    little. Side by side the bar still has almost all the width."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    block = re.search(r"#player \{(.*?)\n\}", css, re.DOTALL).group(1)
+    assert "flex-wrap: wrap" not in block, (
+        "the bar can still break onto a second line"
+    )
+
+    timeline = re.search(r"#timeline \{(.*?)\n\}", css, re.DOTALL).group(1)
+    assert "100%" not in timeline, timeline
+    assert "order:" not in timeline, (
+        "ordering only mattered while it wrapped"
+    )
+
+
+async def test_the_player_carries_no_second_video_link(tmp_path):
+    """The inspector already has one, and it sits beside the song it
+    points at."""
+
+    _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        body = (await client.get("/")).text
+        panel = (await client.get("/fragments/inspector/aaaaaaaaaaa")).text
+        script = (await client.get("/static/console.js")).text
+
+    player = re.search(r'<footer id="player".*?</footer>', body, re.DOTALL)
+    assert "youtu.be" not in player.group(0), player.group(0)
+    assert "player-video" not in body
+
+    assert "youtu.be" in panel, "the inspector lost its link too"
+
+    # The keyboard shortcut has to survive the link it used to read.
+    assert 'window.open(\n            "https://youtu.be/" + queue[index].id'\
+        in script, "tab no longer knows which video to open"

@@ -26,7 +26,6 @@
   const total = document.getElementById("player-total");
   const seek = document.getElementById("seek");
   const position = document.getElementById("player-position");
-  const videoLink = document.getElementById("player-video");
   const toggle = document.querySelector('[data-player-action="toggle"]');
   const filters = document.getElementById("filters");
   const playlistField = document.getElementById("playlist-field");
@@ -93,7 +92,6 @@
 
     const inCard = document.getElementById("workbench-position");
     if (inCard) inCard.textContent = position.textContent;
-    videoLink.href = "https://youtu.be/" + current.id;
 
     // What is playing is already the inspector's whole job. What the bar
     // can say that nothing else does is what comes next.
@@ -409,7 +407,12 @@
       case "Tab":
         if (queue.length) {
           event.preventDefault();
-          window.open(videoLink.href, "_blank", "noopener");
+          // Built from the queue rather than read off a link in the
+          // bar: the inspector already carries that link, and one in
+          // the player was a second copy of it.
+          window.open(
+            "https://youtu.be/" + queue[index].id, "_blank", "noopener"
+          );
         }
         break;
       case "Escape":
