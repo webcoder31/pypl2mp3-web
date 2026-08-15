@@ -18,6 +18,7 @@
 
   const audio = document.getElementById("audio");
   const bar = document.getElementById("player");
+  const toolbar = document.getElementById("toolbar");
   const upNext = document.getElementById("player-next");
   const nextKey = document.getElementById("player-next-key");
   const nextText = document.getElementById("player-next-text");
@@ -74,14 +75,20 @@
 
     if (!current) {
       bar.classList.add("idle");
+      if (toolbar) toolbar.classList.add("idle");
       nextKey.textContent = "NEXT";
       nextText.textContent = "Nothing playing";
       upNext.title = "";
-      position.textContent = "";
+      // The count the toolbar used to render server-side. It is the
+      // same number the position turns into once something plays, so
+      // nothing is lost by letting one slot carry both.
+      const total = rows().length;
+      position.textContent = total ? total + " songs" : "";
       return;
     }
 
     bar.classList.remove("idle");
+    if (toolbar) toolbar.classList.remove("idle");
     position.textContent = index + 1 + " / " + queue.length;
 
     const inCard = document.getElementById("workbench-position");

@@ -95,14 +95,6 @@
                   title="Next (right arrow)" aria-label="Next">&#9197;</button>
         </div>
 
-        <span id="player-position"></span>
-
-      {# What is playing is already the whole right-hand panel. What the
-           bar can say that nothing else does is what comes next — the CLI
-           prints it too, before the current track has even started. #}
-        <span id="player-next"><span class="k" id="player-next-key">NEXT</span
-          ><span id="player-next-text">Nothing playing</span></span>
-
         <div id="timeline">
           <span class="t" id="player-elapsed">0:00</span>
           <div id="seek" role="slider" aria-label="Seek"
@@ -115,11 +107,26 @@
           <span class="t" id="player-total">0:00</span>
         </div>
 
-          <a id="player-video" href="#" target="_blank"
+        <a id="player-video" href="#" target="_blank"
            rel="noopener noreferrer" title="Watch on YouTube (tab)">video</a>
 
         <audio id="audio"></audio>
       </footer>
+
+      {# Where you are in the queue, what comes next, and what to do
+         with the selection — all of it about the queue, none of it from
+         the server. Outside #list on purpose: a refetch would otherwise
+         wipe the player's readout and paint it back blank. #}
+      <div id="toolbar">
+        <span id="player-position"></span>
+        <span id="player-next"><span class="k" id="player-next-key">NEXT</span
+          ><span id="player-next-text">Nothing playing</span></span>
+        <button type="button" data-queue-action="play">▶ Play all</button>
+        <button type="button" data-queue-action="shuffle">⤨ Shuffle</button>
+        <button type="button" data-queue-action="workbench"
+                title="Judge this selection one song at a time"
+        >⚒ Workbench</button>
+      </div>
 
       {# songsChanged fires when a save changed what the repository
          holds. The listing refetches with the current filters, because a

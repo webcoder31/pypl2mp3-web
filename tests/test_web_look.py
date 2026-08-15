@@ -609,8 +609,15 @@ async def test_the_transport_sits_under_the_song_it_plays(tmp_path):
         < inside.index('id="list"')
     ), "the three are not in that order"
 
-    rows = re.search(r"#main \{(.*?)\n\}", css, re.DOTALL).group(1)
-    assert "grid-template-rows: auto auto minmax(0, 1fr)" in rows, rows
+    # Only the listing grows; everything above it takes the height it
+    # needs. Asserted as a shape rather than a literal, so adding a row
+    # — as the toolbar did — does not make this a lie.
+    rows = re.search(
+        r"grid-template-rows:\s*([^;]+)",
+        re.search(r"#main \{(.*?)\n\}", css, re.DOTALL).group(1),
+    ).group(1)
+    assert rows.endswith("minmax(0, 1fr)"), rows
+    assert "1fr" not in rows.replace("minmax(0, 1fr)", ""), rows
 
     # Placed by #main now. Naming an area the page grid no longer
     # defines makes an implicit track, which is how the listing once
@@ -691,46 +698,82 @@ async def test_the_playlist_buttons_say_what_they_do(tmp_path):
     assert "flex: none" in button, button
 
 
-async def test_the_queue_counter_reads_with_the_transport(tmp_path):
-    """Both answer "where am I in the queue", so they sit together and
-    what comes next follows them."""
+async def test_the_toolbar_carries_the_queue_readout(tmp_path):
+    """Where you are, what comes next, and what to do with the selection
+    — all about the queue, so they share one row. The counter replaces
+    the song count, which said the same number less usefully."""
+
+    _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
         body = (await client.get("/")).text
+        fragment = (await client.get("/fragments/list")).text
 
-    player = re.search(r'<footer id="player".*?</footer>', body, re.DOTALL)
-    assert player, "no player"
-    bar = player.group(0)
+    bar = re.search(r'<div id="toolbar">(.*?)</div>', body, re.DOTALL)
+    assert bar, "no toolbar"
+    inside = bar.group(1)
 
-    order = [
-        bar.index(part)
-        for part in ('id="transport"', 'id="player-position"',
-                     'id="player-next"')
-    ]
-    assert order == sorted(order), (
-        "the counter and the preview are not in that order after the "
-        "transport"
-    )
+    for part in ('id="player-position"', 'id="player-next"',
+                 'data-queue-action="play"'):
+        assert part in inside, part
+    assert (
+        inside.index('id="player-position"')
+        < inside.index('id="player-next"')
+        < inside.index("data-queue-action")
+    ), "counter, preview, then the actions"
+
+    assert "song(s)" not in body, "the old count is still rendered too"
 
 
-async def test_the_listing_actions_gather_on_the_right(tmp_path):
-    """The count anchors the left edge; the three actions move away from
-    the rows they act on."""
+async def test_the_toolbar_is_not_swept_away_by_a_refetch(tmp_path):
+    """It holds the player's own readout now. Inside the fragment, every
+    filter keystroke would take it away and paint it back blank."""
 
     _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
         fragment = (await client.get("/fragments/list")).text
+        body = (await client.get("/")).text
+
+    assert "toolbar" not in fragment, fragment[:200]
+    assert "data-queue-action" not in fragment
+
+    # And it is outside every swap region, like the player itself.
+    regions = re.findall(
+        r'id="([^"]+)"[^>]*data-swap-region', body
+    )
+    toolbar_at = body.index('id="toolbar"')
+    for region in regions:
+        opening = body.index(f'id="{region}"')
+        assert not (opening < toolbar_at < body.index(">", opening)), region
+
+
+async def test_the_counter_still_shows_the_selection_size(tmp_path):
+    """It replaced "928 song(s)", so it has to say that when nothing is
+    playing — otherwise the count simply disappeared."""
+
+    async with _client(create_app(tmp_path)) as client:
+        script = (await client.get("/static/console.js")).text
+
+    assert 'total + " songs"' in script, (
+        "with nothing playing the slot goes blank and the count is lost"
+    )
+
+
+async def test_the_scrub_bar_keeps_its_own_line(tmp_path):
+    """Lost once to an over-eager edit: the rules went, the bar collapsed
+    to a few pixels between two other controls, and only the rendered
+    page showed it."""
+
+    async with _client(create_app(tmp_path)) as client:
         css = (await client.get("/static/console.css")).text
 
-    toolbar = re.search(
-        r'<div class="toolbar">(.*?)</div>', fragment, re.DOTALL
-    ).group(1)
-    assert toolbar.index("song(s)") < toolbar.index("data-queue-action")
+    timeline = re.search(r"#timeline \{(.*?)\n\}", css, re.DOTALL)
+    assert timeline, "the timeline has no rule at all"
+    assert "flex: 1 1 100%" in timeline.group(1), timeline.group(1)
 
-    rule = re.search(
-        r"#list \.toolbar span \{([^}]*)\}", css, re.DOTALL
-    ).group(1)
-    assert "margin-right: auto" in rule, (
-        "nothing pushes the actions to the right edge"
-    )
+    seek = re.search(r"#seek \{(.*?)\n\}", css, re.DOTALL)
+    assert seek, "the scrub bar has no rule at all"
+    assert "position: relative" in seek.group(1)
+    for part in ("#seek .track", "#seek .fill", "#seek .head"):
+        assert part in css, part

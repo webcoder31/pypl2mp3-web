@@ -128,25 +128,21 @@ async def test_a_row_shows_the_playlist_without_repeating_its_id(tmp_path):
     assert "<th" not in fragment, "the column headers are back"
 
 
-async def test_the_queue_controls_are_not_crammed_into_a_header_cell(tmp_path):
-    """They overlapped the count there; a table header is not a toolbar."""
+async def test_the_listing_fragment_is_rows_and_nothing_else(tmp_path):
+    """Its toolbar moved out when it stopped needing anything from the
+    server. What is left must stay swappable without taking the queue's
+    readout with it."""
 
     _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
         fragment = (await client.get("/fragments/list")).text
 
-    toolbar = re.search(
-        r'<div class="toolbar">(.*?)</div>', fragment, re.DOTALL
-    )
-    assert toolbar, "no toolbar"
-    assert 'data-queue-action="play"' in toolbar.group(1)
-    assert 'data-queue-action="shuffle"' in toolbar.group(1)
-
-    table = fragment[fragment.index("<table") :]
-    assert "data-queue-action" not in table, (
-        "a queue control is still inside the table"
-    )
+    assert "<table" in fragment
+    assert 'data-song-id="aaaaaaaaaaa"' in fragment
+    for gone in ("toolbar", "data-queue-action", "player-position",
+                 "player-next"):
+        assert gone not in fragment, gone
 
 
 async def test_the_page_starts_silent(tmp_path):

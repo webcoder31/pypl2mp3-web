@@ -295,7 +295,7 @@ a { color: var(--accent); text-decoration-thickness: 1px;
   /* The song, its transport, then everything else. The first two take
      the height they need and no more, so with nothing selected the
      listing has almost the whole column. */
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   min-height: 0;
   min-width: 0;
 }
@@ -379,24 +379,45 @@ a { color: var(--accent); text-decoration-thickness: 1px;
    squeezes the listing into a fraction of its column. */
 #list { overflow-y: auto; background: var(--surface); min-width: 0; }
 
-/* Pinned while the list scrolls. This, not a row of column headers on
-   self-evident columns, is what needs to stay reachable. */
-#list .toolbar {
-  position: sticky;
-  top: 0;
-  z-index: 2;
+/* Its own row above the listing rather than pinned inside it: with the
+   queue counter in it there is nothing for the server to render, so it
+   stays out of the fragment that gets swapped. */
+#toolbar {
   background: var(--surface);
   border-bottom: 1px solid var(--line);
   padding: var(--space-3) var(--block-pad-x);
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-4);
+  min-width: 0;
 }
-/* The count anchors the left edge; the three actions gather on the
-   right, away from the rows they act on. */
-#list .toolbar span { color: var(--text-3); font-size: var(--fs-sm);
-                      font-variant-numeric: tabular-nums;
-                      margin-right: auto; }
+
+/* Where you are in the queue, and what follows. The two read as one
+   line, and the actions gather at the far end. */
+#player-position { font-variant-numeric: tabular-nums;
+                   font-size: var(--fs-sm); color: var(--text-3);
+                   white-space: nowrap; flex: 0 0 auto; }
+#player-next {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-md);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+#player-next .k {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--accent);
+  margin-right: var(--space-2);
+}
+#toolbar.idle #player-next, #toolbar.idle #player-next .k {
+  color: var(--text-3);
+}
+
 #list .empty { padding: 1.5rem; color: var(--text-3); }
 
 table { border-collapse: collapse; width: 100%; }
@@ -597,47 +618,19 @@ tbody tr.playing td.num { color: var(--accent); }
   border-color: var(--line-strong);
 }
 
-/* What comes next, the way the CLI previews it before the current track
-   has even started. What is playing is already the inspector's whole
-   job; this is the one thing the bar can say that nothing else does. */
-#player-next {
-  flex: 1 1 18rem;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--fs-md);
-  color: var(--text-2);
-  font-variant-numeric: tabular-nums;
-}
-#player-next .k {
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  color: var(--accent);
-  margin-right: 0.45rem;
-}
-#player.idle #player-next { color: var(--text-3); }
-#player.idle #player-next .k { color: var(--text-3); }
-
-/* Beside the transport, because both answer "where am I in the queue".
-   What comes next then follows it, and the two read as one sentence. */
-#player-position { font-variant-numeric: tabular-nums;
-                   font-size: var(--fs-sm); color: var(--text-3);
-                   white-space: nowrap; flex: 0 0 auto; }
-
-/* Comfortable puts this on its own line; compact keeps it inline. One
-   markup, two values. */
+/* Its own line under the transport, full width: a scrub bar you can
+   land on beats one squeezed between two other controls. */
 #timeline {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: var(--space-3);
   flex: 1 1 100%;
   order: 9;
   min-width: 8rem;
 }
 #timeline .t { font-variant-numeric: tabular-nums; font-size: var(--fs-xs);
                color: var(--text-3); white-space: nowrap; }
+
 /* Sharp edges, deliberately: a 3px track and a 2px playhead, not a pill. */
 #seek {
   position: relative;
@@ -670,6 +663,7 @@ body.workbench-mode { grid-template-columns: minmax(0, 1fr) 0; }
 body.workbench-mode #nav,
 body.workbench-mode #list { display: none; }
 body.workbench-mode #main { grid-template-rows: minmax(0, 1fr) auto; }
+body.workbench-mode #toolbar { display: none; }
 body.workbench-mode #inspector { border-bottom: none; overflow-y: auto;
                                  padding: var(--space-5); }
 

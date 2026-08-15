@@ -2,20 +2,13 @@
    these rows — the play queue too. One source, so the two can never
    disagree about what track 12 is.
 
-   The toolbar is what stays pinned while you scroll, not a row of column
-   headers: on two self-evident columns those headers were worth less
-   than the actions they were crowding out. #}
+   Rows only. The toolbar above is not part of this fragment: with the
+   queue counter in it there is nothing left for the server to fill, and
+   keeping it out means a refetch cannot take the player's own readout
+   away and put it back blank. #}
 {% if not songs %}
   <p class="empty">No songs match.</p>
 {% else %}
-  <div class="toolbar">
-    <span>{{ songs | length }} song(s)</span>
-    <button type="button" data-queue-action="play">▶ Play all</button>
-    <button type="button" data-queue-action="shuffle">⤨ Shuffle</button>
-    <button type="button" data-queue-action="workbench"
-            title="Judge this selection one song at a time">⚒ Workbench</button>
-  </div>
-
   <table>
     <tbody>
       {% for song in songs %}
