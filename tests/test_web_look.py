@@ -1214,6 +1214,26 @@ async def test_the_side_column_scales_with_the_window(tmp_path):
     )
 
 
+async def test_the_junk_checkbox_names_what_it_filters(tmp_path):
+    """It read "junk only", which names the adjective and leaves out the
+    noun — beside a search box and a Filter button, "only" could have
+    been about playlists or artists as easily as about songs."""
+
+    async with _client(create_app(tmp_path)) as client:
+        page = (await client.get("/")).text
+
+    label = re.search(
+        r'<input type="checkbox" name="junk".*?>([^<]*)</label>',
+        page,
+        re.DOTALL,
+    )
+    assert label, page
+    words = label.group(1).strip().lower()
+    assert "junk" in words and "song" in words, (
+        f"{words!r} does not say that what it keeps are songs"
+    )
+
+
 async def test_the_unfiltered_row_names_what_it_covers(tmp_path):
     """It used to read "All", one word sitting above a list of playlists
     where it could as easily have meant "all of them selected" as "none
