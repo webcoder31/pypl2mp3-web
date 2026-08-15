@@ -95,7 +95,9 @@
                   title="Next (right arrow)" aria-label="Next">&#9197;</button>
         </div>
 
-        {# What is playing is already the whole right-hand panel. What the
+        <span id="player-position"></span>
+
+      {# What is playing is already the whole right-hand panel. What the
            bar can say that nothing else does is what comes next — the CLI
            prints it too, before the current track has even started. #}
         <span id="player-next"><span class="k" id="player-next-key">NEXT</span
@@ -113,8 +115,7 @@
           <span class="t" id="player-total">0:00</span>
         </div>
 
-        <span id="player-position"></span>
-        <a id="player-video" href="#" target="_blank"
+          <a id="player-video" href="#" target="_blank"
            rel="noopener noreferrer" title="Watch on YouTube (tab)">video</a>
 
         <audio id="audio"></audio>

@@ -392,9 +392,11 @@ a { color: var(--accent); text-decoration-thickness: 1px;
   align-items: center;
   gap: var(--space-2);
 }
+/* The count anchors the left edge; the three actions gather on the
+   right, away from the rows they act on. */
 #list .toolbar span { color: var(--text-3); font-size: var(--fs-sm);
                       font-variant-numeric: tabular-nums;
-                      margin-right: 0.3rem; }
+                      margin-right: auto; }
 #list .empty { padding: 1.5rem; color: var(--text-3); }
 
 table { border-collapse: collapse; width: 100%; }
@@ -618,6 +620,8 @@ tbody tr.playing td.num { color: var(--accent); }
 #player.idle #player-next { color: var(--text-3); }
 #player.idle #player-next .k { color: var(--text-3); }
 
+/* Beside the transport, because both answer "where am I in the queue".
+   What comes next then follows it, and the two read as one sentence. */
 #player-position { font-variant-numeric: tabular-nums;
                    font-size: var(--fs-sm); color: var(--text-3);
                    white-space: nowrap; flex: 0 0 auto; }

@@ -689,3 +689,48 @@ async def test_the_playlist_buttons_say_what_they_do(tmp_path):
         r"#nav \.playlist-actions button \{([^}]*)\}", css
     ).group(1)
     assert "flex: none" in button, button
+
+
+async def test_the_queue_counter_reads_with_the_transport(tmp_path):
+    """Both answer "where am I in the queue", so they sit together and
+    what comes next follows them."""
+
+    async with _client(create_app(tmp_path)) as client:
+        body = (await client.get("/")).text
+
+    player = re.search(r'<footer id="player".*?</footer>', body, re.DOTALL)
+    assert player, "no player"
+    bar = player.group(0)
+
+    order = [
+        bar.index(part)
+        for part in ('id="transport"', 'id="player-position"',
+                     'id="player-next"')
+    ]
+    assert order == sorted(order), (
+        "the counter and the preview are not in that order after the "
+        "transport"
+    )
+
+
+async def test_the_listing_actions_gather_on_the_right(tmp_path):
+    """The count anchors the left edge; the three actions move away from
+    the rows they act on."""
+
+    _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        fragment = (await client.get("/fragments/list")).text
+        css = (await client.get("/static/console.css")).text
+
+    toolbar = re.search(
+        r'<div class="toolbar">(.*?)</div>', fragment, re.DOTALL
+    ).group(1)
+    assert toolbar.index("song(s)") < toolbar.index("data-queue-action")
+
+    rule = re.search(
+        r"#list \.toolbar span \{([^}]*)\}", css, re.DOTALL
+    ).group(1)
+    assert "margin-right: auto" in rule, (
+        "nothing pushes the actions to the right edge"
+    )
