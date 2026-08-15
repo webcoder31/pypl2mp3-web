@@ -61,9 +61,31 @@ def create_app(repository_path: Path) -> FastAPI:
         }
 
     package_root = Path(__file__).parent
+
+    class RevalidatingStatics(StaticFiles):
+        """Static files the browser must always check before reusing.
+
+        Starlette sends an ETag and a Last-Modified but no Cache-Control,
+        which leaves the browser to guess how long a file stays fresh.
+        Chrome guesses a tenth of the file's age — so a stylesheet last
+        touched ten hours ago is held for an hour without asking, and an
+        edit simply does not arrive. That cost a whole round of chasing a
+        bug that had already been fixed.
+
+        `no-cache` does not mean "do not store": it means "revalidate
+        first". With the ETag already there that is one 304 per load,
+        over the loopback interface.
+        """
+
+        def file_response(self, *args, **kwargs):
+            response = super().file_response(*args, **kwargs)
+            response.headers["cache-control"] = "no-cache"
+
+            return response
+
     app.mount(
         "/static",
-        StaticFiles(directory=package_root / "static"),
+        RevalidatingStatics(directory=package_root / "static"),
         name="static",
     )
     templates = Jinja2Templates(directory=str(package_root / "templates"))

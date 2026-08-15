@@ -591,3 +591,39 @@ async def test_nothing_is_marked_playing_when_nothing_plays(tmp_path):
     assert "row.dataset.songId === currentId" in script, (
         "the row-marking comparison is no longer strict"
     )
+
+
+async def test_static_files_are_always_revalidated(tmp_path):
+    """Starlette sends an ETag but no Cache-Control, which leaves the
+    browser to guess how long a file stays fresh — Chrome guesses a
+    tenth of its age. A stylesheet touched ten hours ago is then held
+    for an hour without asking, and an edit simply does not arrive.
+
+    That cost a whole round of chasing a bug that was already fixed: the
+    fix was live on the server and the browser was running the file it
+    had cached before it.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        for asset in ("console.js", "console.css", "htmx.min.js"):
+            response = await client.get(f"/static/{asset}")
+
+            assert response.status_code == 200, asset
+            assert response.headers.get("cache-control") == "no-cache", (
+                f"{asset} may be served from cache without asking"
+            )
+            # no-cache means "revalidate", not "re-download": the ETag is
+            # what keeps that cheap.
+            assert response.headers.get("etag"), asset
+
+
+async def test_a_revalidated_asset_costs_nothing(tmp_path):
+    async with _client(create_app(tmp_path)) as client:
+        first = await client.get("/static/console.js")
+        again = await client.get(
+            "/static/console.js",
+            headers={"If-None-Match": first.headers["etag"]},
+        )
+
+    assert again.status_code == 304
+    assert not again.content
