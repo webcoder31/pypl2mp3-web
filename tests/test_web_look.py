@@ -383,7 +383,6 @@ async def test_the_layout_puts_the_song_above_the_listing(tmp_path):
     areas = re.search(r"grid-template-areas:(.*?);", css, re.DOTALL).group(1)
     assert '"header header"' in areas
     assert '"main   nav"' in areas
-    assert '"player player"' in areas
 
     # The inspector and the listing share one column, in that order.
     main = re.search(r'<div id="main">(.*?)</div>\s*<nav', body, re.DOTALL)
@@ -578,3 +577,40 @@ async def test_the_filename_sits_beside_the_button_that_rewrites_it(tmp_path):
     assert "text-overflow: ellipsis" in rule, rule
     assert "min-width: 0" in rule, rule
     assert 'title="' in panel, "truncated with no way to read the whole"
+
+
+async def test_the_transport_sits_under_the_song_it_plays(tmp_path):
+    """The inspector follows the queue, so the art, the tags and the
+    transport all describe the same track. Grouping them beats the
+    convention of pinning the bar to the foot of the window."""
+
+    _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        body = (await client.get("/")).text
+        css = (await client.get("/static/console.css")).text
+
+    main = re.search(r'<div id="main">(.*?)\n    </div>', body, re.DOTALL)
+    assert main, "no main column"
+    inside = main.group(1)
+
+    for part in ('id="inspector"', 'id="player"', 'id="list"'):
+        assert part in inside, f"{part} left the main column"
+
+    assert (
+        inside.index('id="inspector"')
+        < inside.index('id="player"')
+        < inside.index('id="list"')
+    ), "the three are not in that order"
+
+    rows = re.search(r"#main \{(.*?)\n\}", css, re.DOTALL).group(1)
+    assert "grid-template-rows: auto auto minmax(0, 1fr)" in rows, rows
+
+    # Placed by #main now. Naming an area the page grid no longer
+    # defines makes an implicit track, which is how the listing once
+    # ended up rendering at 40% of its column.
+    player = re.search(r"#player \{([^}]*)\}", css).group(1)
+    assert "grid-area" not in player, player
+    assert "grid-template-areas" in css and "player" not in re.search(
+        r"grid-template-areas:(.*?);", css, re.DOTALL
+    ).group(1), "the page grid still reserves a row for it"
