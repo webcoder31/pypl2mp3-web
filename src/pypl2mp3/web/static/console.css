@@ -99,9 +99,13 @@
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
   /* Surfaces differ by lightness, not by having a border drawn round
-     them. Two levels are enough: the page, and the things on it. Both
-     carry a trace of the accent's hue — a truly neutral grey reads as
-     unpainted rather than as a choice. */
+     them, and both carry a trace of the accent's hue: a truly neutral
+     grey reads as unpainted rather than as a choice.
+
+     The listing takes --surface and everything around it takes --bg.
+     The other way round put the songs on a tinted band with white
+     panels either side, which read as 927 selected rows. Content is
+     bright; the chrome around it steps back. */
   --bg: #f3f6f6;
   --surface: #ffffff;
   --sunken: #e8eded;
@@ -217,6 +221,7 @@ button {
   color: var(--text-2);
   background: var(--surface);
   border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow);
   border-radius: 2px;
   padding: var(--btn-pad);
   cursor: pointer;
@@ -245,6 +250,7 @@ button[type="submit"]:hover { background: var(--accent);
 #nav .scope button, .report-list button {
   background: none;
   border-color: transparent;
+  box-shadow: none;
   padding: var(--nav-row-pad);
 }
 .quiet:hover, #nav button:hover, .row-actions button:hover,
@@ -285,7 +291,7 @@ a { color: var(--accent); text-decoration-thickness: 1px;
 
 #header {
   grid-area: header;
-  background: var(--surface);
+  background: var(--bg);
   border-bottom: 1px solid var(--line);
   padding: 0.5rem 0.85rem;
   display: flex;
@@ -338,7 +344,7 @@ a { color: var(--accent); text-decoration-thickness: 1px;
 
 #nav {
   grid-area: nav;
-  background: var(--surface);
+  background: var(--bg);
   border-right: 1px solid var(--line);
   overflow-y: auto;
   padding: 0.6rem 0.4rem;
@@ -401,7 +407,7 @@ a { color: var(--accent); text-decoration-thickness: 1px;
    Listing
    ------------------------------------------------------------------ */
 
-#list { grid-area: list; overflow-y: auto; background: var(--bg); }
+#list { grid-area: list; overflow-y: auto; background: var(--surface); }
 
 /* Pinned while the list scrolls. This, not a row of column headers on
    self-evident columns, is what needs to stay reachable. */
@@ -409,7 +415,7 @@ a { color: var(--accent); text-decoration-thickness: 1px;
   position: sticky;
   top: 0;
   z-index: 2;
-  background: var(--bg);
+  background: var(--surface);
   border-bottom: 1px solid var(--line);
   padding: var(--toolbar-pad);
   display: flex;
@@ -482,7 +488,7 @@ tbody tr.playing td.num { color: var(--accent); }
 
 #inspector {
   grid-area: inspector;
-  background: var(--surface);
+  background: var(--bg);
   border-left: 1px solid var(--line);
   overflow-y: auto;
   padding: var(--pane-pad);
@@ -554,7 +560,7 @@ tbody tr.playing td.num { color: var(--accent); }
 
 #player {
   grid-area: player;
-  background: var(--surface);
+  background: var(--bg);
   border-top: 1px solid var(--line);
   padding: 0.45rem 0.85rem;
   display: flex;

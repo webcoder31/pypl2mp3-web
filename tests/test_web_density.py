@@ -426,3 +426,49 @@ async def test_colour_marks_state_rather_than_decorating(tmp_path):
     # The playing row is named by colour, not only by a border.
     assert "tbody tr.playing .row-title { font-weight: 700; " \
            "color: var(--accent); }" in css
+
+
+async def test_the_listing_is_the_bright_surface_not_the_chrome(tmp_path):
+    """Reported as "all the songs are selected", and it was exactly that.
+
+    The listing had --bg and the panels either side had --surface, so in
+    the light theme 927 rows sat on a tinted band between two white
+    columns. Content is bright; the chrome around it steps back.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    def background(selector):
+        block = re.search(
+            re.escape(selector) + r"\s*\{(.*?)\n\}", css, re.DOTALL
+        )
+        assert block, selector
+        found = re.search(r"background:\s*var\((--[\w-]+)\)", block.group(1))
+        assert found, f"{selector} paints no background"
+        return found.group(1)
+
+    assert background("#list") == "--surface", (
+        "the songs sit on the page colour while the chrome is raised"
+    )
+    for chrome in ("#nav", "#inspector", "#header", "#player"):
+        assert background(chrome) == "--bg", (
+            f"{chrome} is brighter than the content it frames"
+        )
+
+
+async def test_buttons_inside_text_carry_no_box(tmp_path):
+    """The nav is a list of names, not a stack of cards. A border or a
+    shadow round each one turns 453 artists into 453 boxes."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    quiet = re.search(
+        r"\.quiet, #nav button.*?\{(.*?)\n\}", css, re.DOTALL
+    )
+    assert quiet, "no rule for the borderless buttons"
+    assert "border-color: transparent" in quiet.group(1)
+    assert "box-shadow: none" in quiet.group(1), (
+        "the raised buttons' shadow leaks onto every nav entry"
+    )
