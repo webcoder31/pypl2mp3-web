@@ -453,7 +453,12 @@ tbody tr.playing td.num { color: var(--accent); }
 .inspector-cover .cover { width: 100%; box-shadow: var(--shadow); }
 .inspector-detail { flex: 1; min-width: 0; max-width: 34rem; }
 .inspector-tools { display: flex; align-items: center; gap: 0.75rem; }
-.inspector-actions { display: flex; gap: 0.5rem; margin-top: 0.9rem; }
+.inspector-actions { display: flex; align-items: baseline; gap: 0.7rem;
+                     margin-top: 0.9rem; min-width: 0; }
+/* Takes what is left and truncates: a filename can run to a hundred
+   characters and must not push the button it belongs to off the row. */
+.inspector-actions .filename { flex: 1; min-width: 0; overflow: hidden;
+                               text-overflow: ellipsis; white-space: nowrap; }
 
 @media (max-width: 62rem) {
   #inspector-body { gap: 0.9rem; }
@@ -490,9 +495,7 @@ tbody tr.playing td.num { color: var(--accent); }
   color: var(--text);
 }
 
-#inspector .filename { word-break: break-all; margin-top: 1rem;
-                       font-size: var(--fs-xs); color: var(--text-3);
-                       line-height: 1.5; }
+#inspector .filename { font-size: var(--fs-xs); color: var(--text-3); }
 #inspector p { margin: 0.5rem 0; }
 
 /* Shazam's answer sits above the form: it is what you came for, the

@@ -517,3 +517,64 @@ async def test_the_two_panels_keep_the_same_fields(tmp_path):
     assert fields(panels[0]) == fields(panels[1]), (
         f"inspector {fields(panels[0])} vs workbench {fields(panels[1])}"
     )
+
+
+async def test_junkize_stands_with_the_other_song_actions(tmp_path):
+    """Neither it nor Ask Shazam submits the form; both act on the song
+    as it already is. Save is the only thing the form is for."""
+
+    _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        panel = (await client.get("/fragments/inspector/aaaaaaaaaaa")).text
+
+    tools = re.search(
+        r'<p class="inspector-tools">(.*?)</p>', panel, re.DOTALL
+    ).group(1)
+    assert "/junkize" in tools, "Junkize is not beside Ask Shazam"
+    assert "/shazam" in tools
+
+    form = panel[panel.index("<form") : panel.index("</form>")]
+    assert "/junkize" not in form, "it is still inside the form as well"
+
+    # Destructive and not undoable, wherever it sits.
+    button = re.search(r"<button[^>]*junkize[^>]*>", tools, re.DOTALL)
+    assert button and "hx-confirm" in button.group(0), button
+
+
+async def test_a_junk_song_is_offered_no_junkize(tmp_path):
+    """It is already junk; the button would do nothing but destroy the
+    filename it has left."""
+
+    _make_song(tmp_path, "UNKNOWN", "Something", "aaaaaaaaaaa", junk=True)
+
+    async with _client(create_app(tmp_path)) as client:
+        panel = (await client.get("/fragments/inspector/aaaaaaaaaaa")).text
+
+    assert "/junkize" not in panel
+
+
+async def test_the_filename_sits_beside_the_button_that_rewrites_it(tmp_path):
+    """Saving renames the file, so this is the line about to change."""
+
+    _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        panel = (await client.get("/fragments/inspector/aaaaaaaaaaa")).text
+        css = (await client.get("/static/console.css")).text
+
+    actions = re.search(
+        r'<p class="inspector-actions">(.*?)</p>', panel, re.DOTALL
+    ).group(1)
+    assert 'type="submit"' in actions
+    assert "filename" in actions, "the filename is on a line of its own"
+    assert actions.index("submit") < actions.index("filename")
+
+    # A name can run to a hundred characters and must not push Save off
+    # the row.
+    rule = re.search(
+        r"\.inspector-actions \.filename \{([^}]*)\}", css
+    ).group(1)
+    assert "text-overflow: ellipsis" in rule, rule
+    assert "min-width: 0" in rule, rule
+    assert 'title="' in panel, "truncated with no way to read the whole"

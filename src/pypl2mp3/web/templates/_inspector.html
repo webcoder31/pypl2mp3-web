@@ -27,6 +27,16 @@
               hx-post="/songs/{{ song.youtube_id }}/shazam"
               hx-target="#shazam"
               hx-swap="outerHTML">Ask Shazam</button>
+      {% if not song.is_junk %}
+        {# Beside Ask Shazam rather than beside Save: neither of them
+           submits the form, and both act on the song as it stands. #}
+        <button type="button"
+          hx-post="/songs/{{ song.youtube_id }}/junkize"
+          hx-target="#song-{{ song.youtube_id }}"
+          hx-swap="outerHTML"
+          hx-confirm="Clear this song's metadata and mark it as junk? This cannot be undone."
+        >Junkize</button>
+      {% endif %}
       <a href="https://youtu.be/{{ song.youtube_id }}" target="_blank"
          rel="noopener noreferrer">video</a>
     </p>
@@ -49,21 +59,12 @@
       </label>
       <p class="inspector-actions">
         <button type="submit">Save</button>
-        {% if not song.is_junk %}
-          <button type="button"
-            hx-post="/songs/{{ song.youtube_id }}/junkize"
-            hx-target="#song-{{ song.youtube_id }}"
-            hx-swap="outerHTML"
-            hx-confirm="Clear this song's metadata and mark it as junk? This cannot be undone."
-          >Junkize</button>
-        {% endif %}
+        {% if saved %}<span class="job-new">Saved.</span>{% endif %}
+        {# Beside the button that rewrites it: saving renames the file,
+           so this is the line that is about to change. #}
+        <span class="id filename"
+              title="{{ song.path.name }}">{{ song.path.name }}</span>
       </p>
     </form>
-
-    {% if saved %}
-      <p class="job-new">Saved.</p>
-    {% endif %}
-
-    <p class="id filename">{{ song.path.name }}</p>
   </div>
 </div>
