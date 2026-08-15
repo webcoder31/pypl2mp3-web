@@ -567,3 +567,27 @@ async def test_the_nav_leads_with_the_title_not_the_owner(tmp_path):
     # And the title comes first in the document, not merely in the CSS.
     first = body.index('class="pl-title"')
     assert first < body.index('class="pl-owner"')
+
+
+async def test_nothing_is_marked_playing_when_nothing_plays(tmp_path):
+    """Every page load starts with an empty queue.
+
+    classList.toggle takes an *optional* boolean: handed undefined it
+    treats the argument as absent and toggles instead of setting. Written
+    as `current && row.id === current.id`, that evaluated to undefined
+    with nothing playing and marked all 927 rows at once.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        script = (await client.get("/static/console.js")).text
+
+    for call in re.findall(r"classList\.toggle\(([^;]*?)\);", script,
+                           re.DOTALL):
+        assert "&&" not in call, (
+            f"classList.toggle({call.strip()}) can hand undefined to an "
+            "optional boolean, which toggles instead of setting"
+        )
+
+    assert "row.dataset.songId === currentId" in script, (
+        "the row-marking comparison is no longer strict"
+    )

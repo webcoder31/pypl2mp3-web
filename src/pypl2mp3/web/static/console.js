@@ -103,10 +103,16 @@
   function paint() {
     const current = queue[index];
 
+    // Compared against null rather than reached through `current &&`.
+    // classList.toggle takes an *optional* boolean: handed undefined it
+    // treats the argument as absent and toggles instead of setting. With
+    // nothing playing — which is every page load — that added `playing`
+    // to all 927 rows at once. A strict comparison can only ever be true
+    // or false, so the trap is gone rather than merely avoided.
+    const currentId = current ? current.id : null;
+
     rows().forEach(function (row) {
-      row.classList.toggle(
-        "playing", current && row.dataset.songId === current.id
-      );
+      row.classList.toggle("playing", row.dataset.songId === currentId);
     });
 
     if (!current) {
