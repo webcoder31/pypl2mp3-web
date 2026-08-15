@@ -977,3 +977,56 @@ async def test_an_explicit_theme_ignores_the_system_changing(tmp_path):
     assert 'themeChoice === "auto"' in handler, (
         "the system overrides a choice the reader made explicitly"
     )
+
+
+async def test_the_theme_switch_marks_its_choice_in_text(tmp_path):
+    """It is a preference, not an action. A filled segment would give it
+    the weight of the one button on the page that writes to disk."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    chosen = re.search(
+        r'#theme button\[aria-pressed="true"\] \{([^}]*)\}', css
+    ).group(1)
+    assert "background" not in chosen, chosen
+    assert "color: var(--accent)" in chosen, chosen
+
+    group = re.search(r"#theme \{([^}]*)\}", css).group(1)
+    assert "border" not in group, (
+        "the set is still boxed, which is what made it shout"
+    )
+
+
+async def test_only_writing_earns_a_filled_button(tmp_path):
+    """Filtering is not a commitment and had no business looking like
+    one; saving renames a file on disk."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    filled = re.findall(
+        r"([^\n{}]*button\[type=\"submit\"\][^\n{}]*)\{[^}]*"
+        r"background: var\(--accent\)",
+        css,
+    )
+    assert filled, "nothing is filled at all"
+    for selector in filled:
+        assert "#inspector" in selector or ".workbench-detail" in selector, (
+            f"{selector.strip()} fills every submit button, Filter included"
+        )
+
+
+async def test_ordinary_buttons_sit_back(tmp_path):
+    """Secondary chrome: a hairline and the text, no surface of its own
+    and no shadow lifting it off the page."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    rule = re.search(r"\nbutton \{(.*?)\n\}", css, re.DOTALL).group(1)
+    assert "box-shadow" not in rule, rule
+    assert "background: none" in rule, rule
+    assert "border: 1px solid var(--line)" in rule, (
+        "the border is still the strong one, which reads as a raised key"
+    )

@@ -197,9 +197,8 @@ button {
   font-size: var(--fs-md);
   line-height: 1.35;
   color: var(--text-2);
-  background: var(--surface);
-  border: 1px solid var(--line-strong);
-  box-shadow: var(--shadow);
+  background: none;
+  border: 1px solid var(--line);
   border-radius: 2px;
   padding: var(--btn-pad);
   cursor: pointer;
@@ -211,15 +210,20 @@ button:hover { background: var(--hover); color: var(--text); }
 button:active { background: var(--active); }
 button:disabled { opacity: 0.4; cursor: default; }
 
-/* The one action a panel is really for. */
-button[type="submit"] {
+/* Only where the click writes something. Filtering is not a
+   commitment and had no business looking like one. */
+#inspector button[type="submit"],
+.workbench-detail button[type="submit"] {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-text);
   font-weight: 600;
 }
-button[type="submit"]:hover { background: var(--accent);
-                              filter: brightness(1.08); }
+#inspector button[type="submit"]:hover,
+.workbench-detail button[type="submit"]:hover {
+  background: var(--accent);
+  filter: brightness(1.08);
+}
 
 /* Buttons that live inside text — the nav, the rows, the ribbon. They
    are links in everything but markup, and a bordered box round each
@@ -312,23 +316,20 @@ a { color: var(--accent); text-decoration-thickness: 1px;
   min-width: 0;
 }
 
-/* A segmented control: one border round the set, hairlines between.
-   Three states named in full — a cycling button hides two of them. */
-#theme { display: flex; border: 1px solid var(--line-strong);
-         border-radius: 2px; overflow: hidden; flex: 0 0 auto; }
+/* Three states named in full — a cycling button hides two of them —
+   but drawn as text. This is a preference, not an action: a filled
+   segment would give it the weight of the one button on the page that
+   writes to disk. The colour carries the selection. */
+#theme { display: flex; gap: var(--space-2); flex: 0 0 auto; }
 #theme button {
   border: none;
-  border-radius: 0;
-  padding: var(--space-1) var(--space-3);
+  padding: 0;
   font-size: var(--fs-sm);
   background: none;
+  color: var(--text-3);
 }
-#theme button + button { border-left: 1px solid var(--line-strong); }
-#theme button[aria-pressed="true"] {
-  background: var(--accent);
-  color: var(--accent-text);
-  font-weight: 600;
-}
+#theme button:hover { background: none; color: var(--text); }
+#theme button[aria-pressed="true"] { color: var(--accent); font-weight: 600; }
 
 /* ------------------------------------------------------------------
    Navigation
@@ -392,8 +393,7 @@ a { color: var(--accent); text-decoration-thickness: 1px;
 #nav .playlist-actions { margin: var(--space-2) 0 var(--nav-gap);
                          display: flex; flex-direction: column;
                          align-items: stretch; gap: var(--space-1); }
-#nav .playlist-actions button { flex: none; background: var(--surface);
-                                border-color: var(--line-strong);
+#nav .playlist-actions button { flex: none; border-color: var(--line);
                                 padding: var(--btn-pad);
                                 text-align: center; }
 
