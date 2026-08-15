@@ -1,83 +1,20 @@
 /* The console's whole appearance.
  *
- * Three rules govern this file.
+ * Two rules govern this file.
  *
  * 1. #player is a grid area of its own, so no fragment swap can ever
  *    contain the <audio> element. A swap that did would recreate it and
  *    cut the sound.
  *
- * 2. Everything that differs between the two densities is a *value*
- *    below, never a rule and never a second template. That is what makes
- *    the switch one attribute on <html> instead of a fork through the
- *    markup, the routes and the tests.
- *
- * 3. Every control is drawn here. A page that leaves buttons, inputs and
+ * 2. Every control is drawn here. A page that leaves buttons, inputs and
  *    checkboxes to the browser gets the browser's chrome — bevels,
  *    gradients, its own corner radius, its own focus ring — and no
- *    amount of layout work rescues it. This file's first version styled
- *    three controls out of nineteen and looked exactly like what it was.
+ *    amount of layout work rescues it. An early version styled three
+ *    controls out of nineteen and looked exactly like what it was.
  *
  * No web fonts: the console must not reach a host it does not serve, and
  * a test enforces it. The system stack, used deliberately.
  */
-
-/* ------------------------------------------------------------------
-   Density
-   ------------------------------------------------------------------ */
-
-/* On :root, not body: the attribute is set by a script in the <head>,
-   before the first paint. Setting it on body would mean waiting for
-   console.js at the end of the document, and the page would visibly
-   flash one density on its way to the other. */
-:root, :root[data-density="comfortable"] {
-  /* Comfortable — the default. Two lines a song, room to click. */
-  --pane-nav: 16.5rem;
-  --pane-inspector: 24rem;
-
-  --row-pad-y: 0.5rem;
-  --row-font: var(--fs-base);
-  --row-meta-display: block;
-  --row-meta-size: var(--fs-xs);
-  --row-nowrap: normal;
-  --row-overflow: visible;
-
-  --nav-row-pad: 0.3rem 0.45rem;
-  --nav-font: var(--fs-md);
-  --nav-gap: 1.15rem;
-
-  --btn-pad: 0.3rem 0.6rem;
-  --field-pad: 0.38rem 0.55rem;
-  --pane-pad: 0.9rem;
-
-  --toolbar-pad: 0.5rem 0.85rem;
-  --timeline-basis: 100%;
-  --timeline-order: 9;
-}
-
-:root[data-density="compact"] {
-  /* One line a song. On 900 songs this is 16 rows a screen instead of 7. */
-  --pane-nav: 14rem;
-  --pane-inspector: 21rem;
-
-  --row-pad-y: 0.14rem;
-  --row-font: var(--fs-sm);
-  --row-meta-display: inline;
-  --row-meta-size: var(--fs-sm);
-  --row-nowrap: nowrap;
-  --row-overflow: hidden;
-
-  --nav-row-pad: 0.08rem 0.4rem;
-  --nav-font: var(--fs-sm);
-  --nav-gap: 0.7rem;
-
-  --btn-pad: 0.12rem 0.45rem;
-  --field-pad: 0.2rem 0.45rem;
-  --pane-pad: 0.6rem;
-
-  --toolbar-pad: 0.3rem 0.7rem;
-  --timeline-basis: auto;
-  --timeline-order: 0;
-}
 
 /* ------------------------------------------------------------------
    Scale and palette
@@ -135,6 +72,26 @@
   --score-low: #bb2d2d;
 
   --shadow: 0 1px 2px rgba(16, 26, 26, 0.07);
+
+  /* Spacing and sizes, in one place. There used to be a second set of
+     these behind a compact/comfortable switch. The layout that replaced
+     it gives the listing the whole width of the main column, which is
+     what compact was buying — so one set is enough. */
+  --pane-nav: 15.5rem;
+  --pane-pad: 1rem;
+  --cover-size: 17rem;
+
+  --row-pad-y: 0.45rem;
+  --row-font: var(--fs-base);
+  --row-meta-size: var(--fs-xs);
+
+  --nav-row-pad: 0.28rem 0.45rem;
+  --nav-font: var(--fs-md);
+  --nav-gap: 1.1rem;
+
+  --btn-pad: 0.3rem 0.6rem;
+  --field-pad: 0.38rem 0.55rem;
+  --toolbar-pad: 0.45rem 0.85rem;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -179,12 +136,12 @@ body {
   margin: 0;
   height: 100vh;
   display: grid;
-  grid-template-columns: var(--pane-nav) minmax(0, 1fr) var(--pane-inspector);
+  grid-template-columns: minmax(0, 1fr) var(--pane-nav);
   grid-template-rows: auto minmax(0, 1fr) auto;
   grid-template-areas:
-    "header header header"
-    "nav    list   inspector"
-    "player player player";
+    "header header"
+    "main   nav"
+    "player player";
   font-family: var(--font);
   font-size: var(--fs-base);
   line-height: 1.45;
@@ -319,23 +276,18 @@ a { color: var(--accent); text-decoration-thickness: 1px;
           color: var(--text-3); white-space: nowrap; }
 #counts .junk { color: var(--junk); }
 
-/* A segmented control: one border round the pair, a hairline between.
-   Two states, no dropdown — the choice is binary, and naming both costs
-   less than hiding them behind a menu. */
-#density { display: flex; border: 1px solid var(--line-strong);
-           border-radius: 2px; overflow: hidden; }
-#density button {
-  border: none;
-  border-radius: 0;
-  padding: 0.2rem 0.6rem;
-  font-size: var(--fs-sm);
-  background: none;
-}
-#density button + button { border-left: 1px solid var(--line-strong); }
-#density button[aria-pressed="true"] {
-  background: var(--accent);
-  color: var(--accent-text);
-  font-weight: 600;
+/* ------------------------------------------------------------------
+   The main column: what you are looking at, above what else there is
+   ------------------------------------------------------------------ */
+
+#main {
+  grid-area: main;
+  display: grid;
+  /* The inspector takes the height it needs and no more, so with nothing
+     selected the listing has the whole column. */
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  min-width: 0;
 }
 
 /* ------------------------------------------------------------------
@@ -345,7 +297,7 @@ a { color: var(--accent); text-decoration-thickness: 1px;
 #nav {
   grid-area: nav;
   background: var(--bg);
-  border-right: 1px solid var(--line);
+  border-left: 1px solid var(--line);
   overflow-y: auto;
   padding: 0.6rem 0.4rem;
   font-size: var(--nav-font);
@@ -407,7 +359,10 @@ a { color: var(--accent); text-decoration-thickness: 1px;
    Listing
    ------------------------------------------------------------------ */
 
-#list { grid-area: list; overflow-y: auto; background: var(--surface); }
+/* No grid-area: it is placed by #main, not by the page grid. Naming a
+   area that the parent does not define makes an implicit track and
+   squeezes the listing into a fraction of its column. */
+#list { overflow-y: auto; background: var(--surface); min-width: 0; }
 
 /* Pinned while the list scrolls. This, not a row of column headers on
    self-evident columns, is what needs to stay reachable. */
@@ -441,15 +396,14 @@ tbody tr:hover { background: var(--hover); }
 /* One line or two, decided by the values at the top of this file. */
 .row-cell {
   min-width: 0;
-  white-space: var(--row-nowrap);
-  overflow: var(--row-overflow);
+  overflow: hidden;
   text-overflow: ellipsis;
   max-width: 0;
   width: 100%;
 }
 .row-title { font-weight: 500; color: var(--text); }
 .row-meta {
-  display: var(--row-meta-display);
+  display: block;
   font-size: var(--row-meta-size);
   color: var(--text-3);
 }
@@ -487,15 +441,24 @@ tbody tr.playing td.num { color: var(--accent); }
    ------------------------------------------------------------------ */
 
 #inspector {
-  grid-area: inspector;
   background: var(--bg);
-  border-left: 1px solid var(--line);
-  overflow-y: auto;
+  border-bottom: 1px solid var(--line);
   padding: var(--pane-pad);
+  min-width: 0;
 }
+#inspector > .job-none { margin: 0; }
 
-#inspector .cover { width: 100%; margin-bottom: 0.7rem;
-                    box-shadow: var(--shadow); }
+#inspector-body { display: flex; gap: 1.25rem; align-items: flex-start; }
+.inspector-cover { flex: 0 0 var(--cover-size); }
+.inspector-cover .cover { width: 100%; box-shadow: var(--shadow); }
+.inspector-detail { flex: 1; min-width: 0; max-width: 34rem; }
+.inspector-tools { display: flex; align-items: center; gap: 0.75rem; }
+.inspector-actions { display: flex; gap: 0.5rem; margin-top: 0.9rem; }
+
+@media (max-width: 62rem) {
+  #inspector-body { gap: 0.9rem; }
+  .inspector-cover { flex-basis: 9rem; }
+}
 .inspector-title { font-size: var(--fs-lg); line-height: 1.25;
                    margin: 0.2rem 0 0.1rem; letter-spacing: -0.01em; }
 #inspector .id { color: var(--text-3); }
@@ -623,8 +586,8 @@ tbody tr.playing td.num { color: var(--accent); }
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  flex: 1 1 var(--timeline-basis);
-  order: var(--timeline-order);
+  flex: 1 1 100%;
+  order: 9;
   min-width: 8rem;
 }
 #timeline .t { font-variant-numeric: tabular-nums; font-size: var(--fs-xs);
@@ -657,11 +620,12 @@ tbody tr.playing td.num { color: var(--accent); }
    Workbench: the inspector, full frame
    ------------------------------------------------------------------ */
 
-body.workbench-mode { grid-template-columns: 0 0 minmax(0, 1fr); }
+body.workbench-mode { grid-template-columns: minmax(0, 1fr) 0; }
 body.workbench-mode #nav,
 body.workbench-mode #list { display: none; }
-body.workbench-mode #inspector { border-left: none; padding: 2rem 1.5rem;
-                                 background: var(--bg); }
+body.workbench-mode #main { grid-template-rows: minmax(0, 1fr); }
+body.workbench-mode #inspector { border-bottom: none; overflow-y: auto;
+                                 padding: 2rem 1.5rem; }
 
 .workbench { display: flex; gap: 2.25rem; align-items: flex-start;
              max-width: 56rem; margin: 0 auto; }

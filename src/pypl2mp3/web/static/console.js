@@ -16,49 +16,6 @@
 (function () {
   "use strict";
 
-  // ---------------------------------------------------------------
-  // Density
-  //
-  // Compact and comfortable differ only in CSS values under
-  // :root[data-density], so switching is one attribute — no second
-  // template, no reload, and nothing in the DOM moves. In particular the
-  // <audio> element is untouched, so the music does not stop.
-  //
-  // The attribute is on <html> because a script in the <head> sets it
-  // before the first paint; this only keeps it in step and remembers it.
-  // ---------------------------------------------------------------
-
-  const DENSITY_KEY = "pypl2mp3.density";
-
-  function applyDensity(name) {
-    const density = name === "compact" ? "compact" : "comfortable";
-    document.documentElement.dataset.density = density;
-
-    document.querySelectorAll("#density button[data-density]").forEach(
-      function (button) {
-        button.setAttribute(
-          "aria-pressed", String(button.dataset.density === density)
-        );
-      }
-    );
-
-    return density;
-  }
-
-  applyDensity(document.documentElement.dataset.density);
-
-  document.addEventListener("click", function (event) {
-    const pick = event.target.closest("#density button[data-density]");
-    if (!pick) return;
-
-    try {
-      localStorage.setItem(DENSITY_KEY, applyDensity(pick.dataset.density));
-    } catch (error) {
-      // Private browsing refuses localStorage. The switch still works
-      // for this page; it just will not be remembered.
-    }
-  });
-
   const audio = document.getElementById("audio");
   const bar = document.getElementById("player");
   const upNext = document.getElementById("player-next");

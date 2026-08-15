@@ -4,13 +4,6 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>PYPL2MP3</title>
-    {# Applied before the first paint, so the chosen density never
-       flashes past on its way to being set. console.js loads at the end
-       of the body, far too late for that. #}
-    <script>
-      document.documentElement.dataset.density =
-        localStorage.getItem("pypl2mp3.density") || "comfortable";
-    </script>
     <script src="/static/htmx.min.js"></script>
     <link rel="stylesheet" href="/static/console.css">
   </head>
@@ -50,14 +43,6 @@
         <button type="submit">Filter</button>
       </form>
 
-      {# Compact shows 16 songs a screen against 7. Which one suits
-         depends on the screen and on the task, so it is a switch rather
-         than a decision taken on your behalf. #}
-      <div id="density" role="group" aria-label="Row density">
-        <button type="button" data-density="comfortable">Comfortable</button>
-        <button type="button" data-density="compact">Compact</button>
-      </div>
-
       <span id="counts">
         {{ total_songs }} songs &middot;
         <span class="junk">{{ total_junk }} junk</span>
@@ -78,23 +63,30 @@
        the repository holds: fixing a junk song gives it a real artist,
        which belongs in the presets. Both were once too expensive to do
        on a save; the parsed-song cache made a rebuild cost about 40ms. #}
+    {# One column: the song you are looking at, and the songs you could
+       look at instead. The inspector takes only the height it needs, so
+       with nothing selected the listing has the whole column.
+
+       Not a swap region itself — it only holds two. #}
+    <div id="main">
+      <section id="inspector" data-swap-region>
+        <p class="job-none">Select a song.</p>
+      </section>
+
+      {# songsChanged fires when a save changed what the repository
+         holds. The listing refetches with the current filters, because a
+         fixed junk song must leave a junk-filtered view rather than sit
+         there looking repaired. #}
+      <main id="list" data-swap-region
+            hx-get="/fragments/list"
+            hx-trigger="songsChanged from:body"
+            hx-include="#filters">{% include "_list.html" %}</main>
+    </div>
+
     <nav id="nav" data-swap-region
          hx-get="/fragments/nav"
          hx-trigger="playlistChanged from:body, songsChanged from:body"
          hx-include="#filters">{% include "_nav.html" %}</nav>
-
-    {# songsChanged fires when a save changed what the repository holds.
-       The listing refetches with the current filters, because a fixed
-       junk song must leave a junk-filtered view rather than sit there
-       looking repaired. #}
-    <main id="list" data-swap-region
-          hx-get="/fragments/list"
-          hx-trigger="songsChanged from:body"
-          hx-include="#filters">{% include "_list.html" %}</main>
-
-    <aside id="inspector" data-swap-region>
-      <p class="job-none">Select a song.</p>
-    </aside>
 
     {# The player is deliberately not a swap region.
 

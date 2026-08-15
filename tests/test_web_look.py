@@ -1,9 +1,9 @@
-"""The density switch, and the transport that replaced the browser's.
+"""How the console looks, and the layout it looks that way in.
 
-Two densities, one skeleton. The whole point is that compact and
-comfortable differ only in CSS values — the moment either needs its own
-markup, its own route or its own test, the switch stops being cheap and
-starts being a fork.
+There was briefly a compact/comfortable switch here. The layout that
+replaced it — inspector above the listing, nav to one side — gives the
+listing the full width of the main column, which is what compact was
+buying, so the switch and its second set of values are gone.
 """
 
 import re
@@ -32,111 +32,6 @@ def _make_song(repo: Path, artist, title, vid, junk=False, playlist=PLAYLIST):
 def _client(app):
     return httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
-    )
-
-
-async def test_the_page_offers_both_densities(tmp_path):
-    _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
-
-    async with _client(create_app(tmp_path)) as client:
-        body = (await client.get("/")).text
-
-    assert 'data-density="comfortable"' in body
-    assert 'data-density="compact"' in body
-
-
-async def test_the_choice_is_applied_before_the_first_paint(tmp_path):
-    """console.js loads at the end of the document. Waiting for it would
-    show one density and then visibly snap to the other."""
-
-    async with _client(create_app(tmp_path)) as client:
-        body = (await client.get("/")).text
-
-    head = body[: body.index("</head>")]
-    assert "localStorage.getItem" in head, (
-        "the stored density is read too late to prevent a flash"
-    )
-    assert "documentElement.dataset.density" in head
-
-
-async def test_the_choice_is_remembered(tmp_path):
-    async with _client(create_app(tmp_path)) as client:
-        body = (await client.get("/")).text
-        script = (await client.get("/static/console.js")).text
-
-    assert "pypl2mp3.density" in body, "the head reads no stored preference"
-    assert "localStorage.setItem" in script, "clicking it forgets immediately"
-
-
-async def test_both_densities_are_only_values(tmp_path):
-    """The claim this whole feature rests on.
-
-    If a density block carried rules rather than custom properties, the
-    two layouts would start drifting and the switch would become a fork.
-    """
-
-    async with _client(create_app(tmp_path)) as client:
-        css = (await client.get("/static/console.css")).text
-
-    block = re.search(
-        r':root\[data-density="compact"\]\s*\{(.*?)\}', css, re.DOTALL
-    )
-    assert block, "compact defines nothing"
-
-    declarations = [
-        line.strip()
-        for line in block.group(1).split(";")
-        if line.strip() and not line.strip().startswith("/*")
-    ]
-    assert declarations, "compact is empty"
-    assert all(d.startswith("--") for d in declarations), (
-        f"compact carries rules, not just values: "
-        f"{[d for d in declarations if not d.startswith('--')]}"
-    )
-
-
-async def test_the_two_densities_define_the_same_names(tmp_path):
-    """A value defined in one and missing from the other silently falls
-    back to whatever comfortable said — a difference nobody chose."""
-
-    async with _client(create_app(tmp_path)) as client:
-        css = (await client.get("/static/console.css")).text
-
-    def names(selector):
-        block = re.search(
-            re.escape(selector) + r"[^{]*\{(.*?)\n\}", css, re.DOTALL
-        )
-        assert block, selector
-        return set(re.findall(r"(--[\w-]+)\s*:", block.group(1)))
-
-    comfortable = names(':root, :root[data-density="comfortable"]')
-    compact = names(':root[data-density="compact"]')
-
-    assert comfortable == compact, (
-        f"only in comfortable: {comfortable - compact}; "
-        f"only in compact: {compact - comfortable}"
-    )
-
-
-async def test_one_markup_serves_both(tmp_path):
-    """No template may branch on density: that is the fork this avoids."""
-
-    _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
-
-    async with _client(create_app(tmp_path)) as client:
-        fragment = (await client.get("/fragments/list")).text
-        page = (await client.get("/")).text
-
-    rows = re.findall(r"<tr[^>]*data-song-id.*?</tr>", fragment, re.DOTALL)
-    assert rows, "no rows"
-    for row in rows:
-        assert "compact" not in row, row
-        assert "comfortable" not in row, row
-
-    # Only the switch itself may name a density.
-    outside = re.sub(r'<div id="density".*?</div>', "", page, flags=re.DOTALL)
-    assert "data-density" not in outside, (
-        "something other than the switch renders per-density markup"
     )
 
 
@@ -472,3 +367,82 @@ async def test_buttons_inside_text_carry_no_box(tmp_path):
     assert "box-shadow: none" in quiet.group(1), (
         "the raised buttons' shadow leaks onto every nav entry"
     )
+
+
+async def test_the_layout_puts_the_song_above_the_listing(tmp_path):
+    """Inspector on top of the main column, listing beneath it, nav to
+    the side. The listing gets the column's full width, which is what
+    the compact density used to buy."""
+
+    _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        body = (await client.get("/")).text
+        css = (await client.get("/static/console.css")).text
+
+    areas = re.search(r"grid-template-areas:(.*?);", css, re.DOTALL).group(1)
+    assert '"header header"' in areas
+    assert '"main   nav"' in areas
+    assert '"player player"' in areas
+
+    # The inspector and the listing share one column, in that order.
+    main = re.search(r'<div id="main">(.*?)</div>\s*<nav', body, re.DOTALL)
+    assert main, "the two are not in one column"
+    assert main.group(1).index('id="inspector"') < main.group(1).index('id="list"')
+
+    # And the inspector takes only the height it needs, so with nothing
+    # selected the listing has the whole column.
+    rows = re.search(r"#main \{(.*?)\n\}", css, re.DOTALL).group(1)
+    assert "grid-template-rows: auto minmax(0, 1fr)" in rows, rows
+
+
+async def test_the_listing_is_placed_by_its_own_column(tmp_path):
+    """`grid-area: list` named an area the parent no longer defines,
+    which made an implicit track and squeezed the listing into a
+    fraction of its column."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    block = re.search(r"#list \{([^}]*)\}", css).group(1)
+    assert "grid-area" not in block, block
+
+
+async def test_the_density_switch_is_gone(tmp_path):
+    """Dropped with the compact density it controlled."""
+
+    async with _client(create_app(tmp_path)) as client:
+        body = (await client.get("/")).text
+        css = (await client.get("/static/console.css")).text
+        script = (await client.get("/static/console.js")).text
+
+    assert 'id="density"' not in body
+    assert "data-density" not in body
+    assert "data-density" not in css
+    assert "pypl2mp3.density" not in body + script
+
+
+async def test_the_cover_sits_beside_the_fields(tmp_path):
+    """Stacked above them it would push the form off the screen."""
+
+    _make_song(tmp_path, "UNKNOWN", "Something", "aaaaaaaaaaa", junk=True)
+
+    async with _client(create_app(tmp_path)) as client:
+        panel = (await client.get("/fragments/inspector/aaaaaaaaaaa")).text
+        css = (await client.get("/static/console.css")).text
+
+    assert 'class="inspector-cover"' in panel
+    assert 'class="inspector-detail"' in panel
+    assert panel.index("inspector-cover") < panel.index("inspector-detail")
+
+    body = re.search(r"#inspector-body \{([^}]*)\}", css).group(1)
+    assert "display: flex" in body, body
+
+
+async def test_the_inspector_shows_a_short_duration(tmp_path):
+    _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        panel = (await client.get("/fragments/inspector/aaaaaaaaaaa")).text
+
+    assert "00:00:00" not in panel, "the padded form is back"
