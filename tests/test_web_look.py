@@ -1091,9 +1091,23 @@ async def test_shuffle_says_whether_the_queue_is_shuffled(tmp_path):
     assert 'button.setAttribute("aria-pressed"' in script, (
         "nothing ever updates the state it starts in"
     )
-    # Every other way of building a queue leaves it in order, and must
-    # say so — otherwise the light stays on after Play all.
-    assert script.count("setQueue(") >= 4
+    # The toolbar builds the queue for all three of its buttons, so the
+    # order it reports has to be the one it chose — not a constant.
+    handler = script[script.index('queueButton.dataset.queueAction') :]
+    handler = handler[: handler.index("return;")]
+    decision = re.search(
+        r"setQueue\([^;]*?,\s*0,\s*([^)]+)\)", handler, re.DOTALL
+    )
+    assert decision, handler
+    assert decision.group(1).strip() == "random", (
+        f"the toolbar reports {decision.group(1).strip()!r} whichever "
+        "button was pressed, so Play all leaves the light on"
+    )
+    assert re.search(r"const random = action === \"shuffle\"", handler), (
+        "nothing ties that value to which button was pressed"
+    )
+
+    # And the other two ways of building a queue leave it in order.
     assert "setQueue(entries, 0, false)" in script
     assert re.search(r"setQueue\(\s*entries,\s*entries\.findIndex", script)
 
