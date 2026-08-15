@@ -1392,3 +1392,41 @@ async def test_the_waveform_is_decoration_over_a_working_control(tmp_path):
 
     canvas = re.search(r"<canvas[^>]*>", seek.group(1)).group(0)
     assert "aria-hidden" in canvas, canvas
+
+
+async def test_the_player_leans_away_from_the_listing(tmp_path):
+    """Which blocks belong together, said in whitespace.
+
+    The inspector and the player share a background and are one thing —
+    the song and the means to hear it. The listing is another, and says
+    so by changing that background. Even padding all round would have
+    given the seam inside the group as much room as the boundary between
+    the two, which is the opposite of what the grouping means.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    scale = {
+        name: float(value)
+        for name, value in re.findall(r"(--space-\d): ([\d.]+)rem;", css)
+    }
+    assert scale, "no spacing scale to read"
+
+    block = re.search(r"\n#player \{([^}]*)\}", css).group(1)
+    padding = re.search(r"padding: ([^;]+);", block).group(1).split()
+    assert len(padding) == 3, (
+        f"padding is no longer top / sides / bottom: {padding}"
+    )
+
+    def rem(value):
+        name = re.fullmatch(r"var\((--space-\d)\)", value)
+        assert name, f"{value} is not on the spacing scale"
+
+        return scale[name.group(1)]
+
+    above, below = rem(padding[0]), rem(padding[2])
+    assert below > above, (
+        f"the player sits {above}rem from the song above it and {below}rem "
+        "from the listing below, so the two boundaries read alike"
+    )

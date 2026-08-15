@@ -674,11 +674,17 @@ tbody tr.playing td.num { color: var(--accent); }
 
 /* No grid-area: placed by #main, directly under the song it plays. The
    two share a background so they read as one block, and the only rule
-   between them and the listing is the one below. */
+   between them and the listing is the one below.
+
+   Deeper below than above, on purpose. The inspector and the player are
+   one thing — the song and the means to hear it — and the listing is
+   another, which announces itself by changing that shared background.
+   The extra room goes where the two groups meet, so the boundary reads
+   as a pause and not only as an edge. */
 #player {
   background: var(--bg);
   border-bottom: 1px solid var(--line);
-  padding: var(--space-3) var(--block-pad-x);
+  padding: var(--space-3) var(--block-pad-x) var(--space-5);
   display: flex;
   align-items: center;
   gap: var(--space-4);
