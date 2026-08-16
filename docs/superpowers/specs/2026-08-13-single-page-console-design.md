@@ -151,25 +151,12 @@ mesuré est chiffré, ce qui est un choix est motivé.
 
 ## Reste à faire
 
-### 1. Les crêtes ne sont calculées qu'à la première écoute
-
-Le waveform coûte 420 ms de ffmpeg la première fois qu'un morceau est
-joué, puis 1 ms. Sur un dépôt de 928 morceaux, cela fait 928 décodages
-étalés dans le temps, chacun suivi d'une écriture du fichier — et cette
-écriture change le `mtime`, donc invalide une fois le cache de parsing
-de `repository.py` pour ce morceau. Rien n'est cassé, tout se corrige
-seul, mais le travail est fait au pire moment : pendant l'écoute.
-
-L'import tient déjà le fichier et vient de le convertir. Y calculer les
-crêtes coûterait presque rien et supprimerait entièrement l'attente.
-Rien ne permet non plus de préchauffer un dépôt existant.
-
-### 2. Le mode interactif de `import -p`
+### 1. Le mode interactif de `import -p`
 
 Seul cas qui justifierait un `WebInteraction` : le port `InteractionPort`
 existe, la console ne s'en sert pas.
 
-### 3. Une seule page subsiste
+### 2. Une seule page subsiste
 
 `report.html`, servie uniquement aux requêtes non-HTMX de
 `/jobs/{id}/report`. Une URL de compte rendu mise en favori doit
@@ -254,6 +241,32 @@ tronqué doit ressembler à ce qu'il est. Le canvas est *dans* `#seek`,
 donc le clic, le glisser et les flèches n'ont pas été réécrits.
 
 Dette ouverte par là : le point 1 ci-dessus.
+
+### Les crêtes calculées pendant l'écoute — `9e495ce`
+
+La dette ouverte par le waveform. 420 ms de ffmpeg payées par qui
+appuyait sur lecture, c'est-à-dire au seul moment où quelqu'un attend la
+musique. Deux endroits déplacent ce travail avant l'attente.
+
+L'import stocke le waveform en convertissant : il tient déjà le fichier
+et vient de l'encoder, donc la demi-seconde disparaît dans le
+téléchargement qui précède, et un morceau importé désormais ne la paie
+jamais. En best effort — un waveform impossible à calculer n'est pas un
+import raté.
+
+Le player demande les crêtes du morceau suivant pendant que le morceau
+courant joue. Quel morceau est « suivant » dépend du sens de parcours de
+la file, comme l'affichage de la barre d'outils. C'est ce qui couvre les
+928 morceaux antérieurs sans les réécrire en masse dans le dos de
+l'auditeur — un balayage global reste donc non offert, et n'est plus
+nécessaire au problème posé.
+
+Mesuré au navigateur : sauter au morceau préchauffé dessine son waveform
+en 150 ms contre 1200 ms à froid.
+
+Trois doubles de test ont gagné le `path` que la vraie `SongModel` a
+toujours eu. Ils étaient partiels au point de laisser l'import se mettre
+à utiliser un attribut qu'ils ne modélisaient pas.
 
 ### L'import ne disait pas à la page qu'il avait écrit — `91573b6`
 
