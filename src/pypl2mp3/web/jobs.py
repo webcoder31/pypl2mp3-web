@@ -147,6 +147,14 @@ class Job:
             item = self.items.setdefault(
                 event["item_id"], {"item_id": event["item_id"], "label": ""}
             )
+            # A song nobody could name going in can come out identified:
+            # YouTube would not say what it was, Shazam did. Filled only
+            # when the row is still blank — a row that already reads well
+            # is not improved by a second opinion on its title.
+            if kind == "item_done" and event.get("label"):
+                if not item.get("label"):
+                    item["label"] = event["label"]
+
             item.update(
                 {
                     "state": "done" if kind == "item_done" else "failed",

@@ -406,3 +406,36 @@ def test_a_position_never_becomes_a_name():
 
     assert job.items["AAA"]["label"] == "", job.items["AAA"]
     assert job.items["AAA"]["position"] == "1/11"
+
+
+def test_a_song_gets_the_name_it_turned_out_to_have():
+    """YouTube would not say what the video was; Shazam recognised it,
+    and that is the name now on the file. The row said "unnamed" beside
+    a 100% match."""
+
+    job = _feed(
+        Job(job_id="import:PL1"),
+        {"kind": "item_listed", "item_id": "AAA", "label": ""},
+        {"kind": "item_started", "item_id": "AAA", "label": "3/11"},
+        {"kind": "item_done", "item_id": "AAA",
+         "label": "Rattlesnake Milk - Die Young"},
+    )
+
+    assert job.items["AAA"]["label"] == "Rattlesnake Milk - Die Young"
+
+
+def test_a_row_that_already_reads_well_keeps_its_name():
+    """The listing's name is what the reader recognised the song by. A
+    second opinion on the title, arriving at the end, is not an
+    improvement."""
+
+    job = _feed(
+        Job(job_id="import:PL1"),
+        {"kind": "item_listed", "item_id": "AAA",
+         "label": "thebeautyofgemina - RIVER (OFFICIAL LYRIC VIDEO)"},
+        {"kind": "item_started", "item_id": "AAA", "label": "2/11"},
+        {"kind": "item_done", "item_id": "AAA",
+         "label": "The Beauty Of Gemina - River"},
+    )
+
+    assert job.items["AAA"]["label"].startswith("thebeautyofgemina")

@@ -535,3 +535,23 @@ async def test_a_refusal_that_arrived_as_a_key_error_is_retried(
     assert sorted(song.youtube_id for song in report.imported) == sorted(
         REMOTE_IDS
     ), "the songs YouTube refused once were never tried again"
+
+
+async def test_a_finished_song_is_announced_by_what_it_became(
+    tmp_path, monkeypatch
+):
+    """Not by the position it was fetched under. A video YouTube would
+    not name arrives with whatever Shazam recognised."""
+
+    _install_fakes(monkeypatch)
+    _make_local(tmp_path, [])
+    progress = FakeProgress()
+
+    await import_playlist(tmp_path, PLAYLIST_ID, progress)
+
+    done = [(e[1], e[2]) for e in progress.events if e[0] == "item_done"]
+    assert done, progress.events
+    for youtube_id, label in done:
+        assert label == "ARTIST - Title", (
+            f"{youtube_id} finished announced as {label!r}"
+        )

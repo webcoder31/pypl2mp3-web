@@ -41,8 +41,8 @@ class FakeProgress:
     def item_started(self, item_id: str, label: str) -> None:
         self.events.append(("item_started", item_id, label))
 
-    def item_done(self, item_id: str) -> None:
-        self.events.append(("item_done", item_id))
+    def item_done(self, item_id: str, label: str = "") -> None:
+        self.events.append(("item_done", item_id, label))
 
     def item_failed(self, item_id: str, reason: str, issue: str) -> None:
         self.events.append(("item_failed", item_id, reason, issue))

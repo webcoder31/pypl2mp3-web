@@ -60,8 +60,10 @@ class WebProgress:
             {"kind": "item_started", "item_id": item_id, "label": label}
         )
 
-    def item_done(self, item_id: str) -> None:
-        self._emit({"kind": "item_done", "item_id": item_id})
+    def item_done(self, item_id: str, label: str = "") -> None:
+        self._emit(
+            {"kind": "item_done", "item_id": item_id, "label": label}
+        )
 
     def item_failed(self, item_id: str, reason: str, issue: str) -> None:
         self._emit(

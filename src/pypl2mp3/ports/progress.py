@@ -23,8 +23,10 @@ class ProgressPort(Protocol):
     identity, because a caller showing thirty rows has to know which row
     an event belongs to.
 
-    An item is *listed* when it is known to be part of the batch and
-    *started* when work on it begins. Keeping the two apart is what lets
+    An item is *listed* when it is known to be part of the batch,
+    *started* when work on it begins, and *done* when it is over — and
+    only then is it certain what it was: a song nobody could name going
+    in can come out identified. Keeping the two apart is what lets
     a panel show thirty rows to tick before a single one is downloaded.
 
     Stage events are attributed to whichever item started last: the batch
@@ -51,7 +53,7 @@ class ProgressPort(Protocol):
     def item_started(self, item_id: str, label: str) -> None:
         ...
 
-    def item_done(self, item_id: str) -> None:
+    def item_done(self, item_id: str, label: str = "") -> None:
         ...
 
     def item_failed(self, item_id: str, reason: str, issue: str) -> None:
@@ -79,7 +81,7 @@ class NullProgress:
     def item_started(self, item_id: str, label: str) -> None:
         return None
 
-    def item_done(self, item_id: str) -> None:
+    def item_done(self, item_id: str, label: str = "") -> None:
         return None
 
     def item_failed(self, item_id: str, reason: str, issue: str) -> None:

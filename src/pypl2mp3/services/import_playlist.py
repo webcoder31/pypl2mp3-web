@@ -291,7 +291,11 @@ async def import_playlist(
                 )
                 continue
 
-            progress.item_done(youtube_id)
+            # What the song turned out to be, which is not always what it
+            # was listed as: a video YouTube would not name arrives with
+            # whatever Shazam recognised, and that is the name now on
+            # disk.
+            progress.item_done(youtube_id, _name_of(song))
             imported.append(song)
 
         return rejected
@@ -373,3 +377,9 @@ def _store_waveform(song_path: Path) -> None:
         peaks_for(song_path)
     except Exception:
         pass
+
+
+def _name_of(song: ImportedSong) -> str:
+    """"Artist - Title", or whichever half of it exists."""
+
+    return " - ".join(part for part in (song.artist, song.title) if part)
