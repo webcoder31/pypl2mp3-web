@@ -508,11 +508,16 @@ def create_app(repository_path: Path) -> FastAPI:
         if job is None:
             phase = "idle"
         elif job is running:
-            phase = (
-                "importing"
-                if job.state.value in ("pending", "running")
-                else "done"
-            )
+            if job.state.value in ("pending", "running"):
+                phase = "importing"
+            elif job.state.value == "cancelled":
+                # Distinct from "done": the songs that did not arrive
+                # are not missing because they failed, and reporting
+                # "4 imported" for a run of twelve you stopped yourself
+                # says nothing about the eight.
+                phase = "stopped"
+            else:
+                phase = "done"
         else:
             phase = (
                 "checking"
@@ -546,7 +551,53 @@ def create_app(repository_path: Path) -> FastAPI:
             ),
             "stages": IMPORT_STAGES,
             "polling": phase in ("checking", "importing"),
+            # Read by the tab strip, which sits outside this fragment and
+            # so cannot be rendered by it. A count rather than a dot: how
+            # far along a twelve-song import is, is the thing you switched
+            # away from the pane not to have to watch.
+            "badge": (
+                f"{states.count('done')}/{len(items)}"
+                if phase == "importing"
+                else ""
+            ),
         }
+
+    # How long to wait for a cancel to land before answering anyway. The
+    # song in flight is downloading inside a worker thread, and a thread
+    # cannot be interrupted from outside: the cancel arrives when that
+    # step finishes. Usually instant, occasionally the rest of a track.
+    STOP_GRACE = 2.0
+
+    @app.post("/playlists/{playlist_id}/import/stop")
+    async def stop_import(playlist_id: str, request: Request):
+        """Stop a running import.
+
+        What has already arrived stays: songs are written one at a time,
+        and the ones on disk are as good as any other.
+
+        Cancelling only asks — the task learns of it at its next await —
+        so this waits for the answer before rendering. Without that, the
+        click returned a pane that still said "Importing", and only the
+        poll a second later showed the run had stopped.
+        """
+
+        job = app.state.jobs.get(f"import:{playlist_id}")
+        app.state.jobs.cancel(f"import:{playlist_id}")
+
+        if job is not None and job.task is not None:
+            # wait(), not await task: awaiting a cancelled task raises the
+            # cancellation into *this* handler, and swallowing that would
+            # also swallow a genuine cancel of the request itself.
+            await asyncio.wait({job.task}, timeout=STOP_GRACE)
+
+        if request.headers.get("HX-Request") is not None:
+            return templates.TemplateResponse(
+                request,
+                "_imports.html",
+                _imports_context(request, playlist_id),
+            )
+
+        return RedirectResponse(url="/", status_code=303)
 
     @app.get("/fragments/imports", response_class=HTMLResponse)
     def imports_fragment(

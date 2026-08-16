@@ -531,3 +531,169 @@ async def test_a_running_import_outranks_the_check_that_fed_it(
         assert "Importing" in pane, pane
     finally:
         release.set()
+
+
+def _slow_import(started, release, done_first=True):
+    """An import that fetches one song, then waits to be let go."""
+
+    async def run(repository_path, playlist_id, progress=None, only=None):
+        progress.item_listed("aaaaaaaaaaa", "IAMX - Kiss")
+        progress.item_listed("bbbbbbbbbbb", "IAMX - Spit It Out")
+        progress.item_started("aaaaaaaaaaa", "1/2")
+        if done_first:
+            progress.item_done("aaaaaaaaaaa")
+        progress.item_started("bbbbbbbbbbb", "2/2")
+        started.set()
+        await release.wait()
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            total_remote=2, already_local=0, imported=[], failed=[]
+        )
+
+    return run
+
+
+async def test_a_running_import_shows_its_progress_on_the_tab(
+    tmp_path, monkeypatch
+):
+    """The tab strip is outside the pane, so the pane cannot render it —
+    it publishes the count and the strip copies it across.
+
+    A count and not a dot: how far along a twelve-song import is, is the
+    thing you switched away from the pane in order not to watch.
+    """
+
+    started, release = asyncio.Event(), asyncio.Event()
+    monkeypatch.setattr(
+        "pypl2mp3.web.app.import_playlist", _slow_import(started, release)
+    )
+    _make_song(tmp_path, "ARTIST", "Song", "zzzzzzzzzzz")
+    app = create_app(tmp_path)
+
+    try:
+        async with _client(app) as client:
+            await client.post(f"/playlists/{PLAYLIST_ID}/import", headers=HX)
+            await started.wait()
+            pane = (
+                await client.get(
+                    f"/fragments/imports?playlist={PLAYLIST_ID}", headers=HX
+                )
+            ).text
+
+        assert 'data-badge="1/2"' in pane, pane[:300]
+    finally:
+        release.set()
+
+
+async def test_the_tab_says_nothing_when_nothing_is_running(tmp_path):
+    _make_song(tmp_path, "ARTIST", "Song", "zzzzzzzzzzz")
+
+    async with _client(create_app(tmp_path)) as client:
+        pane = (
+            await client.get(
+                f"/fragments/imports?playlist={PLAYLIST_ID}", headers=HX
+            )
+        ).text
+
+    assert 'data-badge=""' in pane, pane[:300]
+
+
+async def test_an_import_can_be_stopped(tmp_path, monkeypatch):
+    """Twelve songs is a long time to be sure about."""
+
+    started, release = asyncio.Event(), asyncio.Event()
+    monkeypatch.setattr(
+        "pypl2mp3.web.app.import_playlist", _slow_import(started, release)
+    )
+    _make_song(tmp_path, "ARTIST", "Song", "zzzzzzzzzzz")
+    app = create_app(tmp_path)
+
+    try:
+        async with _client(app) as client:
+            await client.post(f"/playlists/{PLAYLIST_ID}/import", headers=HX)
+            await started.wait()
+
+            running = (
+                await client.get(
+                    f"/fragments/imports?playlist={PLAYLIST_ID}", headers=HX
+                )
+            ).text
+            assert ">Stop<" in running, "no way to stop a run in progress"
+
+            stopped = (
+                await client.post(
+                    f"/playlists/{PLAYLIST_ID}/import/stop", headers=HX
+                )
+            ).text
+
+        assert app.state.jobs.get(f"import:{PLAYLIST_ID}").state.value == (
+            "cancelled"
+        )
+        assert "Stopped" in stopped, stopped
+        # What arrived stays, and the pane says how much did.
+        assert "1 imported" in stopped, stopped
+    finally:
+        release.set()
+
+
+async def test_a_stopped_run_is_not_reported_as_finished(
+    tmp_path, monkeypatch
+):
+    """"4 imported" for a run of twelve you stopped yourself says nothing
+    about the other eight — they did not fail, they were never tried."""
+
+    started, release = asyncio.Event(), asyncio.Event()
+    monkeypatch.setattr(
+        "pypl2mp3.web.app.import_playlist", _slow_import(started, release)
+    )
+    _make_song(tmp_path, "ARTIST", "Song", "zzzzzzzzzzz")
+    app = create_app(tmp_path)
+
+    try:
+        async with _client(app) as client:
+            await client.post(f"/playlists/{PLAYLIST_ID}/import", headers=HX)
+            await started.wait()
+            stopped = (
+                await client.post(
+                    f"/playlists/{PLAYLIST_ID}/import/stop", headers=HX
+                )
+            ).text
+
+        assert "Stopped" in stopped
+        assert "Importing" not in stopped, "the pane still reads as running"
+        assert "hx-trigger" not in stopped, (
+            "the pane goes on polling a run that has stopped"
+        )
+    finally:
+        release.set()
+
+
+async def test_stopping_lets_the_listing_catch_up(tmp_path, monkeypatch):
+    """Songs reached the disk before the stop, and the page has no other
+    way of learning that."""
+
+    started, release = asyncio.Event(), asyncio.Event()
+    monkeypatch.setattr(
+        "pypl2mp3.web.app.import_playlist", _slow_import(started, release)
+    )
+    _make_song(tmp_path, "ARTIST", "Song", "zzzzzzzzzzz")
+    app = create_app(tmp_path)
+
+    try:
+        async with _client(app) as client:
+            await client.post(f"/playlists/{PLAYLIST_ID}/import", headers=HX)
+            await started.wait()
+            await client.post(
+                f"/playlists/{PLAYLIST_ID}/import/stop", headers=HX
+            )
+            await asyncio.sleep(0.05)
+            poll = await client.get(
+                f"/jobs/import:{PLAYLIST_ID}", headers=HX
+            )
+
+        assert poll.headers.get("HX-Trigger") == "songsChanged", (
+            "a stopped import leaves songs on disk the listing never shows"
+        )
+    finally:
+        release.set()

@@ -8,6 +8,7 @@
    It polls itself while work is in flight and stops by returning markup
    with no hx-trigger, the same as every other job fragment here. #}
 <div id="imports-body"
+     data-badge="{{ badge }}"
      {% if polling %}hx-get="/fragments/imports?playlist={{ playlist_id }}"
      hx-trigger="every 1s"
      hx-target="#imports-body"
@@ -34,6 +35,15 @@
         <span class="job-running">
           Importing {{ done_count }}/{{ items | length }}{{ tick }}
         </span>
+        {# No confirmation: what has arrived stays, and starting again is
+           one click. A dialog here would guard nothing. #}
+        <button type="button"
+                hx-post="/playlists/{{ playlist_id }}/import/stop"
+                hx-target="#imports-body"
+                hx-swap="outerHTML">Stop</button>
+      {% elif phase == "stopped" %}
+        <span class="job-error">Stopped</span>
+        <span class="job-new">{{ done_count }} imported</span>
       {% elif phase == "done" %}
         <span class="job-new">{{ done_count }} imported</span>
         {% if failed_count %}

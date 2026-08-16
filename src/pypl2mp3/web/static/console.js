@@ -91,6 +91,21 @@
 
   showTab("playlist");
 
+  // The tab strip sits outside the pane, so the pane cannot render it.
+  // It publishes what the badge should say and this copies it across
+  // after every swap — including the first, where the shell rendered the
+  // pane inline and no swap ever happens.
+  function paintBadge() {
+    const pane = document.getElementById("imports-body");
+    const badge = document.getElementById("imports-badge");
+    if (!pane || !badge) return;
+
+    badge.textContent = pane.dataset.badge || "";
+  }
+
+  paintBadge();
+  document.body.addEventListener("htmx:afterSwap", paintBadge);
+
   document.addEventListener("click", function (event) {
     const tab = event.target.closest("#tabs [data-tab]");
     if (tab) {

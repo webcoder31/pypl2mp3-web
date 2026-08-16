@@ -530,6 +530,13 @@ a { color: var(--accent); text-decoration-thickness: 1px;
   border-bottom-color: var(--accent);
 }
 #tabs button:hover { color: var(--text-1); }
+/* Empty until an import is running, and :empty needs there to be no
+   child nodes at all — whitespace included — so the JS writes textContent
+   rather than markup. */
+#imports-badge { margin-left: var(--space-2); color: var(--accent);
+                 font-variant-numeric: tabular-nums;
+                 letter-spacing: 0; text-transform: none; }
+#imports-badge:empty { display: none; }
 
 /* One pane at a time. Both are in the document; the body says which. */
 body[data-tab="playlist"] #imports,
