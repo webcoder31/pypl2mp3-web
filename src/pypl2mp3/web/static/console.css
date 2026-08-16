@@ -338,7 +338,9 @@ a { color: var(--accent); text-decoration-thickness: 1px;
   /* The song, its transport, then everything else. The first two take
      the height they need and no more, so with nothing selected the
      listing has almost the whole column. */
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  /* Song, transport, tabs, then whichever pane the tabs chose. Only
+     the last row grows: everything above takes the height it needs. */
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
   min-height: 0;
   min-width: 0;
 }
@@ -494,6 +496,89 @@ a { color: var(--accent); text-decoration-thickness: 1px;
 #toolbar.idle #player-next, #toolbar.idle #player-next .k {
   color: var(--text-3);
 }
+
+/* ------------------------------------------------------------------
+   Tabs, and the imports pane behind the second one
+   ------------------------------------------------------------------ */
+
+/* The tab bar sits where the listing's header used to start, and carries
+   the same tint: it is the top edge of the block below it, whichever
+   pane that turns out to be. */
+#tabs {
+  display: flex;
+  gap: var(--space-1);
+  background: var(--header-bg);
+  border-bottom: 1px solid var(--line);
+  padding: 0 var(--block-pad-x);
+}
+#tabs button {
+  border: none;
+  background: none;
+  padding: var(--space-3) var(--space-3);
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 700;
+  /* Drawn on the tab itself rather than as a separate underline, so the
+     selected tab and the line marking it can never drift apart. */
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+#tabs button[aria-selected="true"] {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+#tabs button:hover { color: var(--text-1); }
+
+/* One pane at a time. Both are in the document; the body says which. */
+body[data-tab="playlist"] #imports,
+body[data-tab="imports"] #toolbar,
+body[data-tab="imports"] #list { display: none; }
+body[data-tab="imports"] #imports { display: block; }
+#imports { overflow-y: auto; min-height: 0; }
+
+#imports-body { padding: var(--space-4) var(--block-pad-x); }
+.imports-empty { color: var(--text-3); }
+.imports-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+.imports-head h2 {
+  font-size: var(--fs-lg);
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+/* The one number that decides whether this is a click or an evening. */
+.imports-count { font-size: var(--fs-md); color: var(--accent);
+                 font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.imports-actions { display: flex; align-items: center;
+                   gap: var(--space-4); margin-bottom: var(--space-3); }
+.pick-all { display: flex; align-items: center; gap: var(--space-2);
+            color: var(--text-2); font-size: var(--fs-sm); }
+
+.imports-list { list-style: none; margin: 0; padding: 0; }
+.import-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+.import-row label { display: flex; align-items: center; gap: var(--space-3);
+                    min-width: 0; flex: 1; cursor: pointer; }
+.import-name { overflow: hidden; text-overflow: ellipsis;
+               white-space: nowrap; min-width: 0; }
+/* A row nobody has started reads as waiting, not as working. */
+.import-row.pending .import-name { color: var(--text-2); }
+.import-row.running .import-name { color: var(--text-1); }
+.import-row.failed .import-name { color: var(--text-3); }
 
 #list .empty { padding: 1.5rem; color: var(--text-3); }
 

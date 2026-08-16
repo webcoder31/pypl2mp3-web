@@ -80,8 +80,8 @@ async def test_the_button_gets_a_fragment_that_polls_itself(
             await client.post(f"/playlists/{PLAYLIST_ID}/check", headers=HX)
         ).text
 
-    assert "<div" in body
-    assert f'hx-get="/jobs/check:{PLAYLIST_ID}"' in body
+    assert 'id="imports-body"' in body, body[:200]
+    assert f'hx-get="/fragments/imports?playlist={PLAYLIST_ID}"' in body
     assert "hx-trigger" in body
 
 
@@ -92,9 +92,9 @@ async def test_the_started_fragment_and_its_polls_are_one_element(
 
     The fragment the POST returns and the fragment each poll returns
     must name the same element: the poll replaces itself by outerHTML,
-    and the ribbon keys its entries by that id. If the two drift, a poll
-    silently changes the entry's identity and the ribbon starts treating
-    one job as two.
+    and the button that started it targets that id. If the two drift, the
+    first poll detaches the pane from the document and the browser never
+    learns the job finished.
     """
 
     monkeypatch.setattr(mod, "Playlist", _FakePlaylist)
@@ -105,7 +105,9 @@ async def test_the_started_fragment_and_its_polls_are_one_element(
             await client.post(f"/playlists/{PLAYLIST_ID}/check", headers=HX)
         ).text
         get_fragment = (
-            await client.get(f"/jobs/check:{PLAYLIST_ID}", headers=HX)
+            await client.get(
+                f"/fragments/imports?playlist={PLAYLIST_ID}", headers=HX
+            )
         ).text
 
     post_div = re.search(r'<div id="([^"]+)"', post_fragment)
@@ -117,10 +119,13 @@ async def test_the_started_fragment_and_its_polls_are_one_element(
     )
     assert post_div.group(1) == get_div.group(1)
 
-    # And the element polls the job it actually represents.
-    polled = re.search(r'hx-get="/jobs/([^"]+)"', post_fragment)
-    assert polled, "the started fragment does not poll"
-    assert polled.group(1) == f"check:{PLAYLIST_ID}"
+    # And it polls for the playlist it actually represents. Scoped,
+    # because the pane is one element serving every playlist: an
+    # unscoped poll would answer with whichever one the server guessed.
+    polled = re.search(r'hx-get="/fragments/imports\?playlist=([^"]+)"',
+                       post_fragment)
+    assert polled, f"the started fragment does not poll: {post_fragment[:200]}"
+    assert polled.group(1) == PLAYLIST_ID
 
 
 async def test_polling_stops_once_the_job_is_done(tmp_path, monkeypatch):
@@ -194,14 +199,20 @@ async def test_a_second_click_says_so_instead_of_looking_inert(
             f"/playlists/{PLAYLIST_ID}/check", headers=HX
         )
 
+        # HTMX never swaps on a 4xx, so a 409 here would leave the
+        # screen exactly as it was — indistinguishable from a dead
+        # button. The answer is the pane, in-band, showing the run that
+        # is already going.
         assert second.status_code == 200
-        assert "already" in second.text.lower()
+        assert 'id="imports-body"' in second.text
+        assert "Looking for new songs" in second.text, (
+            "the second click says nothing about the run already going"
+        )
 
-        # The busy fragment keeps the same id the button targets and gets
-        # swapped in with hx-swap="outerHTML". If it did not also carry
-        # hx-get/hx-trigger, that swap would detach the live poller from
-        # the document and the browser would never learn the job finished
-        # — the exact inert-button failure this feature exists to remove.
+        # And it must still poll. Swapping in a fragment without
+        # hx-get/hx-trigger would detach the live poller from the
+        # document, and the browser would never learn the job finished —
+        # the exact inert-button failure this exists to remove.
         assert "hx-get" in second.text
         assert "hx-trigger" in second.text
 

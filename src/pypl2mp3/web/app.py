@@ -229,7 +229,14 @@ def create_app(repository_path: Path) -> FastAPI:
             # Run in a worker thread: song.py and pytubefix block
             # synchronously, and the event loop must stay responsive.
             report = await asyncio.to_thread(
-                check_new_songs, repository_path, playlist_id, progress
+                check_new_songs,
+                repository_path,
+                playlist_id,
+                progress,
+                # The panel lists what it finds for ticking, and a list
+                # of eleven-character video ids is not something anyone
+                # can choose from.
+                True,
             )
             return {
                 "total_remote": report.total_remote,
@@ -241,41 +248,32 @@ def create_app(repository_path: Path) -> FastAPI:
             job = app.state.jobs.start(f"check:{playlist_id}", work)
         except JobAlreadyRunning:
             if is_htmx:
-                # HTMX never swaps the DOM on a 4xx response, so a bare 409
-                # here would look exactly like the inert button this task
-                # exists to fix. Report the collision in-band instead.
-                running = app.state.jobs.get(f"check:{playlist_id}")
-                return _job_fragment(
+                # HTMX never swaps the DOM on a 4xx, so a bare 409 would
+                # look exactly like an inert button. Answer in-band with
+                # the pane, which already shows the run in progress.
+                return templates.TemplateResponse(
                     request,
-                    f"check:{playlist_id}",
-                    playlist_id,
-                    "busy",
-                    None,
-                    None,
-                    running.elapsed_seconds if running else None,
-                    running.current if running else None,
+                    "_imports.html",
+                    _imports_context(request, playlist_id),
                 )
             raise HTTPException(
                 status_code=409, detail="already checking this playlist"
             )
 
         if is_htmx:
-            return _job_fragment(
+            # The pane, not a ribbon entry: this is the panel the button
+            # opened, and it is where the whole run is watched.
+            return templates.TemplateResponse(
                 request,
-                job.job_id,
-                playlist_id,
-                job.state.value,
-                job.result,
-                job.error,
-                job.elapsed_seconds,
-                job.current,
+                "_imports.html",
+                _imports_context(request, playlist_id),
             )
 
         return {"job_id": job.job_id}
 
     @app.post("/playlists/{playlist_id}/import")
     async def start_import(playlist_id: str, request: Request):
-        """Import every song the playlist has and the repository lacks.
+        """Import the songs that were ticked, or everything missing.
 
         Awaited directly on the server's loop, not handed to a worker
         thread: `create_from_youtube` now runs its own blocking steps —
@@ -288,10 +286,17 @@ def create_app(repository_path: Path) -> FastAPI:
         is_htmx = request.headers.get("HX-Request") is not None
         job_id = f"import:{playlist_id}"
 
+        # The ticked rows, straight off the form. Absent means no panel
+        # sent them — the CLI's behaviour, everything missing. Present
+        # and empty means every row was unticked, which is a request to
+        # import nothing, and the service keeps those two apart.
+        form = await request.form()
+        only = form.getlist("songs") if "songs" in form else None
+
         async def work(job) -> dict:
             progress = WebProgress(app.state.jobs, job.job_id, loop)
             report = await import_playlist(
-                repository_path, playlist_id, progress
+                repository_path, playlist_id, progress, only=only
             )
             return {
                 "total_remote": report.total_remote,
@@ -326,31 +331,25 @@ def create_app(repository_path: Path) -> FastAPI:
             job = app.state.jobs.start(job_id, work)
         except JobAlreadyRunning:
             if is_htmx:
-                running = app.state.jobs.get(job_id)
-                return _job_fragment(
+                # HTMX never swaps the DOM on a 4xx, so a bare 409 would
+                # look exactly like an inert button. Answer in-band with
+                # the pane, which already shows the run in progress.
+                return templates.TemplateResponse(
                     request,
-                    job_id,
-                    playlist_id,
-                    "busy",
-                    None,
-                    None,
-                    running.elapsed_seconds if running else None,
-                    running.current if running else None,
+                    "_imports.html",
+                    _imports_context(request, playlist_id),
                 )
             raise HTTPException(
                 status_code=409, detail="already importing this playlist"
             )
 
         if is_htmx:
-            return _job_fragment(
+            # The pane, not a ribbon entry: this is the panel the button
+            # opened, and it is where the whole run is watched.
+            return templates.TemplateResponse(
                 request,
-                job.job_id,
-                playlist_id,
-                job.state.value,
-                job.result,
-                job.error,
-                job.elapsed_seconds,
-                job.current,
+                "_imports.html",
+                _imports_context(request, playlist_id),
             )
 
         return {"job_id": job.job_id}
@@ -453,7 +452,68 @@ def create_app(repository_path: Path) -> FastAPI:
                 "total_songs": sum(s.total_songs for s in summaries),
                 "total_junk": sum(s.junk_songs for s in summaries),
                 "repository": str(app.state.repository_path),
+                # The pane is included in the shell rather than fetched
+                # after it, so a reload during an import shows the import
+                # rather than an empty tab that fills in a second later.
+                **_imports_context(request, playlist),
             },
+        )
+
+    def _imports_context(request, playlist: str) -> dict:
+        """What the imports pane shows, and which job it is watching.
+
+        The import wins over the check when both exist: once you have
+        pressed Start, the list you chose from is history, and the rows
+        that matter are the ones being fetched.
+        """
+
+        checking = app.state.jobs.get(f"check:{playlist}") if playlist else None
+        running = app.state.jobs.get(f"import:{playlist}") if playlist else None
+        job = running or checking
+
+        if job is None:
+            phase = "idle"
+        elif job is running:
+            phase = (
+                "importing"
+                if job.state.value in ("pending", "running")
+                else "done"
+            )
+        else:
+            phase = (
+                "checking"
+                if job.state.value in ("pending", "running")
+                else "choosing"
+            )
+
+        items = list(job.items.values()) if job else []
+        states = [item.get("state") for item in items]
+
+        return {
+            "playlist_id": playlist,
+            "playlist_name": _playlist_name(playlist) if playlist else "",
+            "phase": phase,
+            "items": items,
+            "done_count": states.count("done"),
+            "failed_count": states.count("failed"),
+            # Empty for the first second, so a fast check never flashes
+            # " 0s" before it has said anything.
+            "tick": (
+                f" {job.elapsed_seconds}s"
+                if job and job.elapsed_seconds
+                else ""
+            ),
+            "polling": phase in ("checking", "importing"),
+        }
+
+    @app.get("/fragments/imports", response_class=HTMLResponse)
+    def imports_fragment(
+        request: Request, playlist: str = ""
+    ) -> HTMLResponse:
+        """The imports pane: what there is to fetch, and how it is going."""
+
+        return templates.TemplateResponse(
+            request, "_imports.html", _imports_context(request, playlist)
         )
 
     @app.get("/fragments/nav", response_class=HTMLResponse)
@@ -563,36 +623,6 @@ def create_app(repository_path: Path) -> FastAPI:
 
         return _shazam_fragment(request, youtube_id, job)
 
-    @app.get("/jobs/{job_id}/report", response_class=HTMLResponse)
-    def job_report(job_id: str, request: Request) -> HTMLResponse:
-        """The full outcome of a run, song by song.
-
-        The inline fragment has room for counts only. Knowing which songs
-        arrived, which did not, and why, is the whole point of running an
-        import you cannot watch.
-        """
-
-        job = app.state.jobs.get(job_id)
-        if job is None:
-            raise HTTPException(status_code=404, detail="unknown job")
-
-        return templates.TemplateResponse(
-            request,
-            # In the console this lands in the inspector, so it must not
-            # bring a whole document with it.
-            (
-                "_report.html"
-                if request.headers.get("HX-Request") is not None
-                else "report.html"
-            ),
-            {
-                "job_id": job_id,
-                "state": job.state.value,
-                "result": job.result or {},
-                "error": job.error,
-                "elapsed": job.elapsed_seconds,
-            },
-        )
 
     @app.post("/songs/{youtube_id}/shazam")
     async def shazam_song(youtube_id: str, request: Request):

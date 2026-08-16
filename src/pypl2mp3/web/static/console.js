@@ -73,6 +73,38 @@
     }
   });
 
+  // ---------------------------------------------------------------
+  // Tabs
+  //
+  // The playlist and the imports are two views of one column. Both panes
+  // are already in the document, so switching is a class on the body: a
+  // round trip to change which one is visible would be a round trip to
+  // show what the browser already holds.
+  // ---------------------------------------------------------------
+
+  function showTab(name) {
+    document.body.dataset.tab = name;
+    document.querySelectorAll("#tabs [data-tab]").forEach(function (tab) {
+      tab.setAttribute("aria-selected", String(tab.dataset.tab === name));
+    });
+  }
+
+  showTab("playlist");
+
+  document.addEventListener("click", function (event) {
+    const tab = event.target.closest("#tabs [data-tab]");
+    if (tab) {
+      showTab(tab.dataset.tab);
+      return;
+    }
+
+    // A button that starts work in the other pane brings you to it.
+    // Starting an import and leaving the listing on screen would hide
+    // the one thing the click was about.
+    const opener = event.target.closest("[data-open-tab]");
+    if (opener) showTab(opener.dataset.openTab);
+  });
+
   const audio = document.getElementById("audio");
   const bar = document.getElementById("player");
   const toolbar = document.getElementById("toolbar");
@@ -419,6 +451,20 @@
   audio.addEventListener("timeupdate", paintTime);
   audio.addEventListener("loadedmetadata", paintTime);
   audio.addEventListener("emptied", paintTime);
+
+  // Ticking every row and unticking every row are the two things anyone
+  // does to a list of thirty. Delegated, because the pane is replaced
+  // wholesale on every poll and a handler bound to the box would go with
+  // it.
+  document.addEventListener("change", function (event) {
+    if (event.target.id !== "pick-all") return;
+
+    document
+      .querySelectorAll('#import-form input[name="songs"]')
+      .forEach(function (box) {
+        box.checked = event.target.checked;
+      });
+  });
 
   // Songs imported since the waveform existed carry their peaks already.
   // The ones that predate it compute theirs the first time they are

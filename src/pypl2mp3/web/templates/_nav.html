@@ -49,16 +49,17 @@
      whenever the playlist changes, and a running import must not vanish
      with it. #}
   <p class="playlist-actions">
+    {# One button, not two. Checking and importing were never separate
+       intentions: nobody asks what is new without meaning to decide what
+       to do about it. This looks, then hands you the list and lets you
+       choose — so there is no longer a click that commits you to
+       downloading everything before you have seen what everything is,
+       and no confirmation needed to soften it. #}
     <button type="button"
             hx-post="/playlists/{{ playlist }}/check"
-            hx-target="#jobs"
-            hx-swap="beforeend">Check for new songs</button>
-    <button type="button"
-            hx-post="/playlists/{{ playlist }}/import"
-            hx-target="#jobs"
-            hx-swap="beforeend"
-            hx-confirm="Download every song this playlist has and you do not? This can take a long time."
-    >Import new songs</button>
+            hx-target="#imports-body"
+            hx-swap="outerHTML"
+            data-open-tab="imports">Import new songs</button>
   </p>
 {% endif %}
 

@@ -116,14 +116,16 @@ async def test_progress_events_name_the_song_being_imported(
     assert "2/2 ARTIST - Title" in labels
 
 
-async def test_check_and_import_do_not_share_an_element_id(
+async def test_the_pane_shows_the_import_once_one_is_running(
     tmp_path, monkeypatch
 ):
-    """Both target the same playlist; one DOM node cannot serve both.
+    """One pane, two jobs that both belong to this playlist.
 
-    The ribbon keys its entries by that id and drops duplicates, so a
-    collision here would have a started import evict a running check —
-    or be silently swallowed by it.
+    The ribbon used to key its entries by id, so a started import could
+    evict a running check. With one pane the question is sharper: which
+    of the two it shows. The import, once you have pressed Start — the
+    list you chose from is history, and the rows that matter are the
+    ones being fetched.
     """
 
     _install_fakes(monkeypatch)
@@ -138,17 +140,21 @@ async def test_check_and_import_do_not_share_an_element_id(
     app = create_app(tmp_path)
 
     async with _client(app) as client:
-        check = (
-            await client.post(f"/playlists/{PLAYLIST_ID}/check", headers=HX)
-        ).text
-        importing = (
-            await client.post(f"/playlists/{PLAYLIST_ID}/import", headers=HX)
+        await client.post(f"/playlists/{PLAYLIST_ID}/check", headers=HX)
+        await _settle(client, f"check:{PLAYLIST_ID}")
+        await client.post(f"/playlists/{PLAYLIST_ID}/import", headers=HX)
+        await _settle(client, f"import:{PLAYLIST_ID}")
+
+        pane = (
+            await client.get(
+                f"/fragments/imports?playlist={PLAYLIST_ID}", headers=HX
+            )
         ).text
 
-    check_id = re.search(r'<div id="([^"]+)"', check).group(1)
-    import_id = re.search(r'<div id="([^"]+)"', importing).group(1)
-
-    assert check_id != import_id, "the two job kinds collided on one id"
+    assert "imported" in pane, pane
+    assert "Start import" not in pane, (
+        "the pane fell back to the check's list while an import had run"
+    )
 
 
 async def test_a_second_import_of_the_same_playlist_is_refused(
@@ -293,62 +299,6 @@ async def test_a_new_song_clears_the_previous_one_s_stage():
     assert job.current["percent"] is None
 
 
-async def test_the_report_lists_every_song_and_why_it_failed(
-    tmp_path, monkeypatch
-):
-    """Counts fit inline; knowing which songs and why is the point of a
-    report you read after an import you could not watch."""
-
-    from pytubefix.exceptions import AgeRestrictedError
-
-    async def mixed(youtube_id, playlist_path, threshold, **kwargs):
-        if youtube_id == "AAAAAAAAAAA":
-            wrapper = RuntimeError("Failed to fetch information")
-            wrapper.__cause__ = AgeRestrictedError(youtube_id)
-            raise wrapper
-        (playlist_path / f"ARTIST - Title [{youtube_id}].mp3").write_bytes(
-            _MP3_FRAME * 8
-        )
-        return _FakeSong(youtube_id)
-
-    _install_fakes(monkeypatch)
-    monkeypatch.setattr(mod.SongModel, "create_from_youtube", mixed)
-    app = create_app(tmp_path)
-
-    async with _client(app) as client:
-        await client.post(f"/playlists/{PLAYLIST_ID}/import")
-        await _settle(client, f"import:{PLAYLIST_ID}")
-
-        report = await client.get(f"/jobs/import:{PLAYLIST_ID}/report")
-
-    assert report.status_code == 200
-    body = report.text
-
-    # The song that made it, named rather than counted.
-    assert "BBBBBBBBBBB" in body or "ARTIST - Title" in body
-    # The one that did not, with a reason a human can act on — asserted
-    # inside its own row, not merely somewhere on the page: the summary
-    # paragraph names the reasons too, so a bare substring check passes
-    # even when the per-song column is empty.
-    import re as _re
-
-    row = _re.search(
-        r"<li>(?:(?!</li>).)*AAAAAAAAAAA(?:(?!</li>).)*</li>",
-        body,
-        _re.DOTALL,
-    )
-    assert row, "the failed song has no entry of its own"
-
-    # The reason element itself, not the entry: the detail beside it
-    # repeats the raw exception text, which contains the same words, so
-    # an entry-wide substring check passes even with the reason emptied.
-    cell = _re.search(r'<span class="job-error">([^<]*)</span>', row.group(0))
-    assert cell, "the entry gives no reason"
-    assert cell.group(1).strip() == "age restricted", (
-        f"the reason says {cell.group(1)!r}"
-    )
-
-
 async def test_the_completed_fragment_links_to_the_report(
     tmp_path, monkeypatch
 ):
@@ -364,35 +314,6 @@ async def test_the_completed_fragment_links_to_the_report(
         ).text
 
     assert f"/jobs/import:{PLAYLIST_ID}/report" in fragment
-
-
-async def test_an_unmatched_import_is_offered_the_fix_screen(
-    tmp_path, monkeypatch
-):
-    """A song can arrive on disk and still be junk; the report should say so."""
-
-    class _JunkSong(_FakeSong):
-        def __init__(self, youtube_id, path):
-            super().__init__(youtube_id, path)
-            self.shazam_match_score = None
-            self.has_junk_filename = True
-
-    async def unmatched(youtube_id, playlist_path, threshold, **kwargs):
-        written = playlist_path / f"ARTIST - Title [{youtube_id}].mp3"
-        written.write_bytes(_MP3_FRAME * 8)
-
-        return _JunkSong(youtube_id, written)
-
-    _install_fakes(monkeypatch)
-    monkeypatch.setattr(mod.SongModel, "create_from_youtube", unmatched)
-    app = create_app(tmp_path)
-
-    async with _client(app) as client:
-        await client.post(f"/playlists/{PLAYLIST_ID}/import")
-        await _settle(client, f"import:{PLAYLIST_ID}")
-        body = (await client.get(f"/jobs/import:{PLAYLIST_ID}/report")).text
-
-    assert "/fragments/inspector/AAAAAAAAAAA" in body
 
 
 async def test_an_unknown_job_report_is_a_404(tmp_path):

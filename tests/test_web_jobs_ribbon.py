@@ -1,5 +1,6 @@
 """Long jobs in a ribbon: start an import and keep working."""
 
+import asyncio
 import re
 from pathlib import Path
 
@@ -46,61 +47,78 @@ async def test_the_console_has_a_ribbon_for_running_jobs(tmp_path):
     )
 
 
-async def test_both_job_buttons_send_their_job_to_the_ribbon(tmp_path):
-    """Not to a slot beside themselves: the nav is rebuilt on a playlist
-    change, and that would take a running import with it."""
+async def _settle_pane(client, app, job_id):
+    """Run the pane's poll until its job stops, and return the markup."""
+
+    for _ in range(100):
+        job = app.state.jobs.get(job_id)
+        if job and job.state.value not in ("pending", "running"):
+            break
+        await asyncio.sleep(0.02)
+
+    response = await client.get(
+        f"/fragments/imports?playlist={PLAYLIST_ID}", headers=HX
+    )
+
+    return response.text
+
+
+async def test_one_button_starts_the_whole_import(tmp_path):
+    """Checking and importing were never separate intentions: nobody asks
+    what is new without meaning to decide what to do about it.
+
+    The one button looks, then hands you the list. It targets the imports
+    pane and not a slot beside itself, because the nav is rebuilt on a
+    playlist change and that would take a running import with it.
+    """
 
     _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
         body = (await client.get(f"/?playlist={PLAYLIST_ID}")).text
 
-    for kind in ("check", "import"):
-        button = re.search(
-            r"<button[^>]*hx-post=\"/playlists/[^\"]*/" + kind + r"\"[^>]*>",
-            body,
-            re.DOTALL,
-        )
-        assert button, f"no {kind} button"
-        assert 'hx-target="#jobs"' in button.group(0), kind
-        assert 'hx-swap="beforeend"' in button.group(0), kind
+    buttons = re.findall(
+        r"<button[^>]*hx-post=\"/playlists/[^\"]*\"[^>]*>", body, re.DOTALL
+    )
+    assert len(buttons) == 1, (
+        f"{len(buttons)} playlist buttons; the pair was meant to become one"
+    )
+    assert "/check" in buttons[0], buttons[0]
+    assert 'hx-target="#imports-body"' in buttons[0], buttons[0]
+    assert 'data-open-tab="imports"' in buttons[0], (
+        "the button starts work in a pane it does not bring you to"
+    )
 
 
-async def test_the_job_buttons_appear_only_for_a_chosen_playlist(tmp_path):
-    """Import needs a playlist; there is nothing to import "everything"
-    from."""
+async def test_nothing_downloads_before_you_have_seen_the_list(tmp_path):
+    """What the old confirmation dialog was standing in for.
 
-    _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
+    The button used to fetch every missing song on one click, so it had
+    to ask first. It now runs a check and shows what it found; the only
+    thing that downloads anything is Start import, and by then you have
+    read the list and the count. That is a stronger guarantee than a
+    dialog, so the dialog is gone rather than kept as decoration.
+    """
 
-    async with _client(create_app(tmp_path)) as client:
-        everything = (await client.get("/")).text
-
-    assert "/import" not in everything
-    assert "/check" not in everything
-
-
-async def test_the_import_button_still_warns_before_a_long_download(tmp_path):
     _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
         body = (await client.get(f"/?playlist={PLAYLIST_ID}")).text
 
-    button = re.search(
-        r"<button[^>]*hx-post=\"/playlists/[^\"]*/import\"[^>]*>",
-        body,
-        re.DOTALL,
-    )
-    assert "hx-confirm" in button.group(0), (
-        "a long download must not start on a stray click"
+    posts = re.findall(r'hx-post="(/playlists/[^"]*)"', body)
+    assert posts == [f"/playlists/{PLAYLIST_ID}/check"], (
+        f"the shell can start something other than a check: {posts}"
     )
 
 
-async def test_a_ribbon_entry_names_the_playlist_it_belongs_to(
+async def test_the_pane_names_the_playlist_it_is_working_on(
     tmp_path, monkeypatch
 ):
-    """The ribbon is global; two playlists can be busy at once."""
+    """Two playlists can be busy at once, and the pane shows one of them.
+    Its heading is the only thing saying which."""
 
-    def fake_check(repository_path, playlist_id, progress=None):
+    def fake_check(repository_path, playlist_id, progress=None,
+                   with_labels=False):
         from types import SimpleNamespace
 
         return SimpleNamespace(total_remote=1, already_local=1, missing=[])
@@ -116,11 +134,16 @@ async def test_a_ribbon_entry_names_the_playlist_it_belongs_to(
         )
 
     assert "Owner - Alpha" in started.text, started.text
-    assert PLAYLIST_ID not in started.text.replace(
-        f"job-check-{PLAYLIST_ID}", ""
-    ).replace(f"/playlists/{PLAYLIST_ID}/", "").replace(
-        f"check:{PLAYLIST_ID}", ""
-    ), "the raw id leaked into the visible text"
+
+    # Everything between angle brackets is markup — ids belong there, in
+    # urls and element ids. What is left is what a reader sees, and a
+    # thirty-four character playlist id is not a name. Stripping tags
+    # rather than listing the places the id is allowed: that list rots
+    # every time a url or an attribute changes.
+    visible = re.sub(r"<[^>]*>", " ", started.text)
+    assert PLAYLIST_ID not in visible, (
+        f"the raw id leaked into the visible text: {visible.strip()[:120]}"
+    )
 
 
 async def test_a_finished_entry_can_be_dismissed(tmp_path, monkeypatch):
@@ -175,131 +198,80 @@ async def test_starting_the_same_job_twice_leaves_one_entry(tmp_path):
     )
 
 
-async def test_the_report_lands_in_the_inspector_not_on_a_page(
-    tmp_path, monkeypatch
-):
-    """Its counts fit in the ribbon; which songs failed and why do not."""
+async def test_a_failed_song_says_why_on_its_own_row(tmp_path, monkeypatch):
+    """This is what the report page was for.
 
-    async def fake_import(repository_path, playlist_id, progress=None):
+    Counts fitted in a ribbon; which songs failed and why did not, so
+    they went to a page. The pane has room for both, so the page is gone
+    and its job is done here — beside the song it is about.
+    """
+
+    async def fake_import(repository_path, playlist_id, progress=None,
+                          only=None):
+        progress.item_listed("zzzzzzzzzzz", "SOMEBODY - Forbidden")
+        progress.item_started("zzzzzzzzzzz", "1/1")
+        progress.item_failed(
+            "zzzzzzzzzzz", "age restricted", "AgeRestrictedError: nope"
+        )
         from types import SimpleNamespace
 
         return SimpleNamespace(
-            total_remote=2,
-            already_local=0,
-            imported=[],
-            failed=[
-                SimpleNamespace(
-                    youtube_id="zzzzzzzzzzz",
-                    reason="age restricted",
-                    issue="AgeRestrictedError",
-                    retryable=False,
-                )
-            ],
+            total_remote=1, already_local=0, imported=[], failed=[]
         )
 
     monkeypatch.setattr("pypl2mp3.web.app.import_playlist", fake_import)
     _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
+    app = create_app(tmp_path)
 
-    async with _client(create_app(tmp_path)) as client:
+    async with _client(app) as client:
         await client.post(f"/playlists/{PLAYLIST_ID}/import", headers=HX)
+        pane = await _settle_pane(client, app, f"import:{PLAYLIST_ID}")
 
-        for _ in range(80):
-            settled = (
-                await client.get(f"/jobs/import:{PLAYLIST_ID}", headers=HX)
-            ).text
-            if "hx-trigger" not in settled:
-                break
-
-        assert 'hx-target="#inspector"' in settled, (
-            "the report still navigates away from the console"
-        )
-
-        fragment = (
-            await client.get(
-                f"/jobs/import:{PLAYLIST_ID}/report", headers=HX
-            )
-        ).text
-
-    for tag in ("<html", "<body", "<head"):
-        assert tag not in fragment, tag
-    assert "age restricted" in fragment
-    assert "zzzzzzzzzzz" in fragment
+    assert "SOMEBODY - Forbidden" in pane, pane
+    assert "age restricted" in pane, pane
 
 
-async def test_the_report_page_still_works_without_htmx(tmp_path, monkeypatch):
-    """A bookmarked report URL must not answer with a bare fragment."""
+async def test_a_junk_import_is_fixable_from_its_row(tmp_path, monkeypatch):
+    """Imported without a Shazam match: on disk, still junk.
 
-    async def fake_import(repository_path, playlist_id, progress=None):
+    The row it arrived on is where it gets repaired — the outcome and
+    the fix are the same click, which is all the report page ever
+    offered.
+    """
+
+    async def fake_import(repository_path, playlist_id, progress=None,
+                          only=None):
+        progress.item_listed("aaaaaaaaaaa", "UNKNOWN - Something")
+        progress.item_started("aaaaaaaaaaa", "1/1")
+        progress.item_done("aaaaaaaaaaa")
         from types import SimpleNamespace
 
         return SimpleNamespace(
-            total_remote=0, already_local=0, imported=[], failed=[]
-        )
-
-    monkeypatch.setattr("pypl2mp3.web.app.import_playlist", fake_import)
-    _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
-
-    async with _client(create_app(tmp_path)) as client:
-        await client.post(f"/playlists/{PLAYLIST_ID}/import")
-
-        for _ in range(80):
-            job = client._transport.app.state.jobs.get(
-                f"import:{PLAYLIST_ID}"
-            )
-            if job and job.state is not JobState.RUNNING:
-                break
-
-        page = (
-            await client.get(f"/jobs/import:{PLAYLIST_ID}/report")
-        ).text
-
-    assert "<html" in page
-
-
-async def test_a_junk_import_is_fixable_from_the_report(tmp_path, monkeypatch):
-    """Imported without a Shazam match: on disk, still junk."""
-
-    async def fake_import(repository_path, playlist_id, progress=None):
-        from types import SimpleNamespace
-
-        return SimpleNamespace(
-            total_remote=1,
-            already_local=0,
-            imported=[
-                SimpleNamespace(
-                    youtube_id="aaaaaaaaaaa",
-                    artist="UNKNOWN",
-                    title="Something",
-                    filename="UNKNOWN - Something [aaaaaaaaaaa] (JUNK).mp3",
-                    shazam_match_score=None,
-                    is_junk=True,
-                )
-            ],
-            failed=[],
+            total_remote=1, already_local=0, imported=[], failed=[]
         )
 
     monkeypatch.setattr("pypl2mp3.web.app.import_playlist", fake_import)
     _make_song(tmp_path, "ARTIST", "Song", "bbbbbbbbbbb")
+    app = create_app(tmp_path)
+
+    async with _client(app) as client:
+        await client.post(f"/playlists/{PLAYLIST_ID}/import", headers=HX)
+        pane = await _settle_pane(client, app, f"import:{PLAYLIST_ID}")
+
+    assert "/fragments/inspector/aaaaaaaaaaa" in pane, pane
+
+
+async def test_the_report_page_is_gone(tmp_path):
+    """It carried counts, failures and a way into the fix screen. The
+    pane carries all three, beside the songs they belong to, without
+    leaving the page the player is running on."""
+
+    _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
-        await client.post(f"/playlists/{PLAYLIST_ID}/import", headers=HX)
+        gone = await client.get("/jobs/import:whatever/report")
 
-        for _ in range(80):
-            settled = (
-                await client.get(f"/jobs/import:{PLAYLIST_ID}", headers=HX)
-            ).text
-            if "hx-trigger" not in settled:
-                break
-
-        fragment = (
-            await client.get(
-                f"/jobs/import:{PLAYLIST_ID}/report", headers=HX
-            )
-        ).text
-
-    assert "/fragments/inspector/aaaaaaaaaaa" in fragment, (
-        "no way to repair the song the report just flagged"
-    )
+    assert gone.status_code == 404
 
 
 async def test_dismissing_the_last_job_leaves_no_gap(tmp_path):

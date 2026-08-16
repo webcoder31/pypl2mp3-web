@@ -139,6 +139,23 @@
         <audio id="audio"></audio>
       </footer>
 
+      {# Two views of the same column. The playlist is what you listen
+         to; imports are what you are adding to it. They are tabs rather
+         than one scrolling page because an import runs for minutes and
+         must not push the listing off the screen — and rather than a
+         separate page because leaving this one would stop the music.
+
+         Switching is client-side: both panes are already in the
+         document, and a round trip to change which one is visible would
+         be a round trip to show what the browser already holds. #}
+      <div id="tabs" role="tablist">
+        <button type="button" role="tab" data-tab="playlist"
+                aria-selected="true">Playlist</button>
+        <button type="button" role="tab" data-tab="imports"
+                aria-selected="false">Imports<span id="imports-badge"></span>
+        </button>
+      </div>
+
       {# Where you are in the queue, what comes next, and what to do
          with the selection — all of it about the queue, none of it from
          the server. Outside #list on purpose: a refetch would otherwise
@@ -188,6 +205,15 @@
             hx-get="/fragments/list"
             hx-trigger="songsChanged from:body"
             hx-include="#filters">{% include "_list.html" %}</main>
+
+      {# The other pane. It polls while a check or an import is running
+         and stops on its own the moment neither is — same rule as every
+         other self-polling fragment here: the returned markup simply
+         carries no hx-trigger. #}
+      <section id="imports" data-swap-region
+               hx-get="/fragments/imports"
+               hx-trigger="importsChanged from:body"
+               hx-include="#filters">{% include "_imports.html" %}</section>
     </div>
 
     <nav id="nav" data-swap-region

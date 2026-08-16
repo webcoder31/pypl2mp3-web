@@ -1,0 +1,125 @@
+{# The imports pane: choose what to fetch, then watch it arrive.
+
+   One element, five states, because they are one continuous act — you
+   look for new songs, you pick from what came back, you start, you
+   watch. Splitting them across fragments would mean the browser holding
+   which step it is on, and it already holds nothing else.
+
+   It polls itself while work is in flight and stops by returning markup
+   with no hx-trigger, the same as every other job fragment here. #}
+<div id="imports-body"
+     {% if polling %}hx-get="/fragments/imports?playlist={{ playlist_id }}"
+     hx-trigger="every 1s"
+     hx-target="#imports-body"
+     hx-swap="outerHTML"{% endif %}>
+
+  {% if not playlist_id %}
+    <p class="imports-empty">
+      Pick a playlist, then use <strong>Import new songs</strong>.
+    </p>
+
+  {% else %}
+    <header class="imports-head">
+      <h2>{{ playlist_name }}</h2>
+      {% if phase == "checking" %}
+        <span class="job-running">
+          Looking for new songs…{% if items %}
+            {{ items | length }} found so far{% endif %}{{ tick }}
+        </span>
+      {% elif phase == "choosing" %}
+        {# The count is the headline: it is the one number that decides
+           whether this is a click or an evening. #}
+        <span class="imports-count">{{ items | length }} new song(s)</span>
+      {% elif phase == "importing" %}
+        <span class="job-running">
+          Importing {{ done_count }}/{{ items | length }}{{ tick }}
+        </span>
+      {% elif phase == "done" %}
+        <span class="job-new">{{ done_count }} imported</span>
+        {% if failed_count %}
+          <span class="job-error">{{ failed_count }} failed</span>
+        {% endif %}
+      {% endif %}
+    </header>
+
+    {% if phase == "idle" %}
+      <p class="imports-empty">
+        Use <strong>Import new songs</strong> to see what this playlist
+        has and you do not.
+      </p>
+
+    {% elif phase == "choosing" and not items %}
+      <p class="imports-empty">Up to date — nothing to import.</p>
+
+    {% else %}
+      {# The form is the list. Ticking a row and pressing the button are
+         one gesture, so the ids the server receives are exactly the rows
+         that were ticked — no parallel selection kept in JavaScript to
+         drift out of step with what is on screen. #}
+      <form id="import-form"
+            hx-post="/playlists/{{ playlist_id }}/import"
+            hx-target="#imports-body"
+            hx-swap="outerHTML">
+
+        {% if phase == "choosing" %}
+          <p class="imports-actions">
+            <button type="submit">Start import</button>
+            <label class="pick-all">
+              <input type="checkbox" id="pick-all" checked> Select all
+            </label>
+          </p>
+        {% endif %}
+
+        <ul class="imports-list">
+          {% for item in items %}
+            <li class="import-row {{ item.state }}">
+              {% if phase == "choosing" %}
+                <label>
+                  <input type="checkbox" name="songs"
+                         value="{{ item.item_id }}" checked>
+                  <span class="import-name">{{ item.label }}</span>
+                </label>
+              {% else %}
+                <span class="import-name">{{ item.label }}</span>
+              {% endif %}
+
+              {% if item.state == "failed" %}
+                <span class="job-error" title="{{ item.issue }}">
+                  {{ item.reason }}
+                </span>
+              {% elif item.state == "done" %}
+                {# A song can arrive on disk and still be junk: downloaded,
+                   never matched. The row is where you go and fix it, so
+                   the outcome and the repair are the same click — the
+                   report page existed to carry exactly this and nothing
+                   the pane does not already show. #}
+                <button type="button"
+                        hx-get="/fragments/inspector/{{ item.item_id }}"
+                        hx-target="#inspector"
+                        hx-swap="innerHTML"
+                        data-open-tab="playlist">inspect</button>
+                {# .get(), not attribute access. A song that Shazam never
+                   identified has no score key at all, and attribute access
+                   yields Undefined — which `is not none` happily lets
+                   through into round(). job.html carries this same note;
+                   the trap was walked into twice. #}
+                {% set score = item.get("score") %}
+                {% if score is not none %}
+                  <span class="job-new">{{ score | round | int }}%</span>
+                {% else %}
+                  <span class="job-new">done</span>
+                {% endif %}
+              {% elif item.state == "running" %}
+                <span class="job-running">
+                  {{ item.stage or "starting" }}{%
+                    if item.percent %} {{ item.percent | round | int }}%{%
+                    endif %}
+                </span>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      </form>
+    {% endif %}
+  {% endif %}
+</div>
