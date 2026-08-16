@@ -1430,3 +1430,37 @@ async def test_the_player_leans_away_from_the_listing(tmp_path):
         f"the player sits {above}rem from the song above it and {below}rem "
         "from the listing below, so the two boundaries read alike"
     )
+
+
+async def test_the_inspector_is_visible_from_either_tab(tmp_path):
+    """It sits above the tab strip, not inside a pane.
+
+    That is what lets a click on an import row open a song without
+    leaving the list of thirty you were reading — and why the click must
+    not switch tabs to show you something already on screen.
+    """
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        page = (await client.get("/")).text
+        css = (await client.get("/static/console.css")).text
+        script = (await client.get("/static/console.js")).text
+
+    assert page.index('id="inspector"') < page.index('id="tabs"'), (
+        "the inspector is below the tab strip, so a pane could cover it"
+    )
+
+    hidden = re.findall(
+        r'body\[data-tab="[a-z]+"\]\s*([^{,]+)[,{]', css
+    )
+    assert not any("#inspector" in selector for selector in hidden), (
+        f"a tab hides the inspector: {hidden}"
+    )
+
+    opener = script[script.index(".import-row[data-song-id]"):]
+    opener = opener[: opener.index("\n    }")]
+    assert "showTab" not in opener, (
+        "opening a song from an import row switches tabs, which takes you "
+        "away from the list to show what was already visible"
+    )

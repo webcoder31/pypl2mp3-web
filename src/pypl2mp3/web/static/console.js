@@ -643,7 +643,10 @@
     // nothing is worse than one that plainly does not.
     const imported = event.target.closest(".import-row[data-song-id]");
     if (imported && !event.target.closest("button, a, input, label")) {
-      showTab("playlist");
+      // Staying put. The inspector sits above the tabs and is visible
+      // from either of them, so switching would take you away from the
+      // list you are reading to show you something you could already
+      // see — and lose your place in a run of thirty rows.
       inspect(imported.dataset.songId);
       return;
     }
