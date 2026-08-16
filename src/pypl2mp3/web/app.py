@@ -492,14 +492,18 @@ def create_app(repository_path: Path) -> FastAPI:
     def _imports_context(request, playlist: str) -> dict:
         """What the imports pane shows, and which job it is watching.
 
-        The import wins over the check when both exist: once you have
-        pressed Start, the list you chose from is history, and the rows
-        that matter are the ones being fetched.
+        Whichever of the two started last. While an import runs, that is
+        the import: the list you chose from is history and the rows that
+        matter are the ones being fetched. The moment you ask for a new
+        list, it is the check — and that half was missing, so a finished
+        import stayed on screen for ever and a second one could never be
+        started.
         """
 
         checking = app.state.jobs.get(f"check:{playlist}") if playlist else None
         running = app.state.jobs.get(f"import:{playlist}") if playlist else None
-        job = running or checking
+        both = [job for job in (checking, running) if job is not None]
+        job = max(both, key=lambda one: one.started_at) if both else None
 
         if job is None:
             phase = "idle"
@@ -521,7 +525,9 @@ def create_app(repository_path: Path) -> FastAPI:
         # Neither alone is the pane: showing the import's items would
         # drop every song not yet started and label the one in flight
         # "1/4", and showing the check's would never move.
-        items = _merge_items(checking, running if phase != "choosing" else None)
+        # The check always supplies the names; the import supplies the
+        # rows only when it is the run being shown.
+        items = _merge_items(checking, running if job is running else None)
         states = [item.get("state") for item in items]
 
         return {

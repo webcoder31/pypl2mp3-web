@@ -419,3 +419,115 @@ async def test_a_song_being_fetched_keeps_the_name_it_was_listed_under(
     assert "IAMX - Kiss + Swallow" in pane, (
         f"the row lost its name once work began on it: {pane[-500:]}"
     )
+
+
+async def test_a_second_import_can_be_started_after_the_first(
+    tmp_path, monkeypatch
+):
+    """The pane showed the finished import for ever.
+
+    "The import wins over the check" is right while one is running — the
+    list you chose from is history and the rows that matter are the ones
+    being fetched. It stops being right the moment you ask for a new
+    list: the run that matters is then the newer one, and there was no
+    way back to a selection.
+    """
+
+    def fake_check(repository_path, playlist_id, progress=None,
+                   with_labels=False):
+        progress.item_listed("aaaaaaaaaaa", "IAMX - Kiss")
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            total_remote=1, already_local=0, missing=["aaaaaaaaaaa"]
+        )
+
+    async def fake_import(repository_path, playlist_id, progress=None,
+                          only=None):
+        progress.item_listed("aaaaaaaaaaa", "")
+        progress.item_started("aaaaaaaaaaa", "1/1")
+        progress.item_done("aaaaaaaaaaa")
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            total_remote=1, already_local=0, imported=[], failed=[]
+        )
+
+    monkeypatch.setattr("pypl2mp3.web.app.check_new_songs", fake_check)
+    monkeypatch.setattr("pypl2mp3.web.app.import_playlist", fake_import)
+    _make_song(tmp_path, "ARTIST", "Song", "bbbbbbbbbbb")
+    app = create_app(tmp_path)
+
+    async with _client(app) as client:
+        # One whole cycle: look, choose, fetch.
+        await client.post(f"/playlists/{PLAYLIST_ID}/check", headers=HX)
+        await _settle_pane(client, app, f"check:{PLAYLIST_ID}")
+        await client.post(f"/playlists/{PLAYLIST_ID}/import", headers=HX)
+        done = await _settle_pane(client, app, f"import:{PLAYLIST_ID}")
+        assert "Start import" not in done, done
+
+        # And now the same button again.
+        await client.post(f"/playlists/{PLAYLIST_ID}/check", headers=HX)
+        again = await _settle_pane(client, app, f"check:{PLAYLIST_ID}")
+
+    assert "Start import" in again, (
+        "the pane is still showing the finished import, so there is no "
+        "way to start a second one"
+    )
+    assert "IAMX - Kiss" in again, again
+
+
+async def test_a_running_import_outranks_the_check_that_fed_it(
+    tmp_path, monkeypatch
+):
+    """The other half of the same rule, and the reason it exists: while
+    songs are being fetched, the list they were chosen from is history."""
+
+    def fake_check(repository_path, playlist_id, progress=None,
+                   with_labels=False):
+        progress.item_listed("aaaaaaaaaaa", "IAMX - Kiss")
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            total_remote=1, already_local=0, missing=["aaaaaaaaaaa"]
+        )
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def slow_import(repository_path, playlist_id, progress=None,
+                          only=None):
+        progress.item_listed("aaaaaaaaaaa", "")
+        progress.item_started("aaaaaaaaaaa", "1/1")
+        started.set()
+        await release.wait()
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            total_remote=1, already_local=0, imported=[], failed=[]
+        )
+
+    monkeypatch.setattr("pypl2mp3.web.app.check_new_songs", fake_check)
+    monkeypatch.setattr("pypl2mp3.web.app.import_playlist", slow_import)
+    _make_song(tmp_path, "ARTIST", "Song", "bbbbbbbbbbb")
+    app = create_app(tmp_path)
+
+    try:
+        async with _client(app) as client:
+            await client.post(f"/playlists/{PLAYLIST_ID}/check", headers=HX)
+            await _settle_pane(client, app, f"check:{PLAYLIST_ID}")
+            await client.post(f"/playlists/{PLAYLIST_ID}/import", headers=HX)
+            await started.wait()
+
+            pane = (
+                await client.get(
+                    f"/fragments/imports?playlist={PLAYLIST_ID}", headers=HX
+                )
+            ).text
+
+        assert "Start import" not in pane, (
+            "the pane offers to start an import while one is running"
+        )
+        assert "Importing" in pane, pane
+    finally:
+        release.set()
