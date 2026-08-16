@@ -72,11 +72,13 @@
             hx-swap="outerHTML">
 
         {% if phase == "choosing" %}
+          {# Choose, then act: the box that changes what is ticked comes
+             before the button that commits to it. #}
           <p class="imports-actions">
-            <button type="submit">Start import</button>
             <label class="pick-all">
               <input type="checkbox" id="pick-all" checked> Select all
             </label>
+            <button type="submit">Start import</button>
           </p>
         {% endif %}
 

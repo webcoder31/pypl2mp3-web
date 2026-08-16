@@ -901,3 +901,48 @@ async def test_the_name_of_a_song_being_chosen_is_a_label(
         pane = await _settle_pane(client, app, f"check:{PLAYLIST_ID}")
 
     assert '<label class="import-name" for="pick-aaaaaaaaaaa"' in pane, pane
+
+
+async def test_start_import_is_filled_and_follows_the_choosing(
+    tmp_path, monkeypatch
+):
+    """It is the point of the panel it sits in, the way Save is the point
+    of the inspector — and it comes after the box that changes what it
+    will act on, because you choose before you commit."""
+
+    def fake_check(repository_path, playlist_id, progress=None,
+                   with_labels=False):
+        progress.item_listed("aaaaaaaaaaa", "IAMX - Kiss")
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            total_remote=1, already_local=0, missing=["aaaaaaaaaaa"]
+        )
+
+    monkeypatch.setattr("pypl2mp3.web.app.check_new_songs", fake_check)
+    _make_song(tmp_path, "ARTIST", "Song", "zzzzzzzzzzz")
+    app = create_app(tmp_path)
+
+    async with _client(app) as client:
+        await client.post(f"/playlists/{PLAYLIST_ID}/check", headers=HX)
+        pane = await _settle_pane(client, app, f"check:{PLAYLIST_ID}")
+        css = (await client.get("/static/console.css")).text
+
+    assert pane.index('id="pick-all"') < pane.index("Start import"), (
+        "the button that commits comes before the box that changes what "
+        "it will act on"
+    )
+
+    # Filled by the rule Save is filled by, not by one of its own that
+    # could drift into a nearly-matching green.
+    rules = [
+        selector
+        for selector, body in re.findall(
+            r"\n([^\n{}]+(?:,\n[^\n{}]+)*)\{([^}]*)\}", css
+        )
+        if "#import-form button[type=\"submit\"]" in selector
+        and ":hover" not in selector
+        and "background: var(--accent);" in body
+    ]
+    assert rules, "Start import is as quiet as the rows above it"
+    assert '#inspector button[type="submit"]' in rules[0], rules[0]

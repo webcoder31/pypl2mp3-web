@@ -240,6 +240,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 #inspector button[type="submit"],
 #inspector .play-this,
 .workbench-detail button[type="submit"],
+#import-form button[type="submit"],
 #nav .playlist-actions button {
   background: var(--accent);
   border-color: var(--accent);
@@ -249,6 +250,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 #inspector button[type="submit"]:hover,
 #inspector .play-this:hover,
 .workbench-detail button[type="submit"]:hover,
+#import-form button[type="submit"]:hover,
 #nav .playlist-actions button:hover {
   background: var(--accent);
   filter: brightness(1.08);
