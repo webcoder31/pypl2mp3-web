@@ -946,3 +946,120 @@ async def test_start_import_is_filled_and_follows_the_choosing(
     ]
     assert rules, "Start import is as quiet as the rows above it"
     assert '#inspector button[type="submit"]' in rules[0], rules[0]
+
+
+async def test_pressing_start_keeps_the_list_on_screen(tmp_path, monkeypatch):
+    """The panel used to empty itself the moment you pressed Start.
+
+    The rows came from the import job, and an import cannot name a single
+    song until it has fetched the playlist from YouTube again — so the
+    list vanished, stayed blank for as long as that round trip took, and
+    came back with a run already several songs deep. The list you chose
+    from was on screen and correct the whole time.
+    """
+
+    def fake_check(repository_path, playlist_id, progress=None,
+                   with_labels=False):
+        for youtube_id, name in (
+            ("aaaaaaaaaaa", "IAMX - Kiss"),
+            ("bbbbbbbbbbb", "IAMX - Spit It Out"),
+            ("ccccccccccc", "IAMX - Bring Me Back a Dog"),
+        ):
+            progress.item_listed(youtube_id, name)
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            total_remote=3, already_local=0,
+            missing=["aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc"],
+        )
+
+    reached = asyncio.Event()
+    release = asyncio.Event()
+
+    async def slow_to_start(repository_path, playlist_id, progress=None,
+                            only=None):
+        # Stuck exactly where the real one is: fetching the playlist,
+        # before it can announce anything at all.
+        reached.set()
+        await release.wait()
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            total_remote=3, already_local=0, imported=[], failed=[]
+        )
+
+    monkeypatch.setattr("pypl2mp3.web.app.check_new_songs", fake_check)
+    monkeypatch.setattr("pypl2mp3.web.app.import_playlist", slow_to_start)
+    _make_song(tmp_path, "ARTIST", "Song", "zzzzzzzzzzz")
+    app = create_app(tmp_path)
+
+    try:
+        async with _client(app) as client:
+            await client.post(f"/playlists/{PLAYLIST_ID}/check", headers=HX)
+            await _settle_pane(client, app, f"check:{PLAYLIST_ID}")
+
+            started = await client.post(
+                f"/playlists/{PLAYLIST_ID}/import",
+                headers=HX,
+                data={"songs": ["aaaaaaaaaaa", "ccccccccccc"]},
+            )
+            await reached.wait()
+
+        rows = re.findall(r'<li class="import-row (\w+)"', started.text)
+        assert len(rows) == 2, (
+            f"the panel shows {len(rows)} rows while the import is still "
+            "fetching the playlist; it should still be showing what you "
+            "ticked"
+        )
+        assert "IAMX - Kiss" in started.text, started.text
+        assert "IAMX - Bring Me Back a Dog" in started.text
+        assert "IAMX - Spit It Out" not in started.text, (
+            "a song that was unticked is still listed"
+        )
+    finally:
+        release.set()
+
+
+async def test_a_new_look_forgets_the_last_selection(tmp_path, monkeypatch):
+    """Whatever was ticked for the last run has nothing to say about
+    what the next check finds."""
+
+    def fake_check(repository_path, playlist_id, progress=None,
+                   with_labels=False):
+        progress.item_listed("aaaaaaaaaaa", "IAMX - Kiss")
+        progress.item_listed("bbbbbbbbbbb", "IAMX - Spit It Out")
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            total_remote=2, already_local=0,
+            missing=["aaaaaaaaaaa", "bbbbbbbbbbb"],
+        )
+
+    async def fake_import(repository_path, playlist_id, progress=None,
+                          only=None):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            total_remote=2, already_local=0, imported=[], failed=[]
+        )
+
+    monkeypatch.setattr("pypl2mp3.web.app.check_new_songs", fake_check)
+    monkeypatch.setattr("pypl2mp3.web.app.import_playlist", fake_import)
+    _make_song(tmp_path, "ARTIST", "Song", "zzzzzzzzzzz")
+    app = create_app(tmp_path)
+
+    async with _client(app) as client:
+        await client.post(f"/playlists/{PLAYLIST_ID}/check", headers=HX)
+        await _settle_pane(client, app, f"check:{PLAYLIST_ID}")
+        await client.post(
+            f"/playlists/{PLAYLIST_ID}/import", headers=HX,
+            data={"songs": ["aaaaaaaaaaa"]},
+        )
+        await _settle_pane(client, app, f"import:{PLAYLIST_ID}")
+
+        await client.post(f"/playlists/{PLAYLIST_ID}/check", headers=HX)
+        again = await _settle_pane(client, app, f"check:{PLAYLIST_ID}")
+
+    assert "IAMX - Spit It Out" in again, (
+        "the new list is still narrowed by what was ticked last time"
+    )

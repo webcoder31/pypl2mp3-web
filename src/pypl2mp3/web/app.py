@@ -103,6 +103,12 @@ def create_app(repository_path: Path) -> FastAPI:
     # and a task belongs to the loop that created it.
     app.state.peak_jobs: dict[str, asyncio.Task] = {}
 
+    # What was ticked when Start was pressed, by playlist. The panel
+    # draws its rows from the check and narrows them with this, so the
+    # list you chose from stays on screen unchanged while the import
+    # works through it.
+    app.state.import_selection: dict[str, set[str] | None] = {}
+
     def _count_reasons(failures) -> dict[str, int]:
         counts: dict[str, int] = {}
         for item in failures:
@@ -245,6 +251,10 @@ def create_app(repository_path: Path) -> FastAPI:
                 "missing": report.missing,
             }
 
+        # A new look means a new list; whatever was ticked for the last
+        # run has nothing to say about this one.
+        app.state.import_selection.pop(playlist_id, None)
+
         try:
             job = app.state.jobs.start(f"check:{playlist_id}", work)
         except JobAlreadyRunning:
@@ -293,6 +303,9 @@ def create_app(repository_path: Path) -> FastAPI:
         # import nothing, and the service keeps those two apart.
         form = await request.form()
         only = form.getlist("songs") if "songs" in form else None
+        app.state.import_selection[playlist_id] = (
+            set(only) if only is not None else None
+        )
 
         async def work(job) -> dict:
             progress = WebProgress(app.state.jobs, job.job_id, loop)
@@ -460,34 +473,38 @@ def create_app(repository_path: Path) -> FastAPI:
             },
         )
 
-    def _merge_items(listed, working) -> list[dict]:
-        """The list as it was drawn up, with the work done to it since.
+    def _merge_items(listed, working, selection) -> list[dict]:
+        """The list you chose from, with the work done to it since.
 
-        Order comes from the list: it is the order the songs will be
+        The rows come from the check, narrowed to what was ticked — not
+        from the import. The import cannot name a single song until it
+        has fetched the playlist from YouTube again, so taking the rows
+        from it meant pressing Start emptied the panel, left it blank for
+        as long as that round trip took, and then filled it back in with
+        a run already several songs deep. The list was on screen and
+        correct the whole time.
+
+        Order comes from the check: it is the order the songs will be
         fetched in, so a row never moves under the pointer. A song the
-        working job knows and the list does not is appended — the list
-        can be missing, after a restart, and a run with no rows at all
+        import knows and the check does not is appended — after a restart
+        there is no check to speak of, and a run with no rows at all
         would be worse than rows in an unexpected order.
         """
 
-        names = {
-            item["item_id"]: item.get("label")
-            for item in (listed.items.values() if listed else ())
-        }
+        rows = {}
+        for item in (listed.items.values() if listed else ()):
+            if selection is None or item["item_id"] in selection:
+                rows[item["item_id"]] = dict(item)
 
-        # Which songs there are is the working job's to say once it
-        # exists: you may have ticked four of five, and the fifth must
-        # not sit there looking like it is still coming.
-        source = working or listed
-        rows = []
-        for item in (source.items.values() if source else ()):
-            row = dict(item)
+        for item in (working.items.values() if working else ()):
+            known = rows.get(item["item_id"], {})
+            merged = {**known, **item}
             # The sweep announces a position, not a name. Whatever the
             # list called the song is what the reader recognises.
-            row["label"] = names.get(item["item_id"]) or row.get("label") or ""
-            rows.append(row)
+            merged["label"] = known.get("label") or item.get("label") or ""
+            rows[item["item_id"]] = merged
 
-        return rows
+        return list(rows.values())
 
     def _imports_context(request, playlist: str) -> dict:
         """What the imports pane shows, and which job it is watching.
@@ -532,7 +549,11 @@ def create_app(repository_path: Path) -> FastAPI:
         # "1/4", and showing the check's would never move.
         # The check always supplies the names; the import supplies the
         # rows only when it is the run being shown.
-        items = _merge_items(checking, running if job is running else None)
+        items = _merge_items(
+            checking,
+            running if job is running else None,
+            app.state.import_selection.get(playlist) if job is running else None,
+        )
         states = [item.get("state") for item in items]
 
         return {
