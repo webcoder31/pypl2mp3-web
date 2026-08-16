@@ -302,9 +302,12 @@ a { color: var(--accent); text-decoration-thickness: 1px;
    Header
    ------------------------------------------------------------------ */
 
+/* The same tint as the listing's own header. Both are the top edge of
+   something you read below them, and there was no reason for the page's
+   to be the one band answering to nothing. */
 #header {
   grid-area: header;
-  background: var(--bg);
+  background: var(--header-bg);
   border-bottom: 1px solid var(--line);
   padding: var(--block-pad-y) var(--block-pad-x);
   display: flex;

@@ -362,9 +362,38 @@ async def test_the_listing_is_the_bright_surface_not_the_chrome(tmp_path):
     assert background("#list") == "--surface", (
         "the songs sit on the page colour while the chrome is raised"
     )
-    for chrome in ("#nav", "#inspector", "#header", "#player"):
-        assert background(chrome) == "--bg", (
-            f"{chrome} is brighter than the content it frames"
+
+    # The columns that flank the listing. A header band is not one of
+    # them: #header, #toolbar and #tabs carry their own tint on purpose,
+    # which is what marks them as the top edge of what sits under them.
+    # The trough this test exists to prevent was the listing sitting
+    # *between* two brighter columns.
+    for column in ("#nav", "#inspector", "#player"):
+        assert background(column) == "--bg", (
+            f"{column} is brighter than the content it frames"
+        )
+
+    # Measured, not merely named apart: the listing has to be the
+    # brighter of the two in both palettes, or the trough is back under
+    # another pair of names.
+    def luminance(values, name):
+        digits = values[name].strip().lstrip("#")
+        red, green, blue = (int(digits[i:i + 2], 16) for i in (0, 2, 4))
+
+        return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+
+    for theme, block in (
+        ("light", r':root, :root\[data-theme="light"\]'),
+        ("dark", r':root\[data-theme="dark"\]'),
+    ):
+        found = re.search(block + r" \{(.*?)\n\}", css, re.DOTALL)
+        assert found, theme
+        values = dict(re.findall(r"(--[\w-]+):\s*([^;]+);", found.group(1)))
+
+        assert luminance(values, "--surface") > luminance(values, "--bg"), (
+            f"in the {theme} theme the listing is darker than the columns "
+            "beside it, which is the exact complaint this test was "
+            "written for"
         )
 
 
