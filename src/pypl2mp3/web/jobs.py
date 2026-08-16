@@ -127,10 +127,13 @@ class Job:
             known = self.items.get(event["item_id"], {})
             self.items[event["item_id"]] = {
                 "item_id": event["item_id"],
-                # The listing already named it, and the label the sweep
-                # passes is a position ("3/12"), not a name. Losing the
-                # name here emptied the row the moment work began on it.
-                "label": known.get("label") or event.get("label", ""),
+                # Whatever the listing called it, and nothing else. The
+                # label the sweep passes is a position — "3/12" — so
+                # falling back to it dressed a song nobody could name as
+                # a song called "3/12". A name we do not have is better
+                # left absent: the row says so, and shows the id and a
+                # link to the video instead.
+                "label": known.get("label", ""),
                 "position": event.get("label", ""),
                 "state": "running",
                 "stage": None,

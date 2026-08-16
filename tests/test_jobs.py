@@ -387,3 +387,22 @@ def test_a_stage_appears_the_moment_it_begins():
     )
 
     assert job.items["AAA"]["stages"]["shazam"] == 0.0
+
+
+def test_a_position_never_becomes_a_name():
+    """"1/11" appeared where a song title belonged.
+
+    The sweep announces a position, because until YouTube answers that is
+    all it has. Falling back to it when the listing had no name dressed a
+    song nobody could name as a song called "1/11" — and the row already
+    has an honest way to show that case, with the id and a link.
+    """
+
+    job = _feed(
+        Job(job_id="import:PL1"),
+        {"kind": "item_listed", "item_id": "AAA", "label": ""},
+        {"kind": "item_started", "item_id": "AAA", "label": "1/11"},
+    )
+
+    assert job.items["AAA"]["label"] == "", job.items["AAA"]
+    assert job.items["AAA"]["position"] == "1/11"
