@@ -133,8 +133,9 @@ async def import_playlist(
     progress: ProgressPort,
     shazam_threshold: float = DEFAULT_SHAZAM_THRESHOLD,
     retry_passes: int = DEFAULT_RETRY_PASSES,
+    only: Optional[list[str]] = None,
 ) -> ImportReport:
-    """Download every song the playlist has and the repository lacks.
+    """Download the songs the playlist has and the repository lacks.
 
     Args:
         repository_path: folder where playlists are stored.
@@ -144,6 +145,12 @@ async def import_playlist(
         shazam_threshold: minimum Shazam score to accept an identification.
         retry_passes: extra sweeps over songs YouTube refused. Only those:
             an age-restricted video is just as restricted the second time.
+        only: import just these, instead of everything missing. What is
+            already on disk is still skipped, and an id the playlist does
+            not hold is ignored rather than fetched — a selection narrows
+            what was offered, it is never a way to reach outside it.
+            `None` means everything missing; an empty list means nothing,
+            which is not the same thing.
 
     Returns:
         What was imported and what failed. A song that fails does not
@@ -185,6 +192,14 @@ async def import_playlist(
     }
 
     missing = [song_id for song_id in remote_ids if song_id not in local_ids]
+
+    if only is not None:
+        # Intersected with what is genuinely missing rather than trusted:
+        # the list was built by a check that may be minutes old, the songs
+        # may have been fetched by another run since, and the ids may not
+        # be this playlist's at all.
+        wanted = set(only)
+        missing = [song_id for song_id in missing if song_id in wanted]
 
     imported: list[ImportedSong] = []
     failed: list[FailedImport] = []

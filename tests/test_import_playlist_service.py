@@ -281,3 +281,86 @@ async def test_a_refusal_that_persists_is_reported_not_looped(
     )
     assert len(report.failed) == 3
     assert {f.reason for f in report.failed} == {"refused by YouTube"}
+
+
+async def test_a_selection_narrows_what_is_imported(tmp_path, monkeypatch):
+    """The point of the selection panel: you choose, and only what you
+    chose is fetched."""
+
+    _install_fakes(monkeypatch)
+    _make_local(tmp_path, [])
+
+    report = await import_playlist(
+        tmp_path, PLAYLIST_ID, FakeProgress(), only=[REMOTE_IDS[1]]
+    )
+
+    assert [song.youtube_id for song in report.imported] == [REMOTE_IDS[1]]
+    assert report.failed == []
+
+
+async def test_an_empty_selection_imports_nothing(tmp_path, monkeypatch):
+    """Not the same as no selection at all. `None` means "everything
+    missing"; an empty list means the user unticked every row, and
+    downloading the lot would be the worst possible reading of that."""
+
+    _install_fakes(monkeypatch)
+    _make_local(tmp_path, [])
+
+    report = await import_playlist(
+        tmp_path, PLAYLIST_ID, FakeProgress(), only=[]
+    )
+
+    assert report.imported == []
+    assert list(tmp_path.rglob("*.mp3")) == []
+
+
+async def test_a_selection_cannot_reach_outside_the_playlist(
+    tmp_path, monkeypatch
+):
+    """A selection narrows what was offered. An id the playlist does not
+    hold is ignored, not fetched: the panel's list is the only thing that
+    decides what may be downloaded."""
+
+    _install_fakes(monkeypatch)
+    _make_local(tmp_path, [])
+
+    report = await import_playlist(
+        tmp_path, PLAYLIST_ID, FakeProgress(), only=["ZZZZZZZZZZZ"]
+    )
+
+    assert report.imported == []
+    assert report.failed == []
+    assert list(tmp_path.rglob("*.mp3")) == []
+
+
+async def test_a_selection_still_skips_what_is_already_on_disk(
+    tmp_path, monkeypatch
+):
+    """The list may be minutes old, and another run may have fetched the
+    song in between."""
+
+    _install_fakes(monkeypatch)
+    _make_local(tmp_path, [REMOTE_IDS[0]])
+
+    report = await import_playlist(
+        tmp_path, PLAYLIST_ID, FakeProgress(), only=REMOTE_IDS
+    )
+
+    assert [song.youtube_id for song in report.imported] == REMOTE_IDS[1:], (
+        'the song already on disk was fetched a second time'
+    )
+
+
+async def test_no_selection_still_imports_everything_missing(
+    tmp_path, monkeypatch
+):
+    """The CLI passes nothing, and must keep its behaviour exactly."""
+
+    _install_fakes(monkeypatch)
+    _make_local(tmp_path, [])
+
+    report = await import_playlist(tmp_path, PLAYLIST_ID, FakeProgress())
+
+    assert sorted(song.youtube_id for song in report.imported) == sorted(
+        REMOTE_IDS
+    )
