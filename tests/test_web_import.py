@@ -473,18 +473,31 @@ async def test_an_import_still_running_does_not(tmp_path):
 
 
 async def test_checking_for_new_songs_does_not(tmp_path):
-    """Checking reads YouTube and writes nothing. A refetch of 928 rows
-    would be pure waste."""
+    """Checking reads YouTube and writes nothing, so a refetch of 928
+    rows is pure waste — whether the check succeeds or not.
+
+    Both outcomes, because they are refused for different reasons. A
+    check that completes reports no imported songs, which is enough to
+    refuse it on its own; a check that fails is refused only by its kind.
+    Asserting the first alone let the kind be dropped from the rule
+    without a single test noticing — a counter-experiment caught it.
+    """
 
     app = create_app(tmp_path)
     await _finished_job(
         app, f"check:{PLAYLIST_ID}", {"missing": [{"youtube_id": "A" * 11}]}
     )
+    await _finished_job(app, "check:PLOTHER", None, fail=True)
 
     async with _client_for(app) as client:
-        response = await client.get(f"/jobs/check:{PLAYLIST_ID}", headers=HX)
+        done = await client.get(f"/jobs/check:{PLAYLIST_ID}", headers=HX)
+        broke = await client.get("/jobs/check:PLOTHER", headers=HX)
 
-    assert "HX-Trigger" not in response.headers, response.headers
+    assert "HX-Trigger" not in done.headers, done.headers
+    assert "HX-Trigger" not in broke.headers, (
+        "a check that failed made the whole page refetch, though checking "
+        "never writes a file"
+    )
 
 
 async def test_an_import_that_brought_nothing_back_does_not(tmp_path):
