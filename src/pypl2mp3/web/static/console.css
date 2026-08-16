@@ -578,8 +578,18 @@ body[data-tab="imports"] #imports { display: block; }
   border-bottom: 1px solid var(--line);
   min-width: 0;
 }
-.import-row label { display: flex; align-items: center; gap: var(--space-3);
-                    min-width: 0; flex: 1; cursor: pointer; }
+.import-pick { display: flex; align-items: flex-start;
+               gap: var(--space-3); min-width: 0; flex: 1; }
+.import-pick input { margin-top: 0.15em; flex: 0 0 auto; }
+.import-text { min-width: 0; display: flex; flex-direction: column; }
+.import-row .import-name { cursor: pointer; display: block; }
+.import-row .row-meta { display: flex; gap: var(--space-3);
+                        align-items: baseline; }
+/* A name YouTube would not give. The id under it is then all there is,
+   and the link beside it the only way to find out what the song is. */
+.unnamed { color: var(--text-3); font-style: italic; }
+.score-label { font-size: var(--fs-xs); letter-spacing: 0.06em;
+               text-transform: uppercase; opacity: 0.75; }
 .import-name { overflow: hidden; text-overflow: ellipsis;
                white-space: nowrap; min-width: 0; }
 /* Directly in the row — a finished song has no checkbox to sit beside —

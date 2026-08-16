@@ -302,8 +302,11 @@ def test_a_song_youtube_will_not_name_still_gets_a_row(tmp_path, monkeypatch):
 
     listed = [(e[1], e[2]) for e in progress.events if e[0] == "item_listed"]
     assert [row[0] for row in listed] == REMOTE_IDS, listed
-    assert all(row[1] == row[0] for row in listed), (
-        f"a refused name should fall back to the id: {listed}"
+    assert all(row[1] == "" for row in listed), (
+        f"a refused name should be empty, not the id: {listed}\n"
+        "The panel shows the id on its own line either way, and a name "
+        "that is secretly an id reads as a song called dQw4w9WgXcQ "
+        "rather than as one nobody could name."
     )
     assert report.missing == REMOTE_IDS
 

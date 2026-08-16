@@ -697,3 +697,78 @@ async def test_stopping_lets_the_listing_catch_up(tmp_path, monkeypatch):
         )
     finally:
         release.set()
+
+
+async def test_every_row_carries_its_id_and_a_way_to_watch_it(
+    tmp_path, monkeypatch
+):
+    """The id is not decoration in this panel.
+
+    YouTube refuses to name a video often enough that the id is
+    sometimes all there is, and the link beside it is then the only way
+    to find out what the song actually is. Both are shown for every row,
+    named or not — the same way the listing shows them.
+    """
+
+    def fake_check(repository_path, playlist_id, progress=None,
+                   with_labels=False):
+        progress.item_listed("aaaaaaaaaaa", "IAMX - Kiss")
+        progress.item_listed("bbbbbbbbbbb", "")
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            total_remote=2, already_local=0,
+            missing=["aaaaaaaaaaa", "bbbbbbbbbbb"],
+        )
+
+    monkeypatch.setattr("pypl2mp3.web.app.check_new_songs", fake_check)
+    _make_song(tmp_path, "ARTIST", "Song", "zzzzzzzzzzz")
+    app = create_app(tmp_path)
+
+    async with _client(app) as client:
+        await client.post(f"/playlists/{PLAYLIST_ID}/check", headers=HX)
+        pane = await _settle_pane(client, app, f"check:{PLAYLIST_ID}")
+
+    for youtube_id in ("aaaaaaaaaaa", "bbbbbbbbbbb"):
+        assert f'<span class="id">{youtube_id}</span>' in pane, youtube_id
+        assert f"https://youtu.be/{youtube_id}" in pane, youtube_id
+
+    # And a song nobody could name says so, rather than wearing its id
+    # as a title.
+    assert "unnamed" in pane, pane
+
+
+async def test_the_number_on_a_finished_row_says_it_is_a_shazam_score(
+    tmp_path, monkeypatch
+):
+    """A bare "91%" beside a finished download reads as how much of it
+    arrived."""
+
+    async def fake_import(repository_path, playlist_id, progress=None,
+                          only=None):
+        progress.item_listed("aaaaaaaaaaa", "IAMX - Kiss")
+        progress.item_started("aaaaaaaaaaa", "1/1")
+        progress.song_identified("IAMX", "Kiss", 91.0)
+        progress.item_done("aaaaaaaaaaa")
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            total_remote=1, already_local=0, imported=[], failed=[]
+        )
+
+    monkeypatch.setattr("pypl2mp3.web.app.import_playlist", fake_import)
+    _make_song(tmp_path, "ARTIST", "Song", "zzzzzzzzzzz")
+    app = create_app(tmp_path)
+
+    async with _client(app) as client:
+        await client.post(f"/playlists/{PLAYLIST_ID}/import", headers=HX)
+        pane = await _settle_pane(client, app, f"import:{PLAYLIST_ID}")
+
+    # Scoped to the row: the header carries its own counts, and a match
+    # anywhere on the page would pass while the row said only "91%".
+    row = re.search(r'<li class="import-row done">(.*?)</li>', pane, re.DOTALL)
+    assert row, pane[-400:]
+    assert "91%" in row.group(1), row.group(1)
+    assert "Shazam" in row.group(1), (
+        f"the number stands on its own: {row.group(1).strip()[-200:]}"
+    )

@@ -101,14 +101,17 @@ def check_new_songs(
 
 
 def _name_of(youtube_id: str) -> str:
-    """A video's "author - title", or its id if YouTube will not say.
+    """A video's "author - title", or "" if YouTube will not say.
 
-    Falling back to the id rather than raising: a name that cannot be
-    fetched is a row that reads poorly, not a song that cannot be
-    imported. YouTube refuses these requests often enough — bot
-    detection, age restriction, a deleted video — that treating a refusal
-    as fatal would make the panel unusable on exactly the playlists that
-    need it most.
+    Empty rather than the id: the caller shows the id anyway, and a name
+    that is secretly an id reads as a song called "dQw4w9WgXcQ" rather
+    than as a song nobody could name.
+
+    Empty rather than raising, either. YouTube refuses these often enough
+    — bot detection, age restriction, a deleted video — that treating a
+    refusal as fatal would make the panel unusable on exactly the
+    playlists that need it most. What is missing is the name; the song
+    can still be imported.
     """
 
     try:
@@ -116,4 +119,4 @@ def _name_of(youtube_id: str) -> str:
 
         return f"{video.author} - {video.title}"
     except Exception:
-        return youtube_id
+        return ""

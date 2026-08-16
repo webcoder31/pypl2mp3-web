@@ -83,15 +83,37 @@
         <ul class="imports-list">
           {% for item in items %}
             <li class="import-row {{ item.state }}">
-              {% if phase == "choosing" %}
-                <label>
+              {# Laid out like a row of the listing: the name, then the
+                 id under it in the same monospace. The id is not
+                 decoration here — YouTube refuses to name a video often
+                 enough that it is sometimes all there is, and the link
+                 beside it is then the only way to find out what the
+                 song actually is.
+
+                 `for` rather than a wrapping <label>: a link inside a
+                 label toggles the checkbox as well as following itself. #}
+              <span class="import-pick">
+                {% if phase == "choosing" %}
                   <input type="checkbox" name="songs"
+                         id="pick-{{ item.item_id }}"
                          value="{{ item.item_id }}" checked>
-                  <span class="import-name">{{ item.label }}</span>
-                </label>
-              {% else %}
-                <span class="import-name">{{ item.label }}</span>
-              {% endif %}
+                {% endif %}
+                <span class="import-text">
+                  <label class="import-name"
+                         for="pick-{{ item.item_id }}">
+                    {%- if item.label -%}
+                      {{ item.label }}
+                    {%- else -%}
+                      <span class="unnamed">unnamed</span>
+                    {%- endif -%}
+                  </label>
+                  <span class="row-meta">
+                    <span class="id">{{ item.item_id }}</span>
+                    <a href="https://youtu.be/{{ item.item_id }}"
+                       target="_blank" rel="noopener noreferrer">video</a>
+                  </span>
+                </span>
+              </span>
 
               {% if item.state == "failed" %}
                 <span class="job-error" title="{{ item.issue }}">
@@ -115,7 +137,12 @@
                    the trap was walked into twice. #}
                 {% set score = item.get("score") %}
                 {% if score %}
-                  <span class="job-new">{{ score | round | int }}%</span>
+                  {# Named, because a bare "91%" beside a finished
+                     download reads as how much of it arrived. #}
+                  <span class="job-new">
+                    <span class="score-label">Shazam</span>
+                    {{ score | round | int }}%
+                  </span>
                 {% elif score is not none %}
                   {# Zero is not a low score, it is Shazam finding
                      nothing: song.py coerces a missing match to 0 and
@@ -123,7 +150,9 @@
                      reads as a song that scored badly rather than one
                      that was never identified — and this is the row you
                      would click to fix it. #}
-                  <span class="job-error">no match</span>
+                  <span class="job-error">
+                    <span class="score-label">Shazam</span> no match
+                  </span>
                 {% else %}
                   <span class="job-new">done</span>
                 {% endif %}
