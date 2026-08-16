@@ -372,3 +372,50 @@ async def test_a_matched_song_shows_its_score(tmp_path, monkeypatch):
         pane = await _settle_pane(client, app, f"import:{PLAYLIST_ID}")
 
     assert "91%" in pane, pane
+
+
+async def test_a_song_being_fetched_keeps_the_name_it_was_listed_under(
+    tmp_path, monkeypatch
+):
+    """What the browser showed before this was fixed: "1/4".
+
+    The check draws up the list and knows the names. The sweep announces
+    a position, because that is all it has until YouTube answers. The
+    pane shows one row per song and has to take each half from the job
+    that holds it.
+    """
+
+    def fake_check(repository_path, playlist_id, progress=None,
+                   with_labels=False):
+        progress.item_listed("aaaaaaaaaaa", "IAMX - Kiss + Swallow")
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            total_remote=1, already_local=0, missing=["aaaaaaaaaaa"]
+        )
+
+    async def fake_import(repository_path, playlist_id, progress=None,
+                          only=None):
+        progress.item_listed("aaaaaaaaaaa", "")
+        progress.item_started("aaaaaaaaaaa", "1/4")
+        progress.item_done("aaaaaaaaaaa")
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            total_remote=1, already_local=0, imported=[], failed=[]
+        )
+
+    monkeypatch.setattr("pypl2mp3.web.app.check_new_songs", fake_check)
+    monkeypatch.setattr("pypl2mp3.web.app.import_playlist", fake_import)
+    _make_song(tmp_path, "ARTIST", "Song", "bbbbbbbbbbb")
+    app = create_app(tmp_path)
+
+    async with _client(app) as client:
+        await client.post(f"/playlists/{PLAYLIST_ID}/check", headers=HX)
+        await _settle_pane(client, app, f"check:{PLAYLIST_ID}")
+        await client.post(f"/playlists/{PLAYLIST_ID}/import", headers=HX)
+        pane = await _settle_pane(client, app, f"import:{PLAYLIST_ID}")
+
+    assert "IAMX - Kiss + Swallow" in pane, (
+        f"the row lost its name once work began on it: {pane[-500:]}"
+    )
