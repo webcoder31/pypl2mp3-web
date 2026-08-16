@@ -1464,3 +1464,25 @@ async def test_the_inspector_is_visible_from_either_tab(tmp_path):
         "opening a song from an import row switches tabs, which takes you "
         "away from the list to show what was already visible"
     )
+
+
+async def test_an_icon_button_lays_its_contents_out_in_a_row(tmp_path):
+    """Left to itself an inline svg sits on the text baseline: it hangs
+    low against the letters and adds the descender's worth of height.
+
+    That made Play this two pixels taller than the plain buttons beside
+    it, with its glyph off centre. The rule is keyed on carrying an icon
+    rather than on where the button happens to live, so the next one does
+    not repeat it.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    rule = re.search(r"\nbutton:has\(\.icon\) \{([^}]*)\}", css)
+    assert rule, (
+        "icon buttons are laid out by location, so a button with an icon "
+        "somewhere new inherits nothing"
+    )
+    assert "inline-flex" in rule.group(1), rule.group(1)
+    assert "align-items: center" in rule.group(1), rule.group(1)
