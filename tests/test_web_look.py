@@ -1515,3 +1515,31 @@ async def test_an_icon_button_lays_its_contents_out_in_a_row(tmp_path):
     )
     assert "inline-flex" in rule.group(1), rule.group(1)
     assert "align-items: center" in rule.group(1), rule.group(1)
+
+
+async def test_the_header_band_is_as_deep_above_as_below(tmp_path):
+    """A border is part of the band the eye sees.
+
+    The rule under the header is on its bottom edge only, so equal
+    padding left the painted band a pixel deeper below the content than
+    above it. The top pays for the line.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    block = re.search(r"\n#header \{(.*?)\n\}", css, re.DOTALL).group(1)
+
+    border = re.search(r"border-bottom:\s*(\d+)px", block)
+    assert border, block
+
+    shared = re.search(r"\n  padding:\s*([^;]+);", block)
+    assert shared, "the header no longer takes the inset every block shares"
+    assert shared.group(1).split()[0] == "var(--block-pad-y)", shared.group(1)
+
+    top = re.search(r"padding-top:\s*([^;]+);", block)
+    assert top, "nothing pays for the rule under the header"
+    assert top.group(1) == f"calc(var(--block-pad-y) + {border.group(1)}px)", (
+        f"the top does not account for the {border.group(1)}px rule below: "
+        f"{top.group(1)}"
+    )

@@ -310,6 +310,13 @@ a { color: var(--accent); text-decoration-thickness: 1px;
   background: var(--header-bg);
   border-bottom: 1px solid var(--line);
   padding: var(--block-pad-y) var(--block-pad-x);
+  /* And a pixel more on top, to pay for the rule underneath. A border is
+     part of the band the eye sees, and this one is on the bottom edge
+     only, so equal padding left the painted band a pixel deeper below
+     the content than above it. Written as an override rather than folded
+     into the shorthand: the inset every block shares should stay
+     readable as itself, with the exception stated next to its reason. */
+  padding-top: calc(var(--block-pad-y) + 1px);
   display: flex;
   align-items: center;
   gap: var(--space-4);
