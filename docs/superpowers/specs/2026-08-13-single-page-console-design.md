@@ -149,30 +149,32 @@ Le « look » vient après, sur cette structure.
 Tenu à jour au fil des tranches. Rien n'est perdu ici : ce qui est
 mesuré est chiffré, ce qui est un choix est motivé.
 
-## Dettes ouvertes par ce qui est déjà livré
+## Reste à faire
 
-### 1. (traité) La recherche vivante relançait un parcours à chaque frappe
+### 1. Les crêtes ne sont calculées qu'à la première écoute
 
-**Mesuré :** 1,4 s par parcours sur 927 morceaux, relancé à chaque pause
-de 300 ms dans la frappe. Le contrôle d'une empreinte du dépôt (nombre de
-fichiers + mtime maximum) coûte **6 ms**.
+Le waveform coûte 420 ms de ffmpeg la première fois qu'un morceau est
+joué, puis 1 ms. Sur un dépôt de 928 morceaux, cela fait 928 décodages
+étalés dans le temps, chacun suivi d'une écriture du fichier — et cette
+écriture change le `mtime`, donc invalide une fois le cache de parsing
+de `repository.py` pour ce morceau. Rien n'est cassé, tout se corrige
+seul, mais le travail est fait au pire moment : pendant l'écoute.
 
-**Remède :** un cache du parcours invalidé par cette empreinte. Le point
-délicat est que `SongModel` détient l'objet mutagen, pochette comprise —
-927 modèles en mémoire, c'est à mesurer avant de s'engager. Cacher les
-`SongSummary` (légers) obligerait en revanche à réimplémenter le
-filtrage flou de `repository.py`, qui dériverait alors du CLI.
+L'import tient déjà le fichier et vient de le convertir. Y calculer les
+crêtes coûterait presque rien et supprimerait entièrement l'attente.
+Rien ne permet non plus de préchauffer un dépôt existant.
 
-**Débloque aussi :** le point 2.
+### 2. Le mode interactif de `import -p`
 
-### 2. Aucune page n'a jamais été rendue par un moteur de navigateur
+Seul cas qui justifierait un `WebInteraction` : le port `InteractionPort`
+existe, la console ne s'en sert pas.
 
-Tout le comportement JavaScript — suivi de l'inspecteur, garde sur la
-saisie non enregistrée, aperçu du suivant, sens de lecture, filtre de la
-liste d'artistes — n'est vérifié qu'au niveau du **câblage** : le test
-constate que le code est là, pas qu'il fait ce qu'il prétend. Les
-verrous du bac à sable ont empêché Chrome de démarrer ; les vérifications
-sont manuelles depuis le début.
+### 3. Une seule page subsiste
+
+`report.html`, servie uniquement aux requêtes non-HTMX de
+`/jobs/{id}/report`. Une URL de compte rendu mise en favori doit
+répondre autre chose qu'un fragment nu. Elle ne dépend plus de
+`base.html`, supprimé.
 
 ## Tranches — toutes livrées
 
@@ -182,11 +184,11 @@ sont manuelles depuis le début.
 | 2 | Recherche vivante et inspecteur | `9bdfeb3` |
 | 3 | Jobs en ruban | `6bee025` |
 | 4 | L'établi (+ verrou Shazam `ff39232`) | `46507d3` |
-| 5 | Nettoyage | ci-dessous |
+| 5 | Nettoyage | `94e51f4` |
 
 ## Dettes traitées
 
-### Le parcours du dépôt (point 2) — `fe8f2c0`, `909f942`
+### Le parcours du dépôt — `fe8f2c0`, `909f942`
 
 Cache des morceaux parsés dans `repository.py`, clé = chemin, validation
 = (mtime, taille). Mesuré sur les 928 morceaux : console 1,46 s → 90 ms,
@@ -195,7 +197,7 @@ frappe dans la recherche 1,4 s → 65-100 ms. Coût : 66 Mo.
 Angle mort assumé et testé : une réécriture qui ne change ni la date ni
 la taille est invisible.
 
-### Le double parsing (point 3) — `256c8d7`
+### Le double parsing — `256c8d7`
 
 Les six commandes CLI demandent les modèles, plus les chemins.
 `get_repository_song_files` supprimée : plus aucun appelant, et un
@@ -209,22 +211,62 @@ ID3 de tout fichier sans tag YouTube ID » ; le helper qu'elle appelait
 faisait exactement ça. Le danger était réel, il est maintenant écarté
 pour de bon.
 
-## Reste à faire
+### Aucune page n'avait jamais été rendue par un moteur de navigateur
 
-### 3. La passe « look »
+Le verrou du profil Chrome a été levé. Depuis, chaque changement est
+rendu, mesuré et piloté dans un vrai navigateur, et les tests de
+câblage ne sont plus la seule preuve.
 
-Décidée avec l'utilisateur : après l'ergonomie. Points déjà relevés —
-hauteur des lignes trop grande sur les titres longs, durée affichée
-`00:06:17` là où `6:17` suffit.
+Ce que cela a immédiatement attrapé, et qu'aucun test de câblage
+n'aurait vu : une chirurgie CSS par motif avait entièrement mangé
+`#timeline` et `#seek` — la barre de lecture n'existait plus, et la
+suite était verte. Depuis, les mesures qui portent des décisions sont
+prises sur la page : `#seek` à 17 rem pour vérifier qu'un libellé ne se
+tronque pas, la largeur du canvas de 362 px à 1400 px, la couleur
+réellement peinte dans les deux thèmes.
 
-### 4. Le mode interactif de `import -p`
+Reste vrai : un test Python ne mesure pas du texte rendu. Ce qui est
+vérifié au navigateur est dit comme tel dans les messages de commit.
 
-Seul cas qui justifierait un `WebInteraction` : le port `InteractionPort`
-existe, la console ne s'en sert pas.
+### La passe « look » — de `bda2004` à `6c96584`
 
-### 5. Une seule page subsiste
+Livrée. Elle a produit, dans l'ordre : les contrôles dessinés au lieu
+d'être laissés au navigateur (19 sur 19, contre 3 au départ), une échelle
+typographique et une échelle d'espacement, la hiérarchie des surfaces
+remise à l'endroit, la disposition inspecteur-au-dessus / nav-à-côté, un
+sélecteur de thème à trois états — dont « suivre le système », qui est
+la raison pour laquelle la palette est un attribut et non une media
+query — et le waveform.
 
-`report.html`, servie uniquement aux requêtes non-HTMX de
-`/jobs/{id}/report`. Une URL de compte rendu mise en favori doit
-répondre autre chose qu'un fragment nu. Elle ne dépend plus de
-`base.html`, supprimé.
+Les deux points nommés à l'ouverture sont clos : la durée affiche `6:17`
+et non `00:06:17`, et la hauteur des lignes a été réglée par la
+réorganisation.
+
+### Le waveform — `0c50188`, `0148c7a`, `9b55710`
+
+Les crêtes vivent dans le MP3, en frame ID3 privée versionnée, 400
+octets. Mesuré sur un morceau de 3,1 Mo : 420 ms puis 1 ms, et le
+fichier n'a pas grossi — le padding ID3 a absorbé la frame. Aucune
+dépendance ajoutée : ffmpeg était déjà un binaire requis.
+
+Échelle absolue, pas normalisée par morceau : un téléchargement muet ou
+tronqué doit ressembler à ce qu'il est. Le canvas est *dans* `#seek`,
+donc le clic, le glisser et les flèches n'ont pas été réécrits.
+
+Dette ouverte par là : le point 1 ci-dessus.
+
+### L'import ne disait pas à la page qu'il avait écrit — `91573b6`
+
+`#list` et `#nav` se rafraîchissent sur `songsChanged`, et seule la
+sauvegarde l'émettait. Un import téléchargeait ses fichiers et la liste
+continuait d'afficher ce qu'elle avait, jusqu'au rechargement.
+
+L'en-tête est posé dans `_job_fragment`, donc sur les deux chemins à la
+fois. La règle est explicite : le *check* ne l'émet jamais, un import
+sans nouveauté non plus, un import échoué si — il ne porte aucun rapport,
+donc ce qu'il a écrit avant de s'arrêter est inconnu.
+
+Une contre-épreuve a montré que le test du *check* était creux : il
+passait parce qu'un check terminé n'a pas de clé `imported`, pas parce
+que c'est un check. Corrigé en `09dfcef` avec le cas d'un check en échec,
+qui n'est refusé que par son type.
