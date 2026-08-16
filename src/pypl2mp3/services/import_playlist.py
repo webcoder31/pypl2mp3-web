@@ -212,6 +212,11 @@ async def import_playlist(
         for index, youtube_id in enumerate(ids, 1):
             position = f"{prefix}{index}/{len(ids)}"
 
+            # Announced before anything is attempted, so a panel can show
+            # the row as running rather than leaving it blank for however
+            # long YouTube takes to answer.
+            progress.item_started(youtube_id, position)
+
             try:
                 song = await _import_one(
                     youtube_id,
@@ -224,17 +229,25 @@ async def import_playlist(
                 # One song failing must not end the run: a dropped
                 # connection on song 3 of 34 used to lose the other 31.
                 cause = root_cause(exc)
+                reason = failure_reason(exc)
+                issue = f"{type(cause).__name__}: {cause}"
+                # Reported as it happens, not only in the final report:
+                # a run of 34 songs takes minutes, and a failure nobody
+                # is told about until the end is a failure nobody can act
+                # on while there is still time.
+                progress.item_failed(youtube_id, reason, issue)
                 rejected.append(
                     FailedImport(
                         youtube_id=youtube_id,
                         song_name=f"Video ID: {youtube_id}",
-                        issue=f"{type(cause).__name__}: {cause}",
-                        reason=failure_reason(exc),
+                        issue=issue,
+                        reason=reason,
                         retryable=is_bot_detection(exc),
                     )
                 )
                 continue
 
+            progress.item_done(youtube_id)
             imported.append(song)
 
         return rejected

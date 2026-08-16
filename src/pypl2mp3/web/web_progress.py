@@ -50,6 +50,24 @@ class WebProgress:
     def stage_done(self, stage: str) -> None:
         self._emit({"kind": "stage_done", "stage": stage})
 
+    def item_started(self, item_id: str, label: str) -> None:
+        self._emit(
+            {"kind": "item_started", "item_id": item_id, "label": label}
+        )
+
+    def item_done(self, item_id: str) -> None:
+        self._emit({"kind": "item_done", "item_id": item_id})
+
+    def item_failed(self, item_id: str, reason: str, issue: str) -> None:
+        self._emit(
+            {
+                "kind": "item_failed",
+                "item_id": item_id,
+                "reason": reason,
+                "issue": issue,
+            }
+        )
+
     def song_identified(
         self, artist: str, title: str, score: float
     ) -> None:

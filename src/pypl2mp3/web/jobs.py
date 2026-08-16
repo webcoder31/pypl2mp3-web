@@ -60,6 +60,15 @@ class Job:
     # Latest known state, overwritten rather than accumulated: what a UI
     # polling once a second actually needs.
     current: dict = field(default_factory=dict)
+    # One entry per member of a batch, in the order they were announced.
+    # `current` says what is happening now and forgets what came before;
+    # a panel showing thirty songs at once needs all thirty to persist,
+    # each with its own stage, percentage, score and error.
+    items: dict = field(default_factory=dict)
+    # Which item stage events belong to. The batch is walked one item at
+    # a time, so "now" is never ambiguous — and that is what lets the
+    # stage callbacks stay ignorant of the batch they are part of.
+    in_flight: Optional[str] = None
     _events: deque = field(default_factory=deque, repr=False)
     task: Optional[asyncio.Task] = field(default=None, repr=False)
 
@@ -97,8 +106,41 @@ class Job:
         identified — are the history worth keeping.
         """
 
-        if event.get("kind") == "stage_progress":
+        kind = event.get("kind")
+
+        if kind == "item_started":
+            self.items[event["item_id"]] = {
+                "item_id": event["item_id"],
+                "label": event.get("label", ""),
+                "state": "running",
+                "stage": None,
+                "percent": None,
+            }
+            self.in_flight = event["item_id"]
+            self._events.append(event)
+            return
+
+        if kind in ("item_done", "item_failed"):
+            item = self.items.setdefault(
+                event["item_id"], {"item_id": event["item_id"], "label": ""}
+            )
+            item.update(
+                {
+                    "state": "done" if kind == "item_done" else "failed",
+                    "stage": None,
+                    "percent": None,
+                    "reason": event.get("reason"),
+                    "issue": event.get("issue"),
+                }
+            )
+            if self.in_flight == event["item_id"]:
+                self.in_flight = None
+            self._events.append(event)
+            return
+
+        if kind == "stage_progress":
             self.current = {**self.current, "percent": event.get("percent")}
+            self._touch_item(percent=event.get("percent"))
             return
 
         if event.get("kind") == "stage_started":
@@ -122,10 +164,41 @@ class Job:
                     "label": event.get("label"),
                     "percent": None,
                 }
+                # A new stage starts at nothing, not at the last stage's
+                # percentage: the bar would otherwise open full.
+                self._touch_item(
+                    stage=event.get("stage"),
+                    stage_label=event.get("label"),
+                    percent=None,
+                )
+        elif kind == "stage_done":
+            self.current = {**self.current, **event}
+            self._touch_item(percent=100.0)
+        elif kind == "song_identified":
+            self.current = {**self.current, **event}
+            self._touch_item(
+                artist=event.get("artist"),
+                title=event.get("title"),
+                score=event.get("score"),
+            )
         else:
             self.current = {**self.current, **event}
 
         self._events.append(event)
+
+    def _touch_item(self, **changes) -> None:
+        """Apply a stage event to whichever item is in flight.
+
+        Nothing in flight is not an error: `check` reports stages without
+        ever announcing an item, and a stage that arrives between two
+        songs belongs to neither.
+        """
+
+        item = self.items.get(self.in_flight)
+        if item is None:
+            return
+
+        item.update(changes)
 
 
 class JobRegistry:

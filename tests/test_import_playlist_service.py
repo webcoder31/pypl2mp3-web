@@ -364,3 +364,72 @@ async def test_no_selection_still_imports_everything_missing(
     assert sorted(song.youtube_id for song in report.imported) == sorted(
         REMOTE_IDS
     )
+
+
+async def test_the_import_says_which_song_each_event_is_about(
+    tmp_path, monkeypatch
+):
+    """A panel drawing one row per song needs the id, not a label it
+    would have to parse back."""
+
+    _install_fakes(monkeypatch)
+    _make_local(tmp_path, [])
+    progress = FakeProgress()
+
+    await import_playlist(tmp_path, PLAYLIST_ID, progress)
+
+    started = [e[1] for e in progress.events if e[0] == "item_started"]
+    done = [e[1] for e in progress.events if e[0] == "item_done"]
+    assert started == REMOTE_IDS, started
+    assert done == REMOTE_IDS, done
+
+
+async def test_a_song_is_announced_before_youtube_is_asked_anything(
+    tmp_path, monkeypatch
+):
+    """Fetching a video's title takes seconds and can be refused. The row
+    has to exist and read as running for that whole time, not appear once
+    the answer is already in."""
+
+    _install_fakes(monkeypatch)
+    _make_local(tmp_path, [])
+    progress = FakeProgress()
+
+    await import_playlist(tmp_path, PLAYLIST_ID, progress, only=[REMOTE_IDS[0]])
+
+    kinds = [event[0] for event in progress.events]
+    assert kinds[0] == "stage_started", kinds[:3]
+    assert kinds[1] == "item_started", (
+        f"something was reported before the song was announced: {kinds[:3]}"
+    )
+
+
+async def test_a_failing_song_reports_its_failure_as_it_happens(
+    tmp_path, monkeypatch
+):
+    """34 songs take minutes. A failure nobody is told about until the
+    final report is a failure nobody can act on while there is time."""
+
+    async def flaky(youtube_id, playlist_path, threshold, **kwargs):
+        if youtube_id == REMOTE_IDS[1]:
+            raise RuntimeError("network down")
+        written = playlist_path / f"ARTIST - Title [{youtube_id}].mp3"
+        written.write_bytes(_MP3_FRAME * 8)
+
+        return _FakeSong(youtube_id, written)
+
+    _install_fakes(monkeypatch, create=flaky)
+    _make_local(tmp_path, [])
+    progress = FakeProgress()
+
+    await import_playlist(
+        tmp_path, PLAYLIST_ID, PLAYLIST_ID and progress, retry_passes=0
+    )
+
+    failures = [e for e in progress.events if e[0] == "item_failed"]
+    assert [e[1] for e in failures] == [REMOTE_IDS[1]], failures
+    assert "network down" in failures[0][3], failures[0]
+    # and the others still finished
+    assert [e[1] for e in progress.events if e[0] == "item_done"] == [
+        REMOTE_IDS[0], REMOTE_IDS[2]
+    ]

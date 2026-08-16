@@ -205,3 +205,114 @@ def test_emit_warns_and_drops_the_event_for_an_unknown_job_id(caplog):
     assert registry.get("no-such-job") is None
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert any("no-such-job" in record.getMessage() for record in warnings)
+
+
+def _feed(job, *events):
+    for event in events:
+        job.append_event(event)
+
+    return job
+
+
+def test_each_song_keeps_its_own_progress():
+    """`current` is overwritten from one song to the next, which is right
+    for a one-line ribbon and useless for a panel showing thirty rows.
+    Every row has to survive the next row starting."""
+
+    job = _feed(
+        Job(job_id="import:PL1"),
+        {"kind": "item_started", "item_id": "AAA", "label": "1/2"},
+        {"kind": "stage_started", "stage": "download_audio", "label": "d"},
+        {"kind": "stage_progress", "stage": "download_audio", "percent": 40.0},
+        {"kind": "item_done", "item_id": "AAA"},
+        {"kind": "item_started", "item_id": "BBB", "label": "2/2"},
+        {"kind": "stage_progress", "stage": "download_audio", "percent": 10.0},
+    )
+
+    assert list(job.items) == ["AAA", "BBB"], "the order songs were announced"
+    assert job.items["AAA"]["state"] == "done"
+    assert job.items["BBB"]["state"] == "running"
+    assert job.items["BBB"]["percent"] == 10.0
+    assert job.items["AAA"]["percent"] != 10.0, (
+        "the second song's progress landed on the first song's row"
+    )
+
+
+def test_a_percentage_updates_the_row_without_filling_the_ring():
+    """The reason percentages were kept out of the ring in the first
+    place: 34 songs produced over 10,000 events against 500 slots."""
+
+    job = _feed(
+        Job(job_id="import:PL1"),
+        {"kind": "item_started", "item_id": "AAA", "label": "1/1"},
+        *(
+            {"kind": "stage_progress", "stage": "download_audio",
+             "percent": float(p)}
+            for p in range(101)
+        ),
+    )
+
+    assert job.items["AAA"]["percent"] == 100.0
+    assert len(job.events) == 1, (
+        f"{len(job.events)} events kept; the ring is being flooded again"
+    )
+
+
+def test_a_new_stage_starts_its_bar_at_nothing():
+    """Carrying the previous stage's percentage over would open the
+    encoder's bar full and then jump it backwards."""
+
+    job = _feed(
+        Job(job_id="import:PL1"),
+        {"kind": "item_started", "item_id": "AAA", "label": "1/1"},
+        {"kind": "stage_progress", "stage": "download_audio", "percent": 98.0},
+        {"kind": "stage_started", "stage": "mp3_encode", "label": "e"},
+    )
+
+    assert job.items["AAA"]["stage"] == "mp3_encode"
+    assert not job.items["AAA"]["percent"], job.items["AAA"]
+
+
+def test_a_score_lands_on_the_song_it_identified():
+    job = _feed(
+        Job(job_id="import:PL1"),
+        {"kind": "item_started", "item_id": "AAA", "label": "1/2"},
+        {"kind": "item_done", "item_id": "AAA"},
+        {"kind": "item_started", "item_id": "BBB", "label": "2/2"},
+        {"kind": "song_identified", "artist": "IAMX", "title": "Kiss",
+         "score": 88.0},
+    )
+
+    assert job.items["BBB"]["score"] == 88.0
+    assert "score" not in job.items["AAA"], (
+        "the second song's identification was written onto the first"
+    )
+
+
+def test_a_failure_is_recorded_on_its_own_row():
+    job = _feed(
+        Job(job_id="import:PL1"),
+        {"kind": "item_started", "item_id": "AAA", "label": "1/2"},
+        {"kind": "item_failed", "item_id": "AAA", "reason": "age restricted",
+         "issue": "AgeRestrictedError: nope"},
+        {"kind": "item_started", "item_id": "BBB", "label": "2/2"},
+    )
+
+    assert job.items["AAA"]["state"] == "failed"
+    assert job.items["AAA"]["reason"] == "age restricted"
+    assert job.items["BBB"]["state"] == "running", (
+        "one song's failure marked the next one failed too"
+    )
+
+
+def test_stages_without_an_item_are_not_an_error():
+    """Checking a playlist reports stages and never announces an item."""
+
+    job = _feed(
+        Job(job_id="check:PL1"),
+        {"kind": "stage_started", "stage": "check", "label": "Checking"},
+        {"kind": "stage_progress", "stage": "check", "percent": 100.0},
+    )
+
+    assert job.items == {}
+    assert job.current["stage"] == "check"
