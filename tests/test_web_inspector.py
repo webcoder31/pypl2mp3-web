@@ -307,12 +307,19 @@ async def test_the_panel_offers_to_play_what_it_shows(tmp_path):
 
     # And it carries the weight Save carries, because it commits to
     # something: it changes what you are listening to.
-    filled = re.search(
-        r"\n([^\n{}]*#inspector \.play-this[^{}]*)\{([^}]*)\}", css
-    )
-    assert filled, css[-600:]
-    assert "background: var(--accent);" in filled.group(2), filled.group(2)
-    assert 'button[type="submit"]' in filled.group(1), (
+    # The resting rule, not the hover one — that carries the accent too,
+    # so matching either let the fill be dropped without a test noticing.
+    rules = [
+        (selector, body)
+        for selector, body in re.findall(
+            r"\n([^\n{}]+(?:,\n[^\n{}]+)*)\{([^}]*)\}", css
+        )
+        if "#inspector .play-this" in selector and ":hover" not in selector
+    ]
+    assert rules, "the button has no resting rule at all"
+    selector, body = rules[0]
+    assert "background: var(--accent);" in body, body
+    assert '#inspector button[type="submit"]' in selector, (
         "it is filled by a rule of its own, which can drift from Save's"
     )
 
