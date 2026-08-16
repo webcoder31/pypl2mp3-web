@@ -316,3 +316,39 @@ def test_stages_without_an_item_are_not_an_error():
 
     assert job.items == {}
     assert job.current["stage"] == "check"
+
+
+def test_a_listed_song_is_not_a_running_one():
+    """The whole reason item_listed exists.
+
+    A panel shows thirty rows to tick before a single one is downloaded.
+    Drawing them as running would promise work that has not started, and
+    leave nothing to distinguish the row being fetched right now.
+    """
+
+    job = _feed(
+        Job(job_id="check:PL1"),
+        {"kind": "item_listed", "item_id": "AAA", "label": "IAMX - Kiss"},
+        {"kind": "item_listed", "item_id": "BBB", "label": "IAMX - Spit It"},
+        {"kind": "item_started", "item_id": "BBB", "label": "2/2"},
+    )
+
+    assert job.items["AAA"]["state"] == "pending", (
+        "a row nobody has started reads as running, so the panel cannot "
+        "show which song is actually being worked on"
+    )
+    assert job.items["BBB"]["state"] == "running"
+
+
+def test_starting_a_song_keeps_the_name_it_was_listed_under():
+    """The sweep announces a position — "2/12" — not a name. Overwriting
+    the label with it emptied the row the moment work began on it."""
+
+    job = _feed(
+        Job(job_id="import:PL1"),
+        {"kind": "item_listed", "item_id": "AAA", "label": "IAMX - Kiss"},
+        {"kind": "item_started", "item_id": "AAA", "label": "1/12"},
+    )
+
+    assert job.items["AAA"]["label"] == "IAMX - Kiss"
+    assert job.items["AAA"]["position"] == "1/12"
