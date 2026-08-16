@@ -58,19 +58,54 @@ def root_cause(error: BaseException) -> BaseException:
         current = deeper
 
 
+# YouTube answers a refused request with a payload that has no
+# `videoDetails` block — no title, no author, no duration. pytubefix
+# reads that key in twelve places and guards it in exactly one, `title`,
+# where the KeyError is caught and turned into BotDetection. Every other
+# property lets it out raw.
+#
+# So one cause surfaced under two names, and which one you got depended
+# on nothing but the order the properties happened to be read in. The
+# label was unreadable half the time, and — worse — the retry was decided
+# by that same accident: a refusal seen through `author` was filed as
+# permanent and never tried again.
+_MISSING_DETAILS = "videoDetails"
+
+
+def _is_refusal(error: BaseException) -> bool:
+    """Whether YouTube declined to describe the video at all."""
+
+    cause = root_cause(error)
+    if type(cause).__name__ == "BotDetection":
+        return True
+
+    return isinstance(cause, KeyError) and cause.args[:1] == (
+        _MISSING_DETAILS,
+    )
+
+
 def is_bot_detection(error: BaseException) -> bool:
     """Whether YouTube refused this request, rather than the video being
     off limits.
 
     The only failure worth retrying: age restriction and region blocking
-    are properties of the video and will hold on a second attempt.
+    are properties of the video and will hold on a second attempt, while
+    a refusal has been seen to clear moments later.
     """
 
-    return type(root_cause(error)).__name__ == "BotDetection"
+    return _is_refusal(error)
 
 
 def failure_reason(error: BaseException) -> str:
-    """A short, honest label for why a song did not import."""
+    """A short, honest label for why a song did not import.
+
+    Never a bare Python class name. "KeyError" tells the reader nothing
+    about their download, and the full type and message are kept on the
+    row anyway, in the `issue` the panel shows on hover.
+    """
+
+    if _is_refusal(error):
+        return "refused by YouTube"
 
     name = type(root_cause(error)).__name__
 
@@ -87,10 +122,12 @@ def failure_reason(error: BaseException) -> str:
         "VideoRemovedByYouTubeForViolatingTOS": "removed by YouTube",
         "VideoBlockedByCopyright": "blocked for copyright",
         "AccountTerminated": "account terminated",
-        "BotDetection": "refused by YouTube",
         "SABRError": "stream protection",
         "LiveStreamError": "live stream",
-    }.get(name, name)
+        # Everything pytubefix names for a reason we can restate. Anything
+        # else is a fault nobody anticipated, and saying so is more use
+        # than naming the class it was raised from.
+    }.get(name, "unexpected error")
 
 
 @dataclass(frozen=True)

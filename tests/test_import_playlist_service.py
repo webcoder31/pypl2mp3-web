@@ -449,3 +449,89 @@ async def test_a_failing_song_reports_its_failure_as_it_happens(
     assert [e[1] for e in progress.events if e[0] == "item_done"] == [
         REMOTE_IDS[0], REMOTE_IDS[2]
     ]
+
+
+def test_a_refusal_is_a_refusal_whatever_name_it_arrives_under():
+    """The bug this closes, in one assertion.
+
+    YouTube answers a refused request with a payload that has no
+    `videoDetails`. pytubefix reads that key in twelve places and guards
+    it in one — `title`, where the KeyError becomes BotDetection. Every
+    other property lets it out raw.
+
+    So the same cause arrived under two names, and which one you got
+    depended on the order the properties happened to be read in. The
+    retry was decided by that accident: a refusal seen through `author`
+    was filed as permanent and never tried again.
+    """
+
+    from pypl2mp3.services.import_playlist import (
+        failure_reason,
+        is_bot_detection,
+    )
+
+    seen_through_title = type("BotDetection", (Exception,), {})()
+    seen_through_author = KeyError("videoDetails")
+
+    for error in (seen_through_title, seen_through_author):
+        assert failure_reason(error) == "refused by YouTube", error
+        assert is_bot_detection(error), (
+            f"{error!r} is filed as permanent, so it is never retried"
+        )
+
+
+def test_a_key_error_from_anywhere_else_is_not_a_refusal():
+    """Narrow on purpose. A KeyError of our own is not YouTube declining
+    to answer, and retrying it would spend a download to reach the same
+    fault."""
+
+    from pypl2mp3.services.import_playlist import (
+        failure_reason,
+        is_bot_detection,
+    )
+
+    ours = KeyError("shazam_match_score")
+
+    assert not is_bot_detection(ours)
+    assert failure_reason(ours) != "refused by YouTube"
+
+
+def test_a_reason_is_never_a_python_class_name():
+    """"KeyError" tells a listener nothing about their download. The full
+    type and message are kept on the row regardless, in the issue the
+    panel shows on hover."""
+
+    from pypl2mp3.services.import_playlist import failure_reason
+
+    class SomeInternalError(Exception):
+        pass
+
+    assert failure_reason(SomeInternalError("boom")) == "unexpected error"
+
+
+async def test_a_refusal_that_arrived_as_a_key_error_is_retried(
+    tmp_path, monkeypatch
+):
+    """End to end: the retry pass has to actually pick it up."""
+
+    attempts = []
+
+    async def refuses_once(youtube_id, playlist_path, threshold, **kwargs):
+        attempts.append(youtube_id)
+        if attempts.count(youtube_id) == 1:
+            raise KeyError("videoDetails")
+
+        written = playlist_path / f"ARTIST - Title [{youtube_id}].mp3"
+        written.write_bytes(_MP3_FRAME * 8)
+
+        return _FakeSong(youtube_id, written)
+
+    _install_fakes(monkeypatch, create=refuses_once)
+    _make_local(tmp_path, [])
+
+    report = await import_playlist(tmp_path, PLAYLIST_ID, FakeProgress())
+
+    assert report.failed == [], report.failed
+    assert sorted(song.youtube_id for song in report.imported) == sorted(
+        REMOTE_IDS
+    ), "the songs YouTube refused once were never tried again"
