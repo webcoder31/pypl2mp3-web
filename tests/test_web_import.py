@@ -35,8 +35,13 @@ class _FakeYouTube:
 
 
 class _FakeSong:
-    def __init__(self, youtube_id):
+    # `path` is not decoration: the real SongModel has carried one since
+    # the beginning, and leaving it off this double let the import start
+    # using it with the suite still green. It points at the file `create`
+    # below actually writes.
+    def __init__(self, youtube_id, path):
         self.filename = f"ARTIST - Title [{youtube_id}].mp3"
+        self.path = path
         self.artist = "ARTIST"
         self.title = "Title"
         self.shazam_match_score = 66.0
@@ -50,10 +55,10 @@ def _install_fakes(monkeypatch, delay: float = 0.0):
     async def create(youtube_id, playlist_path, threshold, **kwargs):
         if delay:
             await asyncio.sleep(delay)
-        (playlist_path / f"ARTIST - Title [{youtube_id}].mp3").write_bytes(
-            _MP3_FRAME * 8
-        )
-        return _FakeSong(youtube_id)
+        written = playlist_path / f"ARTIST - Title [{youtube_id}].mp3"
+        written.write_bytes(_MP3_FRAME * 8)
+
+        return _FakeSong(youtube_id, written)
 
     monkeypatch.setattr(mod.SongModel, "create_from_youtube", create)
 
@@ -367,16 +372,16 @@ async def test_an_unmatched_import_is_offered_the_fix_screen(
     """A song can arrive on disk and still be junk; the report should say so."""
 
     class _JunkSong(_FakeSong):
-        def __init__(self, youtube_id):
-            super().__init__(youtube_id)
+        def __init__(self, youtube_id, path):
+            super().__init__(youtube_id, path)
             self.shazam_match_score = None
             self.has_junk_filename = True
 
     async def unmatched(youtube_id, playlist_path, threshold, **kwargs):
-        (playlist_path / f"ARTIST - Title [{youtube_id}].mp3").write_bytes(
-            _MP3_FRAME * 8
-        )
-        return _JunkSong(youtube_id)
+        written = playlist_path / f"ARTIST - Title [{youtube_id}].mp3"
+        written.write_bytes(_MP3_FRAME * 8)
+
+        return _JunkSong(youtube_id, written)
 
     _install_fakes(monkeypatch)
     monkeypatch.setattr(mod.SongModel, "create_from_youtube", unmatched)
@@ -527,3 +532,57 @@ async def test_an_import_that_broke_part_way_still_does(tmp_path):
         response = await client.get(f"/jobs/import:{PLAYLIST_ID}", headers=HX)
 
     assert response.headers.get("HX-Trigger") == "songsChanged"
+
+
+async def test_an_imported_song_arrives_with_its_waveform(tmp_path,
+                                                          monkeypatch):
+    """Otherwise the half second of ffmpeg is paid by whoever first
+    presses play, which is the one moment somebody is waiting.
+
+    The import already holds the file and has just encoded it.
+    """
+
+    _install_fakes(monkeypatch)
+    app = create_app(tmp_path)
+
+    async with _client(app) as client:
+        await client.post(f"/playlists/{PLAYLIST_ID}/import")
+        await _settle(client, f"import:{PLAYLIST_ID}")
+
+    from pypl2mp3.libs.waveform import PEAK_COUNT, read_peaks
+    import mutagen.mp3
+
+    songs = sorted(tmp_path.rglob("*.mp3"))
+    assert songs, "the import produced no file to look at"
+    for song in songs:
+        peaks = read_peaks(mutagen.mp3.MP3(song))
+        assert peaks is not None, (
+            f"{song.name} was imported without its waveform, so the first "
+            "listener pays for it"
+        )
+        assert len(peaks) == PEAK_COUNT
+
+
+async def test_a_waveform_that_cannot_be_computed_does_not_fail_the_import(
+    tmp_path, monkeypatch
+):
+    """The song is downloaded, converted and tagged. Refusing to call it
+    imported because a picture of it could not be drawn would throw away
+    the minute of work that succeeded."""
+
+    _install_fakes(monkeypatch)
+
+    from pypl2mp3.services import import_playlist as service
+
+    def explode(path):
+        raise RuntimeError("ffmpeg went missing")
+
+    monkeypatch.setattr(service, "peaks_for", explode)
+    app = create_app(tmp_path)
+
+    async with _client(app) as client:
+        await client.post(f"/playlists/{PLAYLIST_ID}/import")
+        payload = await _settle(client, f"import:{PLAYLIST_ID}")
+
+    assert payload["state"] == "completed", payload["error"]
+    assert len(payload["result"]["imported"]) == len(REMOTE_IDS), payload

@@ -211,6 +211,7 @@
     index = (i + queue.length) % queue.length;
     audio.src = "/songs/" + queue[index].id + "/audio";
     loadWaveform(queue[index].id);
+    warmWaveform();
     paint();
 
     // The song being judged is the song being heard: one cursor, not two.
@@ -418,6 +419,28 @@
   audio.addEventListener("timeupdate", paintTime);
   audio.addEventListener("loadedmetadata", paintTime);
   audio.addEventListener("emptied", paintTime);
+
+  // Songs imported since the waveform existed carry their peaks already.
+  // The ones that predate it compute theirs the first time they are
+  // played — half a second, paid by somebody who is waiting for the
+  // music. Asking for the next song's peaks now moves that half second
+  // into the three minutes when nobody is waiting for anything, and the
+  // answer is kept in the file, so it is paid once ever.
+  //
+  // Which song is next depends on the direction the queue is being
+  // walked, the same as the readout in the toolbar.
+  function warmWaveform() {
+    if (queue.length < 2) return;
+
+    const following =
+      queue[(index + direction + queue.length) % queue.length];
+    if (!following || following.id === queue[index].id) return;
+
+    window.fetch("/songs/" + following.id + "/peaks").catch(function () {
+      // Nothing to do and nothing to show: this is work done early, and
+      // failing to do it early only means doing it on time.
+    });
+  }
 
   // The bar is fluid: the window, the nav's clamp and the workbench all
   // change its width, and a canvas does not reflow with its box.

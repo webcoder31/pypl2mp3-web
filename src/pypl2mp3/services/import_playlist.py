@@ -11,6 +11,7 @@ the event loop, so this coroutine can be awaited directly by a web server
 without freezing it.
 """
 
+import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -19,6 +20,7 @@ from pytubefix import Playlist, YouTube
 
 from pypl2mp3.libs.repository import get_repository_playlist
 from pypl2mp3.libs.song import SongModel
+from pypl2mp3.libs.waveform import peaks_for
 from pypl2mp3.libs.utils import get_song_id_from_filename, get_song_id_from_url
 from pypl2mp3.ports.progress import ProgressPort
 from pypl2mp3.services._song_callbacks import create_from_youtube_callbacks
@@ -270,6 +272,8 @@ async def _import_one(
         **create_from_youtube_callbacks(progress),
     )
 
+    await asyncio.to_thread(_store_waveform, song.path)
+
     return ImportedSong(
         youtube_id=youtube_id,
         filename=song.filename,
@@ -278,3 +282,22 @@ async def _import_one(
         shazam_match_score=song.shazam_match_score,
         is_junk=bool(song.has_junk_filename),
     )
+
+
+def _store_waveform(song_path: Path) -> None:
+    """Compute and store the song's waveform, here rather than later.
+
+    The file is on disk and freshly encoded, and half a second of ffmpeg
+    is nothing beside the download that just finished. Left undone, that
+    same half second is paid by whoever first presses play — which is the
+    one moment somebody is waiting.
+
+    Best effort in both directions: a waveform that cannot be computed is
+    not a failed import, and the player recomputes or falls back to the
+    plain bar on its own.
+    """
+
+    try:
+        peaks_for(song_path)
+    except Exception:
+        pass

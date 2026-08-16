@@ -33,10 +33,16 @@ class _FakeYouTube:
 
 
 class _FakeSong:
-    """What create_from_youtube hands back, reduced to what we read."""
+    """What create_from_youtube hands back, reduced to what we read.
 
-    def __init__(self, youtube_id):
+    `path` included: the real SongModel has always had one, and the
+    import now stores the song's waveform through it. A double that
+    leaves it off lets that kind of change land with the suite green.
+    """
+
+    def __init__(self, youtube_id, path):
         self.filename = f"ARTIST - Title [{youtube_id}].mp3"
+        self.path = path
         self.artist = "ARTIST"
         self.title = "Title"
         self.shazam_match_score = 66.0
@@ -59,10 +65,10 @@ def _install_fakes(monkeypatch, create=None):
     monkeypatch.setattr(mod, "YouTube", _FakeYouTube)
 
     async def default_create(youtube_id, playlist_path, threshold, **kwargs):
-        (playlist_path / f"ARTIST - Title [{youtube_id}].mp3").write_bytes(
-            _MP3_FRAME * 8
-        )
-        return _FakeSong(youtube_id)
+        written = playlist_path / f"ARTIST - Title [{youtube_id}].mp3"
+        written.write_bytes(_MP3_FRAME * 8)
+
+        return _FakeSong(youtube_id, written)
 
     monkeypatch.setattr(
         mod.SongModel, "create_from_youtube", create or default_create
@@ -105,10 +111,10 @@ async def test_one_failing_song_does_not_abort_the_others(
     async def flaky(youtube_id, playlist_path, threshold, **kwargs):
         if youtube_id == "BBBBBBBBBBB":
             raise RuntimeError("network down")
-        (playlist_path / f"ARTIST - Title [{youtube_id}].mp3").write_bytes(
-            _MP3_FRAME * 8
-        )
-        return _FakeSong(youtube_id)
+        written = playlist_path / f"ARTIST - Title [{youtube_id}].mp3"
+        written.write_bytes(_MP3_FRAME * 8)
+
+        return _FakeSong(youtube_id, written)
 
     _install_fakes(monkeypatch, create=flaky)
     _make_local(tmp_path, [])
@@ -236,10 +242,10 @@ async def test_it_retries_only_what_youtube_refused(tmp_path, monkeypatch):
         if youtube_id == "BBBBBBBBBBB" and attempts[youtube_id] == 1:
             raise _wrapped(BotDetection("vid"))
 
-        (playlist_path / f"ARTIST - Title [{youtube_id}].mp3").write_bytes(
-            _MP3_FRAME * 8
-        )
-        return _FakeSong(youtube_id)
+        written = playlist_path / f"ARTIST - Title [{youtube_id}].mp3"
+        written.write_bytes(_MP3_FRAME * 8)
+
+        return _FakeSong(youtube_id, written)
 
     _install_fakes(monkeypatch, create=selective)
     _make_local(tmp_path, [])
