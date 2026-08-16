@@ -393,3 +393,124 @@ async def test_an_unmatched_import_is_offered_the_fix_screen(
 async def test_an_unknown_job_report_is_a_404(tmp_path):
     async with _client(create_app(tmp_path)) as client:
         assert (await client.get("/jobs/nope/report")).status_code == 404
+
+
+def _client_for(app):
+    return httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    )
+
+
+async def _finished_job(app, job_id, result, fail=False):
+    """Run a job to a terminal state and return once it is there."""
+
+    async def work(job):
+        if fail:
+            raise RuntimeError("half way through")
+
+        return result
+
+    app.state.jobs.start(job_id, work)
+    for _ in range(100):
+        state = app.state.jobs.get(job_id).state.value
+        if state not in ("pending", "running"):
+            return state
+        await asyncio.sleep(0.01)
+
+    raise AssertionError("the job never finished")
+
+
+async def test_a_finished_import_tells_the_page_the_repository_changed(
+    tmp_path,
+):
+    """The songs landed on disk and the listing kept showing what it had.
+
+    #list and #nav refetch on songsChanged, and nothing but a save was
+    ever firing it — so an import wrote the files and the page had no
+    way of knowing.
+    """
+
+    app = create_app(tmp_path)
+    await _finished_job(
+        app,
+        f"import:{PLAYLIST_ID}",
+        {"imported": [{"youtube_id": "AAAAAAAAAAA"}], "failed": []},
+    )
+
+    async with _client_for(app) as client:
+        response = await client.get(f"/jobs/import:{PLAYLIST_ID}", headers=HX)
+
+    assert response.headers.get("HX-Trigger") == "songsChanged", (
+        "the import finished and the page was never told"
+    )
+
+
+async def test_an_import_still_running_does_not(tmp_path):
+    """The fragment polls every second. Firing on each poll would refetch
+    the listing and the nav once a second for the whole import."""
+
+    app = create_app(tmp_path)
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def work(job):
+        started.set()
+        await release.wait()
+
+        return {"imported": [], "failed": []}
+
+    app.state.jobs.start(f"import:{PLAYLIST_ID}", work)
+    await started.wait()
+
+    try:
+        async with _client_for(app) as client:
+            response = await client.get(
+                f"/jobs/import:{PLAYLIST_ID}", headers=HX
+            )
+        assert "HX-Trigger" not in response.headers, response.headers
+    finally:
+        release.set()
+
+
+async def test_checking_for_new_songs_does_not(tmp_path):
+    """Checking reads YouTube and writes nothing. A refetch of 928 rows
+    would be pure waste."""
+
+    app = create_app(tmp_path)
+    await _finished_job(
+        app, f"check:{PLAYLIST_ID}", {"missing": [{"youtube_id": "A" * 11}]}
+    )
+
+    async with _client_for(app) as client:
+        response = await client.get(f"/jobs/check:{PLAYLIST_ID}", headers=HX)
+
+    assert "HX-Trigger" not in response.headers, response.headers
+
+
+async def test_an_import_that_brought_nothing_back_does_not(tmp_path):
+    """"Up to date" is the common case, and it changed no file."""
+
+    app = create_app(tmp_path)
+    await _finished_job(
+        app, f"import:{PLAYLIST_ID}", {"imported": [], "failed": []}
+    )
+
+    async with _client_for(app) as client:
+        response = await client.get(f"/jobs/import:{PLAYLIST_ID}", headers=HX)
+
+    assert "HX-Trigger" not in response.headers, response.headers
+
+
+async def test_an_import_that_broke_part_way_still_does(tmp_path):
+    """It carries no report, so what it wrote before stopping is unknown.
+    One wasted refetch beats songs sitting on disk that the page denies
+    exist."""
+
+    app = create_app(tmp_path)
+    state = await _finished_job(app, f"import:{PLAYLIST_ID}", None, fail=True)
+    assert state == "failed", state
+
+    async with _client_for(app) as client:
+        response = await client.get(f"/jobs/import:{PLAYLIST_ID}", headers=HX)
+
+    assert response.headers.get("HX-Trigger") == "songsChanged"

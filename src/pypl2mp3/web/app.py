@@ -139,7 +139,7 @@ def create_app(repository_path: Path) -> FastAPI:
         would never learn the job finished.
         """
 
-        return templates.TemplateResponse(
+        response = templates.TemplateResponse(
             request,
             "job.html",
             {
@@ -166,6 +166,39 @@ def create_app(repository_path: Path) -> FastAPI:
                 "polling": state in ("pending", "running", "busy"),
             },
         )
+
+        # #list and #nav refetch on songsChanged, and until now only a
+        # save fired it — so an import wrote its files and the page had
+        # no way of knowing. The songs were on disk and the listing kept
+        # showing what it had.
+        if _wrote_songs(job_id, state, result):
+            response.headers["HX-Trigger"] = "songsChanged"
+
+        return response
+
+    def _wrote_songs(job_id: str, state: str, result) -> bool:
+        """Whether a job in this state has put songs on disk.
+
+        Checking only reads YouTube, so it never has. An import has,
+        unless it finished having found nothing to fetch — which is the
+        common case and would otherwise refetch the whole listing for
+        nothing.
+
+        A failed or cancelled import carries no report, so what it wrote
+        before stopping is unknown: it counts. One wasted refetch beats
+        songs sitting on disk that the page denies exist.
+        """
+
+        if not job_id.startswith("import:"):
+            return False
+
+        if state in ("pending", "running", "busy"):
+            return False
+
+        if state == "completed":
+            return bool((result or {}).get("imported"))
+
+        return True
 
     def _shazam_fragment(request, youtube_id: str, job):
         """Shazam's answer, or the poll that waits for it."""
