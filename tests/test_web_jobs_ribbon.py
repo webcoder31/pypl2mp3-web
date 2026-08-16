@@ -1020,9 +1020,17 @@ async def test_pressing_start_keeps_the_list_on_screen(tmp_path, monkeypatch):
         release.set()
 
 
-async def test_a_new_look_forgets_the_last_selection(tmp_path, monkeypatch):
+async def test_a_new_look_is_not_narrowed_by_the_last_selection(
+    tmp_path, monkeypatch
+):
     """Whatever was ticked for the last run has nothing to say about
-    what the next check finds."""
+    what the next check finds.
+
+    What holds this is not a line clearing the selection — that was
+    unreachable — but that the panel reads it only while the import is
+    the newer of the two jobs. A check is newer, so it shows everything
+    it found.
+    """
 
     def fake_check(repository_path, playlist_id, progress=None,
                    with_labels=False):
