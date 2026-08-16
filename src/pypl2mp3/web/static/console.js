@@ -241,6 +241,30 @@
     }
   }
 
+  // Whether the panel is describing the song that is playing. The two
+  // cursors are allowed to differ — inspecting a song without cutting
+  // what you are listening to is deliberate — but the page has to say
+  // which one it is showing, or pressing play looks broken.
+  function markInspectorCursor() {
+    const panel = document.getElementById("inspector");
+    if (!panel) return;
+
+    const shown = panel.querySelector("[data-song-id]");
+    const current = queue[index];
+
+    // Reduced to two values and compared, the same way paint() does it.
+    // classList.toggle takes an *optional* boolean, and anything that can
+    // evaluate to undefined makes it toggle instead of set. Nothing
+    // playing gives null, nothing shown gives "", and neither can equal
+    // the other by accident.
+    const currentId = current ? current.id : null;
+    const shownId = shown ? shown.dataset.songId : "";
+
+    panel.classList.toggle("is-playing", shownId === currentId);
+  }
+
+  document.body.addEventListener("htmx:afterSwap", markInspectorCursor);
+
   function inspect(id) {
     if (dirty) return;
 
@@ -263,6 +287,7 @@
 
     // The song being judged is the song being heard: one cursor, not two.
     inspect(queue[index].id);
+    markInspectorCursor();
     prefetch();
 
     audio.play().catch(function () {
@@ -633,6 +658,42 @@
         } else {
           audio.pause();
         }
+      }
+      return;
+    }
+
+    // Play what the panel is showing. It is not necessarily what the
+    // queue is on — that is the whole point of being able to inspect a
+    // song without cutting the one you are listening to.
+    if (event.target.closest("#inspector .play-this")) {
+      const shown = document.querySelector("#inspector [data-song-id]");
+      if (!shown) return;
+
+      const wanted = shown.dataset.songId;
+      const entries = queueFromRows();
+      const at = entries.findIndex(function (entry) {
+        return entry.id === wanted;
+      });
+
+      if (at >= 0) {
+        // In the listing: select it there, exactly as clicking its row
+        // would, so the queue and what you can see stay the same thing.
+        setQueue(entries, at, false);
+      } else {
+        // Filtered out of the listing, or imported into a view that does
+        // not show it. Play it on its own rather than refuse: you asked
+        // for this song, and the alternative is a button that sometimes
+        // does nothing.
+        setQueue(
+          [{
+            id: wanted,
+            label: shown.dataset.label || "",
+            duration: "",
+            junk: false,
+          }],
+          0,
+          false
+        );
       }
       return;
     }

@@ -278,3 +278,60 @@ async def test_the_script_guards_unsaved_edits_before_following_the_player(
     assert 'event.target.closest("#inspector")' in script, (
         "nothing marks the panel dirty when you type in it"
     )
+
+
+async def test_the_panel_offers_to_play_what_it_shows(tmp_path):
+    """Two cursors are allowed here — inspecting a song without cutting
+    the one you are listening to is deliberate, and the junk fix-link
+    exists for exactly that — but nothing said which was which. The
+    player went on with its own song while the panel described another,
+    and pressing play resumed the first.
+    """
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        panel = (await client.get("/fragments/inspector/aaaaaaaaaaa")).text
+        css = (await client.get("/static/console.css")).text
+        script = (await client.get("/static/console.js")).text
+
+    assert "play-this" in panel, panel[:400]
+
+    # Rendered always and hidden by the page: the server cannot know what
+    # is playing, because the queue lives in the browser.
+    hidden = re.search(
+        r"#inspector\.is-playing \.play-this \{([^}]*)\}", css
+    )
+    assert hidden and "display: none" in hidden.group(1), css[-400:]
+    assert "is-playing" in script, "nothing ever sets the class"
+
+    # And it carries the weight Save carries, because it commits to
+    # something: it changes what you are listening to.
+    filled = re.search(
+        r"\n([^\n{}]*#inspector \.play-this[^{}]*)\{([^}]*)\}", css
+    )
+    assert filled, css[-600:]
+    assert "background: var(--accent);" in filled.group(2), filled.group(2)
+    assert 'button[type="submit"]' in filled.group(1), (
+        "it is filled by a rule of its own, which can drift from Save's"
+    )
+
+
+async def test_playing_from_the_panel_uses_the_listing(tmp_path):
+    """So the queue and what you can see stay the same thing. Falling
+    back to a queue of one is for a song the listing does not hold —
+    filtered out, or imported into a view that does not show it — and a
+    button that sometimes does nothing would be worse."""
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        script = (await client.get("/static/console.js")).text
+
+    handler = script[script.index('closest("#inspector .play-this")'):]
+    handler = handler[: handler.index("\n      return;")]
+    assert "queueFromRows()" in handler, handler[:300]
+    assert "setQueue" in handler, handler[:300]
+    assert "at >= 0" in handler, (
+        "the panel always plays the song alone, throwing away the queue"
+    )

@@ -5,7 +5,11 @@
    Cover on one side, everything else on the other: the art is the
    fastest way to recognise a song, and stacking it above the fields
    would push them off the screen. #}
-<div id="inspector-body" data-song-id="{{ song.youtube_id }}">
+{# data-label so a song played from here has a name in the player even
+   when it is not in the listing: without it the readout fell back to the
+   youtube id, which is the bug the queue entries were built to avoid. #}
+<div id="inspector-body" data-song-id="{{ song.youtube_id }}"
+     data-label="{{ song.label }}">
   <div class="inspector-cover">
     <img src="/songs/{{ song.youtube_id }}/cover" alt="" class="cover"
          onerror="this.style.display='none'">
@@ -23,6 +27,18 @@
     {# Shazam is not called on load: it takes seconds and waits fifteen
        more between requests. It is a job the user starts. #}
     <p class="inspector-tools">
+      {# Rendered always, shown only when this is not the song playing.
+         The server cannot know which that is — the queue lives in the
+         browser — so it renders the affordance and the page decides.
+
+         Without it there were two cursors and nothing said so: the
+         player went on with its own song while the panel described
+         another, and pressing play resumed the first. #}
+      <button type="button" class="play-this">
+        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"
+             fill="currentColor"><path d="M5 3.2 13 8l-8 4.8Z"/></svg>
+        Play this
+      </button>
       <button type="button"
               hx-post="/songs/{{ song.youtube_id }}/shazam"
               hx-target="#shazam"

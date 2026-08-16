@@ -238,6 +238,7 @@ button:disabled { opacity: 0.4; cursor: default; }
    commitment and had no business looking like one — the listing filters
    as you type and the button only repeats it. */
 #inspector button[type="submit"],
+#inspector .play-this,
 .workbench-detail button[type="submit"],
 #nav .playlist-actions button {
   background: var(--accent);
@@ -246,6 +247,7 @@ button:disabled { opacity: 0.4; cursor: default; }
   font-weight: 600;
 }
 #inspector button[type="submit"]:hover,
+#inspector .play-this:hover,
 .workbench-detail button[type="submit"]:hover,
 #nav .playlist-actions button:hover {
   background: var(--accent);
@@ -762,6 +764,10 @@ tbody tr.playing td.num { color: var(--accent); }
 .inspector-title { font-size: var(--fs-lg); line-height: 1.25;
                    margin: 0.2rem 0 0.1rem; letter-spacing: -0.01em; }
 #inspector .id { color: var(--text-3); }
+/* Gone when the panel already describes what you are hearing: an offer
+   to play the song that is playing is noise, and its absence is what
+   tells you the two cursors have met. */
+#inspector.is-playing .play-this { display: none; }
 /* Label beside its field. The label column is fixed so the three
    inputs share one left edge — ragged starts read as three unrelated
    controls rather than one form. */
