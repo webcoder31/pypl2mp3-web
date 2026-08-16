@@ -201,6 +201,13 @@ async def import_playlist(
         wanted = set(only)
         missing = [song_id for song_id in missing if song_id in wanted]
 
+    # The whole run, announced before any of it starts. A caller drawing
+    # rows otherwise learns of each song only as it is reached, so a
+    # selection of twelve shows one row and grows — and any song left out
+    # of the selection would go on looking like it was still coming.
+    for song_id in missing:
+        progress.item_listed(song_id, "")
+
     imported: list[ImportedSong] = []
     failed: list[FailedImport] = []
 

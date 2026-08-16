@@ -575,10 +575,68 @@ body[data-tab="imports"] #imports { display: block; }
                     min-width: 0; flex: 1; cursor: pointer; }
 .import-name { overflow: hidden; text-overflow: ellipsis;
                white-space: nowrap; min-width: 0; }
+/* Directly in the row — a finished song has no checkbox to sit beside —
+   the name takes the space so the outcome lands at the right edge, in
+   the same column for every row. */
+.import-row > .import-name { flex: 1; }
+.import-row button { font-size: var(--fs-xs);
+                     padding: var(--space-1) var(--space-2);
+                     color: var(--text-3); flex: 0 0 auto; }
+.import-row button:hover { color: var(--text-1); }
+.import-row .job-new, .import-row .job-error {
+  flex: 0 0 auto; font-variant-numeric: tabular-nums;
+}
+
+/* Working, with nothing to report about how far along it is. The stripe
+   moves so the bar cannot be mistaken for a full one. */
+.bar-fill.indeterminate {
+  background: repeating-linear-gradient(
+    90deg, var(--accent) 0 8px, transparent 8px 16px
+  );
+  animation: crawl 0.9s linear infinite;
+}
+@keyframes crawl { to { background-position: 16px 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .bar-fill.indeterminate { animation: none; opacity: 0.6; }
+}
 /* A row nobody has started reads as waiting, not as working. */
 .import-row.pending .import-name { color: var(--text-2); }
 .import-row.running .import-name { color: var(--text-1); }
 .import-row.failed .import-name { color: var(--text-3); }
+
+/* Four bars under the song being fetched. Sharp edges and a 3px track,
+   the same shape as the player's scrub bar: both say how far along
+   something is, and there is no reason for them to disagree about what
+   that looks like. */
+.import-stages {
+  list-style: none;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-1) var(--space-4);
+  padding: var(--space-2) 0 var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--line);
+}
+.stage {
+  display: grid;
+  grid-template-columns: 9rem 1fr 2.5rem;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+}
+/* A stage nobody has reached yet is drawn, and drawn as not reached:
+   leaving it out would make the row jump each time one begins. */
+.stage.waiting { color: var(--text-3); }
+.stage-label { white-space: nowrap; }
+.stage-percent { text-align: right; font-variant-numeric: tabular-nums;
+                 color: var(--text-3); }
+.bar { position: relative; height: 3px; background: var(--line-strong); }
+.bar-fill { position: absolute; left: 0; top: 0; bottom: 0;
+            background: var(--accent); }
+
+.import-position { font-variant-numeric: tabular-nums;
+                   color: var(--text-3); font-size: var(--fs-xs);
+                   white-space: nowrap; }
 
 #list .empty { padding: 1.5rem; color: var(--text-3); }
 

@@ -23,6 +23,7 @@ from fastapi.templating import Jinja2Templates
 
 from pypl2mp3.libs.song import SongModel
 from pypl2mp3.libs.waveform import WaveformError, peaks_for
+from pypl2mp3.services._song_callbacks import IMPORT_STAGES
 from pypl2mp3.services.check_new_songs import check_new_songs
 from pypl2mp3.services.list_artists import list_artists
 from pypl2mp3.services.list_playlists import list_playlists
@@ -459,6 +460,35 @@ def create_app(repository_path: Path) -> FastAPI:
             },
         )
 
+    def _merge_items(listed, working) -> list[dict]:
+        """The list as it was drawn up, with the work done to it since.
+
+        Order comes from the list: it is the order the songs will be
+        fetched in, so a row never moves under the pointer. A song the
+        working job knows and the list does not is appended — the list
+        can be missing, after a restart, and a run with no rows at all
+        would be worse than rows in an unexpected order.
+        """
+
+        names = {
+            item["item_id"]: item.get("label")
+            for item in (listed.items.values() if listed else ())
+        }
+
+        # Which songs there are is the working job's to say once it
+        # exists: you may have ticked four of five, and the fifth must
+        # not sit there looking like it is still coming.
+        source = working or listed
+        rows = []
+        for item in (source.items.values() if source else ()):
+            row = dict(item)
+            # The sweep announces a position, not a name. Whatever the
+            # list called the song is what the reader recognises.
+            row["label"] = names.get(item["item_id"]) or row.get("label") or ""
+            rows.append(row)
+
+        return rows
+
     def _imports_context(request, playlist: str) -> dict:
         """What the imports pane shows, and which job it is watching.
 
@@ -486,7 +516,12 @@ def create_app(repository_path: Path) -> FastAPI:
                 else "choosing"
             )
 
-        items = list(job.items.values()) if job else []
+        # The check produced the list and its names; the import is
+        # working through it and knows only the songs it has reached.
+        # Neither alone is the pane: showing the import's items would
+        # drop every song not yet started and label the one in flight
+        # "1/4", and showing the check's would never move.
+        items = _merge_items(checking, running if phase != "choosing" else None)
         states = [item.get("state") for item in items]
 
         return {
@@ -503,6 +538,7 @@ def create_app(repository_path: Path) -> FastAPI:
                 if job and job.elapsed_seconds
                 else ""
             ),
+            "stages": IMPORT_STAGES,
             "polling": phase in ("checking", "importing"),
         }
 

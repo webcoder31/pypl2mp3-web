@@ -80,6 +80,21 @@ _SHAZAM_STAGE = "shazam"
 _SHAZAM_LABEL = "Shazam-ing audio track:"
 
 
+# The stages one song goes through, in the order it goes through them.
+# Exported because a UI drawing a bar per stage needs both the order and
+# the wording, and inferring either from the events as they arrive means
+# drawing the bars in whatever order the first song happened to report.
+# The third field says whether the stage reports a percentage. Shazam
+# does not — it starts, it waits, it answers — and a bar sitting at zero
+# for the whole of it reads as a download that has stalled.
+IMPORT_STAGES = (
+    (_DOWNLOAD_AUDIO.stage, "Streaming audio", True),
+    (_MP3_ENCODE.stage, "Encoding to MP3", True),
+    (_DOWNLOAD_COVER_ART.stage, "Cover art", True),
+    (_SHAZAM_STAGE, "Shazam", False),
+)
+
+
 def create_from_youtube_callbacks(progress: ProgressPort) -> dict[str, object]:
     """Build the kwargs for `SongModel.create_from_youtube`.
 

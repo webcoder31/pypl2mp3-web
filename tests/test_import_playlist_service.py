@@ -384,23 +384,39 @@ async def test_the_import_says_which_song_each_event_is_about(
     assert done == REMOTE_IDS, done
 
 
-async def test_a_song_is_announced_before_youtube_is_asked_anything(
+async def test_every_song_has_a_row_before_any_work_is_reported(
     tmp_path, monkeypatch
 ):
-    """Fetching a video's title takes seconds and can be refused. The row
-    has to exist and read as running for that whole time, not appear once
-    the answer is already in."""
+    """Two things depend on this.
+
+    A song's row must exist before YouTube is asked anything, because
+    fetching a title takes seconds and can be refused, and a row that
+    appears only once the answer is in leaves the panel blank for that
+    whole time.
+
+    And the whole run must be announced before any of it starts, or a
+    selection of twelve shows one row and grows — while a song left out
+    of the selection goes on looking like it is still coming.
+    """
 
     _install_fakes(monkeypatch)
     _make_local(tmp_path, [])
     progress = FakeProgress()
 
-    await import_playlist(tmp_path, PLAYLIST_ID, progress, only=[REMOTE_IDS[0]])
+    await import_playlist(tmp_path, PLAYLIST_ID, progress)
 
-    kinds = [event[0] for event in progress.events]
-    assert kinds[0] == "stage_started", kinds[:3]
-    assert kinds[1] == "item_started", (
-        f"something was reported before the song was announced: {kinds[:3]}"
+    listed = [e[1] for e in progress.events if e[0] == "item_listed"]
+    assert listed == REMOTE_IDS, listed
+
+    first_work = next(
+        i for i, e in enumerate(progress.events) if e[0] == "item_started"
+    )
+    announced = {
+        e[1] for e in progress.events[:first_work] if e[0] == "item_listed"
+    }
+    assert announced == set(REMOTE_IDS), (
+        f"work began with only {announced} announced, so the panel filled "
+        "in as it went"
     )
 
 

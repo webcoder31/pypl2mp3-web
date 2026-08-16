@@ -104,19 +104,58 @@
                    through into round(). job.html carries this same note;
                    the trap was walked into twice. #}
                 {% set score = item.get("score") %}
-                {% if score is not none %}
+                {% if score %}
                   <span class="job-new">{{ score | round | int }}%</span>
+                {% elif score is not none %}
+                  {# Zero is not a low score, it is Shazam finding
+                     nothing: song.py coerces a missing match to 0 and
+                     the callbacks pass it straight on. Printing "0%"
+                     reads as a song that scored badly rather than one
+                     that was never identified — and this is the row you
+                     would click to fix it. #}
+                  <span class="job-error">no match</span>
                 {% else %}
                   <span class="job-new">done</span>
                 {% endif %}
               {% elif item.state == "running" %}
-                <span class="job-running">
-                  {{ item.stage or "starting" }}{%
-                    if item.percent %} {{ item.percent | round | int }}%{%
-                    endif %}
-                </span>
+                <span class="import-position">{{ item.position }}</span>
               {% endif %}
             </li>
+
+            {# The bars go under the song being fetched and nowhere else.
+               The import is sequential — one song at a time, always — so
+               a set of four bars on every row would be one live set and
+               eleven frozen at zero, which reads as eleven stalled
+               downloads. Finished rows keep their score, and that is the
+               whole of what they have left to say. #}
+            {% if item.state == "running" %}
+              {% set reached = item.get("stages") or {} %}
+              <li class="import-stages">
+                {% for stage, label, measured in stages %}
+                  {% set percent = reached.get(stage) %}
+                  {% set busy = percent is not none and percent < 100 %}
+                  <span class="stage {% if percent is none %}waiting{% endif %}">
+                    <span class="stage-label">{{ label }}</span>
+                    <span class="bar">
+                      {# An unmeasured stage fills its bar while it runs
+                         rather than sitting at zero: it is working, and a
+                         bar at nothing says the opposite. #}
+                      <span class="bar-fill {% if busy and not measured %}
+                            indeterminate{% endif %}"
+                            style="width: {% if measured
+                              %}{{ (percent or 0) | round | int }}{%
+                              else %}{{ 100 if percent is not none else 0 }}{%
+                              endif %}%"></span>
+                    </span>
+                    <span class="stage-percent">
+                      {%- if percent is not none and measured -%}
+                        {{ percent | round | int }}%
+                      {%- endif -%}
+                    </span>
+                  </span>
+                {% endfor %}
+              </li>
+            {% endif %}
           {% endfor %}
         </ul>
       </form>

@@ -315,3 +315,60 @@ async def test_dismissing_one_of_two_jobs_keeps_the_other(tmp_path):
     guard = re.search(r"if \(([^)]*)\)\s*jobs\.replaceChildren", handler)
     assert guard, handler
     assert "!jobs.children.length" in guard.group(1), guard.group(1)
+
+
+async def test_a_song_shazam_could_not_name_says_so(tmp_path, monkeypatch):
+    """Zero is not a low score, it is no identification at all.
+
+    song.py coerces a missing match to 0 and the callbacks pass it
+    straight on, so a row printing "0%" reads as a song that scored badly
+    rather than one that was never named — which is exactly the row you
+    would click to go and fix.
+    """
+
+    async def fake_import(repository_path, playlist_id, progress=None,
+                          only=None):
+        progress.item_listed("aaaaaaaaaaa", "UNKNOWN - Something")
+        progress.item_started("aaaaaaaaaaa", "1/1")
+        progress.song_identified("", "", 0.0)
+        progress.item_done("aaaaaaaaaaa")
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            total_remote=1, already_local=0, imported=[], failed=[]
+        )
+
+    monkeypatch.setattr("pypl2mp3.web.app.import_playlist", fake_import)
+    _make_song(tmp_path, "ARTIST", "Song", "bbbbbbbbbbb")
+    app = create_app(tmp_path)
+
+    async with _client(app) as client:
+        await client.post(f"/playlists/{PLAYLIST_ID}/import", headers=HX)
+        pane = await _settle_pane(client, app, f"import:{PLAYLIST_ID}")
+
+    assert "no match" in pane, pane
+    assert "0%" not in pane, "a song Shazam never named is shown as scoring 0"
+
+
+async def test_a_matched_song_shows_its_score(tmp_path, monkeypatch):
+    async def fake_import(repository_path, playlist_id, progress=None,
+                          only=None):
+        progress.item_listed("aaaaaaaaaaa", "IAMX - Kiss")
+        progress.item_started("aaaaaaaaaaa", "1/1")
+        progress.song_identified("IAMX", "Kiss", 91.4)
+        progress.item_done("aaaaaaaaaaa")
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            total_remote=1, already_local=0, imported=[], failed=[]
+        )
+
+    monkeypatch.setattr("pypl2mp3.web.app.import_playlist", fake_import)
+    _make_song(tmp_path, "ARTIST", "Song", "bbbbbbbbbbb")
+    app = create_app(tmp_path)
+
+    async with _client(app) as client:
+        await client.post(f"/playlists/{PLAYLIST_ID}/import", headers=HX)
+        pane = await _settle_pane(client, app, f"import:{PLAYLIST_ID}")
+
+    assert "91%" in pane, pane

@@ -352,3 +352,38 @@ def test_starting_a_song_keeps_the_name_it_was_listed_under():
 
     assert job.items["AAA"]["label"] == "IAMX - Kiss"
     assert job.items["AAA"]["position"] == "1/12"
+
+
+def test_each_stage_of_a_song_keeps_its_own_bar():
+    """Four bars are shown at once. One running figure would make three
+    of them lie about where they are."""
+
+    job = _feed(
+        Job(job_id="import:PL1"),
+        {"kind": "item_started", "item_id": "AAA", "label": "1/1"},
+        {"kind": "stage_started", "stage": "download_audio", "label": "d"},
+        {"kind": "stage_progress", "stage": "download_audio", "percent": 60.0},
+        {"kind": "stage_done", "stage": "download_audio"},
+        {"kind": "stage_started", "stage": "mp3_encode", "label": "e"},
+        {"kind": "stage_progress", "stage": "mp3_encode", "percent": 20.0},
+    )
+
+    stages = job.items["AAA"]["stages"]
+    assert stages["download_audio"] == 100.0, stages
+    assert stages["mp3_encode"] == 20.0, stages
+    assert "download_cover_art" not in stages, (
+        "a stage nobody has reached is already reporting progress"
+    )
+
+
+def test_a_stage_appears_the_moment_it_begins():
+    """Shazam reports no percentage at all. Waiting for one before
+    drawing its bar would mean never drawing it."""
+
+    job = _feed(
+        Job(job_id="import:PL1"),
+        {"kind": "item_started", "item_id": "AAA", "label": "1/1"},
+        {"kind": "stage_started", "stage": "shazam", "label": "s"},
+    )
+
+    assert job.items["AAA"]["stages"]["shazam"] == 0.0

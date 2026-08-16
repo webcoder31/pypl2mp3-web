@@ -161,6 +161,7 @@ class Job:
         if kind == "stage_progress":
             self.current = {**self.current, "percent": event.get("percent")}
             self._touch_item(percent=event.get("percent"))
+            self._stage_percent(event.get("stage"), event.get("percent"))
             return
 
         if event.get("kind") == "stage_started":
@@ -191,9 +192,14 @@ class Job:
                     stage_label=event.get("label"),
                     percent=None,
                 )
+                # Zero rather than absent: the bar has to appear the
+                # moment the stage begins, or a stage with no measured
+                # progress — Shazam — would never show at all.
+                self._stage_percent(event.get("stage"), 0.0)
         elif kind == "stage_done":
             self.current = {**self.current, **event}
             self._touch_item(percent=100.0)
+            self._stage_percent(event.get("stage"), 100.0)
         elif kind == "song_identified":
             self.current = {**self.current, **event}
             self._touch_item(
@@ -205,6 +211,20 @@ class Job:
             self.current = {**self.current, **event}
 
         self._events.append(event)
+
+    def _stage_percent(self, stage: str, percent) -> None:
+        """Remember how far one stage of the song in flight has got.
+
+        Per stage rather than one running figure: a song has four of
+        them, they are shown together, and a single number would make
+        three of the four bars lie about where they are.
+        """
+
+        item = self.items.get(self.in_flight)
+        if item is None:
+            return
+
+        item.setdefault("stages", {})[stage] = percent
 
     def _touch_item(self, **changes) -> None:
         """Apply a stage event to whichever item is in flight.
