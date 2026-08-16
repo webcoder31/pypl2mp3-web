@@ -82,7 +82,11 @@
 
         <ul class="imports-list">
           {% for item in items %}
-            <li class="import-row {{ item.state }}">
+            <li class="import-row {{ item.state }}"
+                {% if item.state == "done" %}
+                  data-song-id="{{ item.item_id }}"
+                  title="Open this song in the inspector"
+                {% endif %}>
               {# Laid out like a row of the listing: the name, then the
                  id under it in the same monospace. The id is not
                  decoration here — YouTube refuses to name a video often
@@ -99,14 +103,24 @@
                          value="{{ item.item_id }}" checked>
                 {% endif %}
                 <span class="import-text">
-                  <label class="import-name"
-                         for="pick-{{ item.item_id }}">
+                  {# A label only where there is a box for it to tick.
+                     Rendered unconditionally, it swallowed the click on
+                     the finished rows: the name is the obvious place to
+                     click, and a label whose input does not exist does
+                     nothing at all. #}
+                  {% set name %}
                     {%- if item.label -%}
                       {{ item.label }}
                     {%- else -%}
                       <span class="unnamed">unnamed</span>
                     {%- endif -%}
-                  </label>
+                  {% endset %}
+                  {% if phase == "choosing" %}
+                    <label class="import-name" for="pick-{{ item.item_id }}"
+                      >{{ name }}</label>
+                  {% else %}
+                    <span class="import-name">{{ name }}</span>
+                  {% endif %}
                   <span class="row-meta">
                     <span class="id">{{ item.item_id }}</span>
                     <a href="https://youtu.be/{{ item.item_id }}"
@@ -120,16 +134,12 @@
                   {{ item.reason }}
                 </span>
               {% elif item.state == "done" %}
-                {# A song can arrive on disk and still be junk: downloaded,
-                   never matched. The row is where you go and fix it, so
-                   the outcome and the repair are the same click — the
-                   report page existed to carry exactly this and nothing
-                   the pane does not already show. #}
-                <button type="button"
-                        hx-get="/fragments/inspector/{{ item.item_id }}"
-                        hx-target="#inspector"
-                        hx-swap="innerHTML"
-                        data-open-tab="playlist">inspect</button>
+                {# No button: the row is the target. A song can arrive on
+                   disk and still be junk — downloaded, never matched —
+                   and clicking the row is how you go and fix it. Only a
+                   row that finished carries this: nothing has reached
+                   the disk for the others, so there would be nothing to
+                   open. #}
                 {# .get(), not attribute access. A song that Shazam never
                    identified has no score key at all, and attribute access
                    yields Undefined — which `is not none` happily lets

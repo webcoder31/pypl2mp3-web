@@ -574,7 +574,12 @@ body[data-tab="imports"] #imports { display: block; }
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-2) 0;
+  /* Inset by the pane's own padding and pulled back out by the same
+     amount, so the hover background spans the full width the way the
+     nav's rows do. Stopping at the text would light a rectangle
+     narrower than the thing being pointed at. */
+  padding: var(--space-2) var(--block-pad-x);
+  margin: 0 calc(-1 * var(--block-pad-x));
   border-bottom: 1px solid var(--line);
   min-width: 0;
 }
@@ -620,6 +625,14 @@ body[data-tab="imports"] #imports { display: block; }
 .import-row.pending .import-name { color: var(--text-2); }
 .import-row.running .import-name { color: var(--text-1); }
 .import-row.failed .import-name { color: var(--text-3); }
+
+/* Hovering says what a click will do. A song that arrived opens in the
+   inspector, so its row lights in the colour that means "this worked" —
+   the same accent the score beside it is written in. A song that failed
+   left nothing on disk to open, so its row greys instead: the pointer
+   stays an arrow and the highlight promises nothing. */
+.import-row.done:hover { background: var(--accent-soft); cursor: pointer; }
+.import-row.failed:hover { background: var(--surface); }
 
 /* Four bars under the song being fetched. Sharp edges and a 3px track,
    the same shape as the player's scrub bar: both say how far along

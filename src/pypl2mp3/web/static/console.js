@@ -637,6 +637,17 @@
       return;
     }
 
+    // An imported song opens in the inspector. Only the rows that
+    // finished carry an id: nothing reached the disk for the others, so
+    // there is nothing to open, and a row that answers a click by doing
+    // nothing is worse than one that plainly does not.
+    const imported = event.target.closest(".import-row[data-song-id]");
+    if (imported && !event.target.closest("button, a, input, label")) {
+      showTab("playlist");
+      inspect(imported.dataset.songId);
+      return;
+    }
+
     // A click anywhere else on a row plays it, taking the listing as the
     // queue. Buttons and links inside the row keep their own meaning.
     const row = event.target.closest("#list tr[data-song-id]");

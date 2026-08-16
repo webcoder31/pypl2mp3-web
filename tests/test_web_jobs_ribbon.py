@@ -258,7 +258,11 @@ async def test_a_junk_import_is_fixable_from_its_row(tmp_path, monkeypatch):
         await client.post(f"/playlists/{PLAYLIST_ID}/import", headers=HX)
         pane = await _settle_pane(client, app, f"import:{PLAYLIST_ID}")
 
-    assert "/fragments/inspector/aaaaaaaaaaa" in pane, pane
+    row = re.search(r'<li class="import-row done"(.*?)</li>', pane, re.DOTALL)
+    assert row, pane[-400:]
+    assert 'data-song-id="aaaaaaaaaaa"' in row.group(1), (
+        f"the finished row does not say which song it is: {row.group(1)[:200]}"
+    )
 
 
 async def test_the_report_page_is_gone(tmp_path):
@@ -766,9 +770,134 @@ async def test_the_number_on_a_finished_row_says_it_is_a_shazam_score(
 
     # Scoped to the row: the header carries its own counts, and a match
     # anywhere on the page would pass while the row said only "91%".
-    row = re.search(r'<li class="import-row done">(.*?)</li>', pane, re.DOTALL)
+    row = re.search(r'<li class="import-row done"(.*?)</li>', pane, re.DOTALL)
     assert row, pane[-400:]
     assert "91%" in row.group(1), row.group(1)
     assert "Shazam" in row.group(1), (
         f"the number stands on its own: {row.group(1).strip()[-200:]}"
     )
+
+
+async def test_only_a_song_that_arrived_answers_a_click(tmp_path, monkeypatch):
+    """Nothing reached the disk for a row that failed, so there is
+    nothing to open. A row that answers a click by doing nothing is
+    worse than one that plainly does not."""
+
+    async def fake_import(repository_path, playlist_id, progress=None,
+                          only=None):
+        progress.item_listed("aaaaaaaaaaa", "IAMX - Kiss")
+        progress.item_listed("bbbbbbbbbbb", "IAMX - Spit It Out")
+        progress.item_started("aaaaaaaaaaa", "1/2")
+        progress.item_done("aaaaaaaaaaa")
+        progress.item_started("bbbbbbbbbbb", "2/2")
+        progress.item_failed("bbbbbbbbbbb", "age restricted", "nope")
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            total_remote=2, already_local=0, imported=[], failed=[]
+        )
+
+    monkeypatch.setattr("pypl2mp3.web.app.import_playlist", fake_import)
+    _make_song(tmp_path, "ARTIST", "Song", "zzzzzzzzzzz")
+    app = create_app(tmp_path)
+
+    async with _client(app) as client:
+        await client.post(f"/playlists/{PLAYLIST_ID}/import", headers=HX)
+        pane = await _settle_pane(client, app, f"import:{PLAYLIST_ID}")
+
+    rows = dict(
+        re.findall(r'<li class="import-row (\w+)"([^>]*)>', pane)
+    )
+    assert "data-song-id" in rows["done"], rows
+    assert "data-song-id" not in rows["failed"], (
+        "a row that failed offers to open a song that was never written"
+    )
+
+
+async def test_the_pane_says_what_a_click_will_do(tmp_path):
+    """Green where a click opens something, grey where it does not, and
+    a pointer only on the first."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+        script = (await client.get("/static/console.js")).text
+
+    done = re.search(r"\.import-row\.done:hover \{([^}]*)\}", css)
+    failed = re.search(r"\.import-row\.failed:hover \{([^}]*)\}", css)
+    assert done and failed, css[-400:]
+    assert "var(--accent-soft)" in done.group(1), done.group(1)
+    assert "cursor: pointer" in done.group(1), (
+        "the row lights up without saying it can be clicked"
+    )
+    assert "cursor: pointer" not in failed.group(1), (
+        "a row with nothing to open still invites a click"
+    )
+
+    # And the click is wired to the rows that carry an id, not to every
+    # row in the pane.
+    assert '.import-row[data-song-id]' in script, (
+        "nothing acts on the row, so it lights up and does nothing"
+    )
+
+
+async def test_the_name_of_a_finished_song_is_not_a_label(
+    tmp_path, monkeypatch
+):
+    """The click handler leaves labels alone, so that ticking a row
+    during selection is not also read as opening it.
+
+    Rendering the name as a label on every row therefore swallowed the
+    click on exactly the rows meant to answer one — and the name is the
+    obvious place to click. The browser showed it; nothing else did.
+    """
+
+    async def fake_import(repository_path, playlist_id, progress=None,
+                          only=None):
+        progress.item_listed("aaaaaaaaaaa", "IAMX - Kiss")
+        progress.item_started("aaaaaaaaaaa", "1/1")
+        progress.item_done("aaaaaaaaaaa")
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            total_remote=1, already_local=0, imported=[], failed=[]
+        )
+
+    monkeypatch.setattr("pypl2mp3.web.app.import_playlist", fake_import)
+    _make_song(tmp_path, "ARTIST", "Song", "zzzzzzzzzzz")
+    app = create_app(tmp_path)
+
+    async with _client(app) as client:
+        await client.post(f"/playlists/{PLAYLIST_ID}/import", headers=HX)
+        pane = await _settle_pane(client, app, f"import:{PLAYLIST_ID}")
+
+    row = re.search(r'<li class="import-row done"(.*?)</li>', pane, re.DOTALL)
+    assert row, pane[-400:]
+    assert "<label" not in row.group(1), (
+        "the name is a label with no checkbox behind it, so clicking it "
+        "does nothing"
+    )
+
+
+async def test_the_name_of_a_song_being_chosen_is_a_label(
+    tmp_path, monkeypatch
+):
+    """The other half: while choosing, clicking the name ticks the box."""
+
+    def fake_check(repository_path, playlist_id, progress=None,
+                   with_labels=False):
+        progress.item_listed("aaaaaaaaaaa", "IAMX - Kiss")
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            total_remote=1, already_local=0, missing=["aaaaaaaaaaa"]
+        )
+
+    monkeypatch.setattr("pypl2mp3.web.app.check_new_songs", fake_check)
+    _make_song(tmp_path, "ARTIST", "Song", "zzzzzzzzzzz")
+    app = create_app(tmp_path)
+
+    async with _client(app) as client:
+        await client.post(f"/playlists/{PLAYLIST_ID}/check", headers=HX)
+        pane = await _settle_pane(client, app, f"check:{PLAYLIST_ID}")
+
+    assert '<label class="import-name" for="pick-aaaaaaaaaaa"' in pane, pane
