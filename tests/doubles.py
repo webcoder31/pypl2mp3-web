@@ -35,6 +35,9 @@ class FakeProgress:
     def song_identified(self, artist: str, title: str, score: float) -> None:
         self.events.append(("song_identified", artist, title, score))
 
+    def item_listed(self, item_id: str, label: str) -> None:
+        self.events.append(("item_listed", item_id, label))
+
     def item_started(self, item_id: str, label: str) -> None:
         self.events.append(("item_started", item_id, label))
 

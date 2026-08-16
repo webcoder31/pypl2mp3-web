@@ -50,6 +50,11 @@ class WebProgress:
     def stage_done(self, stage: str) -> None:
         self._emit({"kind": "stage_done", "stage": stage})
 
+    def item_listed(self, item_id: str, label: str) -> None:
+        self._emit(
+            {"kind": "item_listed", "item_id": item_id, "label": label}
+        )
+
     def item_started(self, item_id: str, label: str) -> None:
         self._emit(
             {"kind": "item_started", "item_id": item_id, "label": label}

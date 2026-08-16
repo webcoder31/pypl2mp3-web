@@ -241,3 +241,86 @@ async def test_a_second_check_on_the_same_playlist_is_refused(
         assert second.status_code == 409
 
         app.state.jobs.cancel(f"check:{PLAYLIST_ID}")
+
+
+class _NamedVideo:
+    def __init__(self, url, *args, **kwargs):
+        self.video_id = url.rsplit("=", 1)[-1]
+        self.author = "ARTIST"
+        self.title = f"Song {self.video_id[0]}"
+
+
+def test_names_are_not_fetched_unless_asked(tmp_path, monkeypatch):
+    """One request per song. A caller that only wants the count would go
+    from one round trip to thirty-one without noticing."""
+
+    monkeypatch.setattr(mod, "Playlist", _FakePlaylist)
+    asked = []
+    monkeypatch.setattr(
+        mod, "YouTube", lambda url, *a, **k: asked.append(url)
+    )
+    _make_local(tmp_path, [])
+    progress = FakeProgress()
+
+    check_new_songs(tmp_path, PLAYLIST_ID, progress)
+
+    assert asked == [], f"{len(asked)} names fetched by a plain check"
+    assert [e for e in progress.events if e[0] == "item_listed"] == []
+
+
+def test_each_missing_song_is_announced_by_name(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "Playlist", _FakePlaylist)
+    monkeypatch.setattr(mod, "YouTube", _NamedVideo)
+    _make_local(tmp_path, [REMOTE_IDS[0]])
+    progress = FakeProgress()
+
+    check_new_songs(tmp_path, PLAYLIST_ID, progress, with_labels=True)
+
+    listed = [(e[1], e[2]) for e in progress.events if e[0] == "item_listed"]
+    assert listed == [
+        ("BBBBBBBBBBB", "ARTIST - Song B"),
+        ("CCCCCCCCCCC", "ARTIST - Song C"),
+    ], listed
+
+
+def test_a_song_youtube_will_not_name_still_gets_a_row(tmp_path, monkeypatch):
+    """Bot detection, age restriction, a deleted video: refusals are
+    common enough that treating one as fatal would break the panel on
+    exactly the playlists that need it most. The song can still be
+    imported — it is the name that is missing, not the song."""
+
+    monkeypatch.setattr(mod, "Playlist", _FakePlaylist)
+
+    def refuse(url, *args, **kwargs):
+        raise RuntimeError("This request was detected as a bot")
+
+    monkeypatch.setattr(mod, "YouTube", refuse)
+    _make_local(tmp_path, [])
+    progress = FakeProgress()
+
+    report = check_new_songs(tmp_path, PLAYLIST_ID, progress, with_labels=True)
+
+    listed = [(e[1], e[2]) for e in progress.events if e[0] == "item_listed"]
+    assert [row[0] for row in listed] == REMOTE_IDS, listed
+    assert all(row[1] == row[0] for row in listed), (
+        f"a refused name should fall back to the id: {listed}"
+    )
+    assert report.missing == REMOTE_IDS
+
+
+def test_naming_reports_how_far_along_it_is(tmp_path, monkeypatch):
+    """Thirty names is thirty round trips. A panel that says nothing for
+    the whole minute is indistinguishable from a hung server."""
+
+    monkeypatch.setattr(mod, "Playlist", _FakePlaylist)
+    monkeypatch.setattr(mod, "YouTube", _NamedVideo)
+    _make_local(tmp_path, [])
+    progress = FakeProgress()
+
+    check_new_songs(tmp_path, PLAYLIST_ID, progress, with_labels=True)
+
+    percents = [e[2] for e in progress.events if e[0] == "stage_progress"]
+    assert len(percents) > 1, (
+        f"only {percents} reported, so the wait is a blank screen"
+    )
+    assert percents == sorted(percents), percents

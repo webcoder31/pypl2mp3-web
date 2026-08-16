@@ -108,10 +108,30 @@ class Job:
 
         kind = event.get("kind")
 
-        if kind == "item_started":
+        if kind == "item_listed":
+            # Known to be part of the batch, nothing done to it yet. The
+            # row exists so it can be ticked; it is not running, and
+            # drawing it as running would promise work that has not
+            # started.
             self.items[event["item_id"]] = {
                 "item_id": event["item_id"],
                 "label": event.get("label", ""),
+                "state": "pending",
+                "stage": None,
+                "percent": None,
+            }
+            self._events.append(event)
+            return
+
+        if kind == "item_started":
+            known = self.items.get(event["item_id"], {})
+            self.items[event["item_id"]] = {
+                "item_id": event["item_id"],
+                # The listing already named it, and the label the sweep
+                # passes is a position ("3/12"), not a name. Losing the
+                # name here emptied the row the moment work began on it.
+                "label": known.get("label") or event.get("label", ""),
+                "position": event.get("label", ""),
                 "state": "running",
                 "stage": None,
                 "percent": None,
