@@ -1179,3 +1179,24 @@ async def test_the_panel_always_says_a_selection_was_made(tmp_path,
         pane = await _settle_pane(client, app, f"check:{PLAYLIST_ID}")
 
     assert '<input type="hidden" name="selection"' in pane, pane
+
+
+async def test_the_pane_follows_the_playlist_you_are_looking_at(tmp_path):
+    """It named the playlist you checked last, for ever.
+
+    Switch playlist and it still said "mid90s"; go back to all playlists
+    and it still said "mid90s". The listing and the nav refetch on
+    playlistChanged; the pane, which is the one element whose whole
+    content is about a playlist, did not.
+    """
+
+    _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        page = (await client.get("/")).text
+
+    pane = re.search(r'<section id="imports"(.*?)>', page, re.DOTALL)
+    assert pane, page[:400]
+    assert "playlistChanged from:body" in pane.group(1), (
+        f"the pane never hears about a playlist change: {pane.group(1)}"
+    )

@@ -212,7 +212,7 @@
          carries no hx-trigger. #}
       <section id="imports" data-swap-region
                hx-get="/fragments/imports"
-               hx-trigger="importsChanged from:body"
+               hx-trigger="playlistChanged from:body, importsChanged from:body"
                hx-include="#filters">{% include "_imports.html" %}</section>
     </div>
 
