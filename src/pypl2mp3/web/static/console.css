@@ -56,6 +56,14 @@
   --text-2: #576366;
   --text-3: #879497;
 
+  /* Which of the two surfaces the content sits on, and which frames it.
+     The two palettes answer oppositely, on purpose: on a light screen the
+     content wants the whiter surface and the frame the tinted one, while
+     on a dark screen it is the frame that lifts. Naming the roles is what
+     lets them swap in one place instead of at every selector. */
+  --content-bg: var(--surface);
+  --frame-bg: var(--bg);
+
   --accent: #0a8f7c;
   --accent-text: #ffffff;
   --accent-soft: rgba(10, 143, 124, 0.13);
@@ -155,6 +163,9 @@
   --text-2: #8b9799;
   --text-3: #66716f;
 
+  --content-bg: var(--bg);
+  --frame-bg: var(--surface);
+
   --accent: #46c9b1;
   --accent-text: #04211c;
   --accent-soft: rgba(70, 201, 177, 0.15);
@@ -189,7 +200,7 @@ body {
   font-size: var(--fs-base);
   line-height: 1.45;
   color: var(--text);
-  background: var(--bg);
+  background: var(--content-bg);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -411,7 +422,7 @@ button:has(.icon) { display: inline-flex; align-items: center;
 
 #nav {
   grid-area: nav;
-  background: var(--surface);
+  background: var(--frame-bg);
   border-left: 1px solid var(--line);
   overflow-y: auto;
   padding: var(--block-pad-y) var(--block-pad-x);
@@ -504,7 +515,7 @@ button:has(.icon) { display: inline-flex; align-items: center;
    brighter columns, the inspector included. Here the inspector shares
    this exact background, so there is no trough: one continuous surface
    with a distinct column beside it. */
-#list { overflow-y: auto; background: var(--bg); min-width: 0; }
+#list { overflow-y: auto; background: var(--content-bg); min-width: 0; }
 
 /* Its own row above the listing rather than pinned inside it: with the
    queue counter in it there is nothing for the server to render, so it
@@ -514,7 +525,7 @@ button:has(.icon) { display: inline-flex; align-items: center;
      header above it, and the rule underneath is what marks it off. The
      tab strip above carries the frame's surface, so the boundary between
      chrome and content falls there instead. */
-  background: var(--bg);
+  background: var(--content-bg);
   border-bottom: 1px solid var(--line);
   padding: var(--space-3) var(--block-pad-x);
   display: flex;
@@ -565,7 +576,7 @@ button:has(.icon) { display: inline-flex; align-items: center;
   /* With the toolbar under it: the strip and the row it heads are one
      header, and splitting their surfaces would draw a line where there
      is no boundary. */
-  background: var(--surface);
+  background: var(--frame-bg);
   border-bottom: 1px solid var(--line);
   padding: 0 var(--block-pad-x);
 }
@@ -690,7 +701,7 @@ body[data-tab="imports"] #imports { display: block; }
    left nothing on disk to open, so its row greys instead: the pointer
    stays an arrow and the highlight promises nothing. */
 .import-row.done:hover { background: var(--accent-soft); cursor: pointer; }
-.import-row.failed:hover { background: var(--surface); }
+.import-row.failed:hover { background: var(--frame-bg); }
 
 /* Four bars under the song being fetched. Sharp edges and a 3px track,
    the same shape as the player's scrub bar: both say how far along
@@ -793,7 +804,7 @@ tbody tr.playing td.num { color: var(--accent); }
    ------------------------------------------------------------------ */
 
 #inspector {
-  background: var(--bg);
+  background: var(--content-bg);
   padding: var(--space-5) var(--block-pad-x) var(--space-4);
   min-width: 0;
 }
@@ -927,7 +938,7 @@ tbody tr.playing td.num { color: var(--accent); }
    The extra room goes where the two groups meet, so the boundary reads
    as a pause and not only as an edge. */
 #player {
-  background: var(--bg);
+  background: var(--content-bg);
   border-bottom: 1px solid var(--line);
   padding: var(--space-3) var(--block-pad-x) var(--space-5);
   display: flex;
@@ -952,7 +963,7 @@ tbody tr.playing td.num { color: var(--accent); }
   border-color: var(--accent);
 }
 #player.idle #transport [data-player-action="toggle"] {
-  background: var(--surface); color: var(--text-3);
+  background: var(--frame-bg); color: var(--text-3);
   border-color: var(--line-strong);
 }
 

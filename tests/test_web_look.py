@@ -902,7 +902,7 @@ async def test_the_toolbar_is_marked_off_by_its_rule(tmp_path):
         return found.group(1)
 
     bar = block("#toolbar")
-    assert re.search(r"background:\s*var\(--bg\)", bar), bar
+    assert re.search(r"background:\s*var\(--content-bg\)", bar), bar
     assert "border-bottom" in bar, (
         "nothing separates the queue readout from the songs under it"
     )
@@ -1850,3 +1850,41 @@ async def test_the_frame_is_the_tab_strip_and_the_side_column(tmp_path):
     assert background("#header") != background("#tabs"), (
         "the page header lost the tint that sets it apart from the frame"
     )
+
+
+async def test_the_two_palettes_assign_the_surfaces_oppositely(tmp_path):
+    """On a light screen the content wants the whiter surface and the
+    frame the tinted one; on a dark screen it is the frame that lifts.
+
+    Named as roles rather than picked at each selector, so the swap is
+    two lines in a palette instead of a dozen scattered decisions — and
+    so that a theme cannot accidentally give both roles the same surface.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    palettes = {
+        "light": re.search(
+            r':root, :root\[data-theme="light"\] \{(.*?)\n\}', css, re.DOTALL
+        ).group(1),
+        "dark": _dark_block(css),
+    }
+
+    roles = {}
+    for theme, block in palettes.items():
+        found = dict(
+            re.findall(r"(--(?:content|frame)-bg):\s*var\((--[\w-]+)\)", block)
+        )
+        assert set(found) == {"--content-bg", "--frame-bg"}, (
+            f"the {theme} palette does not assign both roles: {found}"
+        )
+        assert found["--content-bg"] != found["--frame-bg"], (
+            f"the {theme} palette gives content and frame the same surface"
+        )
+        roles[theme] = found
+
+    assert roles["light"]["--content-bg"] == roles["dark"]["--frame-bg"], (
+        f"the two palettes do not swap the surfaces: {roles}"
+    )
+    assert roles["light"]["--frame-bg"] == roles["dark"]["--content-bg"], roles
