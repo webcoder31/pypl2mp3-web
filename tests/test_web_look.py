@@ -1773,3 +1773,32 @@ async def test_the_scope_line_offers_no_second_way_out(tmp_path):
     assert note, nav
     assert "<button" not in note.group(1), note.group(1)
     assert note.group(1).strip().startswith("In playlist"), note.group(1)
+
+
+async def test_the_whole_library_row_is_not_a_fourth_playlist(tmp_path):
+    """It sits above the list rather than in it, so weight is what says
+    so — otherwise it reads as one more playlist that happens to be
+    first. Its count carries the same weight: the label and the number
+    are one statement.
+    """
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        nav = (await client.get("/fragments/nav")).text
+        css = (await client.get("/static/console.css")).text
+
+    assert 'class="whole-library' in nav, nav[:400]
+
+    rule = re.search(
+        r"\n#nav \.whole-library button,\s*\n#nav \.whole-library \.count \{"
+        r"([^}]*)\}",
+        css,
+    )
+    assert rule, "the row and its count are weighted apart, so they can drift"
+    assert "font-weight: 600" in rule.group(1), rule.group(1)
+
+    # And a playlist that is merely selected is not what this marks: the
+    # current row already has its own weight, from its own rule.
+    current = re.search(r"\n#nav li\.current button \{([^}]*)\}", css)
+    assert current and "font-weight: 600" in current.group(1), css[-400:]

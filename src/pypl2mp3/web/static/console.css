@@ -450,6 +450,14 @@ button:has(.icon) { display: inline-flex; align-items: center;
   background: var(--accent-soft);
   border-left-color: var(--accent);
 }
+/* The row above every playlist, and not one of them: it is the whole
+   library rather than a member of the list underneath. Weight is what
+   sets it apart, so it reads as a heading you can press rather than as
+   a fourth playlist. Its count too — the label and the number are one
+   statement. */
+#nav .whole-library button,
+#nav .whole-library .count { font-weight: 600; color: var(--text); }
+
 #nav .count { font-variant-numeric: tabular-nums; color: var(--text-3);
               font-size: var(--fs-xs); white-space: nowrap;
               flex: 0 0 auto; }
