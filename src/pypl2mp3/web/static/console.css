@@ -305,6 +305,18 @@ a { color: var(--accent); text-decoration-thickness: 1px;
 /* The same tint as the listing's own header. Both are the top edge of
    something you read below them, and there was no reason for the page's
    to be the one band answering to nothing. */
+/* A number that acts, drawn as the number it already was: no box, no
+   padding of its own, only the hand that says it can be pressed. */
+#junk-count {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--junk);
+  cursor: pointer;
+}
+#junk-count:hover { text-decoration: underline; }
+
 #header {
   grid-area: header;
   background: var(--header-bg);
@@ -688,6 +700,12 @@ body[data-tab="imports"] #imports { display: block; }
                    color: var(--text-3); font-size: var(--fs-xs);
                    white-space: nowrap; }
 
+/* While the listing is being refetched. Not a spinner: the rows you are
+   looking at are still true, they are just about to be replaced, and
+   dimming says that without taking the page away from you. */
+#list.htmx-request { opacity: 0.55; }
+#list { transition: opacity 0.12s ease-out; }
+
 #list .empty { padding: 1.5rem; color: var(--text-3); }
 
 table { border-collapse: collapse; width: 100%; }
@@ -983,6 +1001,12 @@ body.workbench-mode #inspector { border-bottom: none; overflow-y: auto;
 @media (max-width: 60rem) {
   .workbench { flex-direction: column; }
   .workbench-cover { flex: none; max-width: 14rem; }
+
+  /* The clamp's floor is 17rem, which is generous at 1600px and a third
+     of the window at 820. Below this width the listing is what is
+     scarce, so the side column gives way — 20vw with a floor low enough
+     to still hold a playlist name. */
+  :root { --pane-nav: clamp(11rem, 22vw, 17rem); }
 }
 
 @media (prefers-reduced-motion: reduce) {

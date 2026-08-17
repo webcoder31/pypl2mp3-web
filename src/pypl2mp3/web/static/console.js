@@ -106,7 +106,17 @@
   paintBadge();
   document.body.addEventListener("htmx:afterSwap", paintBadge);
 
+  // The junk figure in the header does what it looks like it offers.
   document.addEventListener("click", function (event) {
+    if (event.target.closest("#junk-count")) {
+      const box = document.querySelector('#filters input[name="junk"]');
+      if (!box) return;
+
+      box.checked = true;
+      box.dispatchEvent(new Event("change", { bubbles: true }));
+      return;
+    }
+
     const tab = event.target.closest("#tabs [data-tab]");
     if (tab) {
       // The tabs switch the pane under them, and the workbench covers
@@ -221,8 +231,19 @@
       // The count the toolbar used to render server-side. It is the
       // same number the position turns into once something plays, so
       // nothing is lost by letting one slot carry both.
+      //
+      // Said against the library when the two differ, because otherwise
+      // two numbers sat on the same screen meaning different things —
+      // 944 up in the header, 8 down here — with nothing saying so.
       const total = rows().length;
-      position.textContent = total ? total + " songs" : "";
+      const library = Number(
+        document.getElementById("counts")?.dataset.total || 0
+      );
+      position.textContent = !total
+        ? ""
+        : total === library
+          ? total + " songs"
+          : total + " of " + library;
       return;
     }
 
@@ -545,15 +566,40 @@
   // does to a list of thirty. Delegated, because the pane is replaced
   // wholesale on every poll and a handler bound to the box would go with
   // it.
-  document.addEventListener("change", function (event) {
-    if (event.target.id !== "pick-all") return;
+  function rowBoxes() {
+    return Array.from(
+      document.querySelectorAll('#import-form input[name="songs"]')
+    );
+  }
 
-    document
-      .querySelectorAll('#import-form input[name="songs"]')
-      .forEach(function (box) {
+  // Select all answers to the rows as well as commanding them. Left
+  // one-way it stayed ticked after every row had been unticked, which
+  // says the opposite of what the list shows.
+  function paintPickAll() {
+    const all = document.getElementById("pick-all");
+    if (!all) return;
+
+    const boxes = rowBoxes();
+    const ticked = boxes.filter(function (box) { return box.checked; }).length;
+
+    all.checked = ticked === boxes.length && boxes.length > 0;
+    // Neither all nor none: the third state HTML already has for this.
+    all.indeterminate = ticked > 0 && ticked < boxes.length;
+  }
+
+  document.addEventListener("change", function (event) {
+    if (event.target.id === "pick-all") {
+      rowBoxes().forEach(function (box) {
         box.checked = event.target.checked;
       });
+      event.target.indeterminate = false;
+      return;
+    }
+
+    if (event.target.name === "songs") paintPickAll();
   });
+
+  document.body.addEventListener("htmx:afterSwap", paintPickAll);
 
   // Songs imported since the waveform existed carry their peaks already.
   // The ones that predate it compute theirs the first time they are

@@ -1598,3 +1598,96 @@ async def test_the_listing_follows_the_song_but_only_when_it_changes(tmp_path):
         "nothing remembers which song was followed, so every repaint "
         "scrolls the list back"
     )
+
+
+async def test_select_all_answers_the_rows_as_well_as_commanding_them(
+    tmp_path,
+):
+    """Left one-way it stayed ticked after every row had been unticked,
+    saying the opposite of what the list showed."""
+
+    async with _client(create_app(tmp_path)) as client:
+        script = (await client.get("/static/console.js")).text
+
+    assert "paintPickAll" in script, "nothing ever reads the rows back"
+    body = script[script.index("function paintPickAll()"):]
+    body = body[: body.index("\n  }")]
+    assert "all.checked = ticked === boxes.length" in body, body
+    assert "indeterminate" in body, (
+        "some ticked and some not is neither state, and HTML already has "
+        "a third for it"
+    )
+
+
+async def test_the_two_counts_say_which_is_which(tmp_path):
+    """944 in the header and 8 in the toolbar, meaning different things,
+    with nothing on screen distinguishing them."""
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        page = (await client.get("/")).text
+        script = (await client.get("/static/console.js")).text
+
+    assert "in library" in page, "the header does not say what it counts"
+    assert 'data-total=' in page, (
+        "the toolbar has no way to know the library's size"
+    )
+    assert '" of " + library' in script, (
+        "the toolbar reports a bare count, which reads as a total"
+    )
+
+
+async def test_the_junk_figure_does_what_it_looks_like(tmp_path):
+    """An orange number that did nothing, beside a checkbox that did
+    exactly the thing it looked like it offered."""
+
+    _make_song(tmp_path, "UNKNOWN", "Song", "aaaaaaaaaaa", junk=True)
+
+    async with _client(create_app(tmp_path)) as client:
+        page = (await client.get("/")).text
+        css = (await client.get("/static/console.css")).text
+        script = (await client.get("/static/console.js")).text
+
+    assert '<button type="button" id="junk-count"' in page, page[:600]
+    rule = re.search(r"\n#junk-count \{([^}]*)\}", css)
+    assert rule and "cursor: pointer" in rule.group(1), css[-400:]
+    # And it is still drawn as the number it was, not as a button.
+    assert "border: none" in rule.group(1), rule.group(1)
+    assert 'input[name="junk"]' in script, "the click filters nothing"
+
+
+async def test_the_listing_says_when_it_is_being_replaced(tmp_path):
+    """A filter keystroke costs 300ms of settling plus about 280ms of
+    fetching and laying out 944 rows. For over half a second the old
+    list sits there looking like the answer."""
+
+    async with _client(create_app(tmp_path)) as client:
+        page = (await client.get("/")).text
+        css = (await client.get("/static/console.css")).text
+
+    form = re.search(r'<form id="filters"(.*?)>', page, re.DOTALL)
+    assert form and 'hx-indicator="#list"' in form.group(1), form.group(1)
+
+    rule = re.search(r"\n#list\.htmx-request \{([^}]*)\}", css)
+    assert rule and "opacity" in rule.group(1), css[-400:]
+
+
+async def test_the_side_column_gives_way_when_the_listing_is_squeezed(
+    tmp_path,
+):
+    """Its clamp floor is 17rem, generous at 1600px and a third of the
+    window at 820. Below the breakpoint the listing is what is scarce."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    wide = re.search(r"\n  --pane-nav: clamp\(([^)]+)\);", css)
+    assert wide, css[:600]
+
+    narrow = re.search(
+        r"@media \(max-width: 60rem\) \{(.*?)\n\}", css, re.DOTALL
+    )
+    assert narrow and "--pane-nav" in narrow.group(1), (
+        "the side column keeps its wide-screen floor on a narrow one"
+    )

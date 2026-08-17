@@ -580,9 +580,15 @@ def create_app(repository_path: Path) -> FastAPI:
             # so cannot be rendered by it. A count rather than a dot: how
             # far along a twelve-song import is, is the thing you switched
             # away from the pane not to have to watch.
+            #
+            # Checking counts too, and it is the slower half — one YouTube
+            # request per new song. It has no total to count towards until
+            # it finishes, so it reports what it has found so far and says
+            # it is not done by trailing off.
             "badge": (
                 f"{states.count('done')}/{len(items)}"
                 if phase == "importing"
+                else f"{len(items) or ''}…" if phase == "checking"
                 else ""
             ),
         }

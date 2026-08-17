@@ -38,9 +38,17 @@
          keyup filters as you type; `changed` keeps arrow keys and
          modifiers from refetching an unchanged query. The form still
          submits, so pressing enter is not a dead end. #}
+      {# hx-indicator on the listing itself: a filter keystroke costs
+         300ms of settling plus about 280ms of fetching and laying out
+         944 rows, so for over half a second the old list sits there
+         looking like the answer. Dimming it says the answer is on its
+         way. Measured, and measured against the alternative —
+         content-visibility on the rows made the layout slower, not
+         faster, so it is not here. #}
       <form id="filters"
             hx-get="/fragments/list"
             hx-target="#list"
+            hx-indicator="#list"
             hx-trigger="submit, change, keyup changed delay:300ms">
         <input type="hidden" name="playlist" id="playlist-field"
                value="{{ playlist }}">
@@ -63,9 +71,19 @@
         <button type="button" data-theme-choice="dark">Dark</button>
       </div>
 
-      <span id="counts">
-        {{ total_songs }} songs &middot;
-        <span class="junk">{{ total_junk }} junk</span>
+      {# The whole repository, whatever is filtered below. The toolbar
+         counts the selection, so when the two differ they have to say
+         which is which — hence "in library", and hence the toolbar
+         saying "8 of 944" rather than a bare 8.
+
+         The junk figure is a button because it was already coloured like
+         one: an orange number that did nothing, beside a checkbox that
+         did exactly the thing it looked like it offered. #}
+      <span id="counts" data-total="{{ total_songs }}">
+        {{ total_songs }} in library &middot;
+        <button type="button" id="junk-count" class="junk"
+                title="Show only the junk songs"
+        >{{ total_junk }} junk</button>
       </span>
 
       {# Started jobs are appended here and poll themselves. They live in
