@@ -432,7 +432,13 @@ async def test_the_presets_say_when_they_only_cover_one_playlist(tmp_path):
     # The title, not the whole folder name: every playlist here belongs
     # to the same owner, so repeating it says nothing.
     assert "Alpha" in note.group(1), "the note does not name it"
-    assert "all playlists" in note.group(1), "no way back to everything"
+
+    # A way back to every playlist, somewhere in this column — not
+    # necessarily on this line. It used to be a second button here, which
+    # is the same escape the first row of the nav already is.
+    assert scoped.count('data-playlist=""') >= 1, (
+        "nothing in the nav goes back to every playlist"
+    )
 
     assert 'class="scope"' not in whole, (
         "the unscoped nav claims a scope it does not have"

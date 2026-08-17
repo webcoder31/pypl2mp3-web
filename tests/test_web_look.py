@@ -1737,3 +1737,39 @@ async def test_both_lists_in_the_nav_say_how_long_they_are(tmp_path):
     assert playlists.strip().endswith("2"), (
         f"two playlists on disk, heading says {playlists.strip()!r}"
     )
+
+
+async def test_the_scope_line_sits_with_the_heading_it_qualifies(tmp_path):
+    """It says what the count above it covers, so the two belong
+    together rather than reading as a heading and then a remark."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    heading = re.search(r"\n#nav h2 \{([^}]*)\}", css).group(1)
+    scope = re.search(r"\n#nav \.scope \{([^}]*)\}", css).group(1)
+
+    below = re.search(r"margin: 0 0 var\((--space-\d)\)", heading)
+    assert below, heading
+    assert "calc(-1 *" in scope, (
+        f"the scope line keeps the heading's full margin under it: {scope}"
+    )
+
+
+async def test_the_scope_line_offers_no_second_way_out(tmp_path):
+    """The first row of this column is already exactly that escape, and
+    one is enough."""
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        nav = (
+            await client.get(
+                "/fragments/nav?playlist=PL0000000000000000000000000000001"
+            )
+        ).text
+
+    note = re.search(r'<p class="scope">(.*?)</p>', nav, re.DOTALL)
+    assert note, nav
+    assert "<button" not in note.group(1), note.group(1)
+    assert note.group(1).strip().startswith("In playlist"), note.group(1)

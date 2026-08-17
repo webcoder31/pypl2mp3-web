@@ -463,9 +463,11 @@ button:has(.icon) { display: inline-flex; align-items: center;
   font-weight: 600;
   margin: 0 0 var(--space-2) var(--space-1);
 }
-#nav .scope { margin: 0 var(--space-1) var(--space-2); font-size: var(--fs-xs);
-              color: var(--text-3); }
-#nav .scope button { display: inline; padding: 0; color: var(--accent); }
+/* Pulled up under its heading: the line says what the count above it
+   covers, so the two belong together rather than reading as a heading
+   and then a separate remark. */
+#nav .scope { margin: calc(-1 * var(--space-1)) var(--space-1) var(--space-2);
+              font-size: var(--fs-xs); color: var(--text-3); }
 /* Stacked, not side by side. They inherit the nav's `flex: 1`, and in a
    column this narrow that splits the width in two and truncates both
    labels — "Check fo…" and "Import n…" say nothing. */

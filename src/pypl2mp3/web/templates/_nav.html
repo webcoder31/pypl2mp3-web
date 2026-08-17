@@ -79,10 +79,9 @@
    artist held only by another playlist reads as missing. #}
 <h2>Artists — {{ artists | length }}</h2>
 {% if current_playlist %}
-  <p class="scope">
-    in {{ current_playlist.title }} ·
-    <button type="button" data-playlist="">all playlists</button>
-  </p>
+  {# No way back to every playlist here: the first row of this column is
+     exactly that, and one escape is enough. #}
+  <p class="scope">In playlist {{ current_playlist.title }}</p>
 {% endif %}
 <input type="search" id="artist-filter" placeholder="Narrow this list"
        autocomplete="off">
