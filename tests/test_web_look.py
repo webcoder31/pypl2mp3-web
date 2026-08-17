@@ -1891,3 +1891,47 @@ async def test_the_two_palettes_assign_the_surfaces_oppositely(tmp_path):
         f"the two palettes do not swap the surfaces: {roles}"
     )
     assert roles["light"]["--frame-bg"] == roles["dark"]["--content-bg"], roles
+
+
+async def test_a_field_stands_off_its_surroundings_in_both_themes(tmp_path):
+    """A field level with the surface it sits on has only its border left
+    to say it is a field, and that border is a hairline at 9% opacity.
+
+    The two palettes get there from opposite directions: on a light
+    screen the field sits below the white content, on a dark one it lifts
+    above it. Both are one step of about ten, measured, so neither theme
+    ends up with a field nobody can see.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    field = re.search(
+        r'input\[type="search"\], input\[type="text"\], input\[type="url"\] '
+        r"\{([^}]*)\}",
+        css,
+    )
+    assert field, "no rule paints the fields"
+    assert "background: var(--sunken)" in field.group(1), field.group(1)
+
+    def luminance(value):
+        digits = value.strip().lstrip("#")
+        red, green, blue = (int(digits[i:i + 2], 16) for i in (0, 2, 4))
+
+        return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+
+    for theme, block in (
+        ("light", re.search(
+            r':root, :root\[data-theme="light"\] \{(.*?)\n\}',
+            css, re.DOTALL).group(1)),
+        ("dark", _dark_block(css)),
+    ):
+        values = dict(re.findall(r"(--[\w-]+):\s*(#[0-9a-fA-F]{6});", block))
+        assert "--sunken" in values, f"{theme} has no field colour"
+
+        content = values["--surface" if theme == "light" else "--bg"]
+        step = abs(luminance(values["--sunken"]) - luminance(content))
+        assert step > 6, (
+            f"in the {theme} theme a field is {step:.1f} from the surface it "
+            "sits on, which leaves only a 9% hairline to mark it"
+        )

@@ -45,7 +45,11 @@
      bright; the chrome around it steps back. */
   --bg: #f3f6f6;
   --surface: #ffffff;
-  --sunken: #e8eded;
+  /* The field's own surface. Lighter than it was, and still below the
+     content it sits on — 244.4 against 255 — because a field level with
+     its surroundings has only its border left to say it is a field.
+     Below 250 that border still has something to hold. */
+  --sunken: #f2f5f5;
   --hover: rgba(11, 92, 84, 0.055);
   --active: rgba(11, 92, 84, 0.1);
 
@@ -148,7 +152,10 @@
 
   --bg: #0d1214;
   --surface: #141b1e;
-  --sunken: #090e10;
+  /* Lighter than the content here rather than darker: at 13.1 against
+     17.1 the field was four points below its surroundings, which reads
+     as nothing at all on a dark screen. 27.7 lifts it clear. */
+  --sunken: #161d20;
   --hover: rgba(126, 214, 199, 0.06);
   --active: rgba(126, 214, 199, 0.11);
 
