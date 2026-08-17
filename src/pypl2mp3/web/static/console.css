@@ -411,7 +411,7 @@ button:has(.icon) { display: inline-flex; align-items: center;
 
 #nav {
   grid-area: nav;
-  background: var(--bg);
+  background: var(--surface);
   border-left: 1px solid var(--line);
   overflow-y: auto;
   padding: var(--block-pad-y) var(--block-pad-x);
@@ -495,7 +495,16 @@ button:has(.icon) { display: inline-flex; align-items: center;
 /* No grid-area: it is placed by #main, not by the page grid. Naming a
    area that the parent does not define makes an implicit track and
    squeezes the listing into a fraction of its column. */
-#list { overflow-y: auto; background: var(--surface); min-width: 0; }
+/* One surface for the whole main column: the song above, its transport,
+   and the listing under them read as one thing you are working in, and
+   the side column is what differs.
+
+   This is the direction that once produced "all the songs are
+   selected" — but that was the listing sitting in a trough between two
+   brighter columns, the inspector included. Here the inspector shares
+   this exact background, so there is no trough: one continuous surface
+   with a distinct column beside it. */
+#list { overflow-y: auto; background: var(--bg); min-width: 0; }
 
 /* Its own row above the listing rather than pinned inside it: with the
    queue counter in it there is nothing for the server to render, so it

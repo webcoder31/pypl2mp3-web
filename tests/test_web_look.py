@@ -339,12 +339,21 @@ async def test_colour_marks_state_rather_than_decorating(tmp_path):
            "color: var(--accent); }" in css
 
 
-async def test_the_listing_is_the_bright_surface_not_the_chrome(tmp_path):
-    """Reported as "all the songs are selected", and it was exactly that.
+async def test_the_main_column_is_one_surface_and_the_side_one_another(
+    tmp_path,
+):
+    """Which things belong together, said in background.
 
-    The listing had --bg and the panels either side had --surface, so in
-    the light theme 927 rows sat on a tinted band between two white
-    columns. Content is bright; the chrome around it steps back.
+    The song, its transport and the listing under them are one thing you
+    work in, so they share one background and the side column takes the
+    other. Four panels with four surfaces read as four boxes that happen
+    to touch.
+
+    This is the direction that once produced "all the songs are
+    selected" — but that was the listing alone on a tinted band with the
+    inspector *and* the nav brighter on either side of it. The inspector
+    now shares the listing's background exactly, so there is no band and
+    no trough: one continuous surface, one distinct column.
     """
 
     async with _client(create_app(tmp_path)) as client:
@@ -357,31 +366,20 @@ async def test_the_listing_is_the_bright_surface_not_the_chrome(tmp_path):
         assert block, selector
         found = re.search(r"background:\s*var\((--[\w-]+)\)", block.group(1))
         assert found, f"{selector} paints no background"
+
         return found.group(1)
 
-    assert background("#list") == "--surface", (
-        "the songs sit on the page colour while the chrome is raised"
+    column = {sel: background(sel) for sel in ("#inspector", "#player", "#list")}
+    assert len(set(column.values())) == 1, (
+        f"the main column is not one surface: {column}"
+    )
+    assert background("#nav") != background("#list"), (
+        "the side column is the same surface as the listing, so nothing "
+        "separates them"
     )
 
-    # The columns that flank the listing. A header band is not one of
-    # them: #header, #toolbar and #tabs carry their own tint on purpose,
-    # which is what marks them as the top edge of what sits under them.
-    # The trough this test exists to prevent was the listing sitting
-    # *between* two brighter columns.
-    for column in ("#nav", "#inspector", "#player"):
-        assert background(column) == "--bg", (
-            f"{column} is brighter than the content it frames"
-        )
-
-    # Measured, not merely named apart: the listing has to be the
-    # brighter of the two in both palettes, or the trough is back under
-    # another pair of names.
-    def luminance(values, name):
-        digits = values[name].strip().lstrip("#")
-        red, green, blue = (int(digits[i:i + 2], 16) for i in (0, 2, 4))
-
-        return 0.2126 * red + 0.7152 * green + 0.0722 * blue
-
+    # Both surfaces are real colours from both palettes, so neither theme
+    # can end up painting two of these the same by omission.
     for theme, block in (
         ("light", r':root, :root\[data-theme="light"\]'),
         ("dark", r':root\[data-theme="dark"\]'),
@@ -389,11 +387,11 @@ async def test_the_listing_is_the_bright_surface_not_the_chrome(tmp_path):
         found = re.search(block + r" \{(.*?)\n\}", css, re.DOTALL)
         assert found, theme
         values = dict(re.findall(r"(--[\w-]+):\s*([^;]+);", found.group(1)))
-
-        assert luminance(values, "--surface") > luminance(values, "--bg"), (
-            f"in the {theme} theme the listing is darker than the columns "
-            "beside it, which is the exact complaint this test was "
-            "written for"
+        for name in {background("#list"), background("#nav")}:
+            assert name in values, f"{name} has no {theme} value"
+        assert values[background("#list")] != values[background("#nav")], (
+            f"in the {theme} theme the listing and the side column are the "
+            "same colour"
         )
 
 
