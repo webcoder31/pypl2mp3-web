@@ -1715,3 +1715,25 @@ async def test_the_junk_mark_leads_and_the_count_ends_the_line(tmp_path):
     body = count.group(1).strip()
     assert body.startswith("⚠"), f"the mark trails the number: {body!r}"
     assert body.rstrip().endswith("2"), body
+
+
+async def test_both_lists_in_the_nav_say_how_long_they_are(tmp_path):
+    """The artists heading counted itself and the playlists one did not,
+    though they are the same kind of heading over the same kind of
+    list."""
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+    _make_song(tmp_path, "IAMX", "Spit", "bbbbbbbbbbb", playlist=OTHER)
+
+    async with _client(create_app(tmp_path)) as client:
+        nav = (await client.get("/fragments/nav")).text
+
+    headings = re.findall(r"<h2>(.*?)</h2>", nav, re.DOTALL)
+    assert len(headings) == 2, headings
+    for heading in headings:
+        assert "—" in heading, f"{heading.strip()!r} does not count itself"
+
+    playlists = next(h for h in headings if "Playlist" in h)
+    assert playlists.strip().endswith("2"), (
+        f"two playlists on disk, heading says {playlists.strip()!r}"
+    )

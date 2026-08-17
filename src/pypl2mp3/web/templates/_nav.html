@@ -21,7 +21,7 @@
   </li>
 </ul>
 
-<h2>Playlists</h2>
+<h2>Playlists — {{ summaries | length }}</h2>
 <ul>
   {% for summary in summaries %}
     {# Title first, owner beneath: a repository's playlists usually share
