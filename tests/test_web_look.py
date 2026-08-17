@@ -878,27 +878,53 @@ async def test_the_player_carries_no_second_video_link(tmp_path):
         in script, "tab no longer knows which video to open"
 
 
-async def test_the_listing_header_is_tinted_apart_from_its_rows(tmp_path):
-    """Header and rows are both surfaces, so a difference in lightness
-    alone reads as a rendering artefact. A trace of the accent says the
-    row belongs to the selection it describes."""
+async def test_the_listing_header_stands_apart_from_its_rows(tmp_path):
+    """It has to be distinguishable from the rows under it, and not by a
+    hair.
+
+    It used to carry a green tint for that, because a lone band a shade
+    lighter than its rows reads as a rendering artefact. It is no longer
+    alone: it shares its surface with the whole side column, so the
+    distinction is a large coherent frame rather than a stripe — and a
+    rule under it, in case the two surfaces are close in one palette.
+
+    The green did not go anywhere. The page header keeps it, and it is
+    still the only tinted thing on screen.
+    """
 
     async with _client(create_app(tmp_path)) as client:
         css = (await client.get("/static/console.css")).text
 
-    bar = re.search(r"#toolbar \{(.*?)\n\}", css, re.DOTALL).group(1)
-    assert "background: var(--header-bg)" in bar, bar
+    def block(selector):
+        # [^}]* rather than a dot-all lazy match: #list is a one-liner, so
+        # looking for a closing brace on its own line ran past it into the
+        # next rules and this test passed on the wrong text.
+        found = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", css)
+        assert found, selector
 
-    listing = re.search(r"#list \{([^}]*)\}", css).group(1)
-    assert "--header-bg" not in listing, "the header no longer stands apart"
+        return found.group(1)
 
-    for theme, block in (
+    bar = block("#toolbar")
+    assert re.search(r"background:\s*var\(--surface\)", bar), bar
+    assert "border-bottom" in bar, (
+        "nothing separates the header from the rows if a palette brings "
+        "the two surfaces close"
+    )
+    assert "--surface" not in block("#list"), "the header no longer stands apart"
+
+    # And the tint still exists, on the one thing that is not about the
+    # songs. Green-tinted, in both palettes.
+    assert re.search(r"background:\s*var\(--header-bg\)", block("#header")), (
+        "the page header lost the tint that sets it apart from everything "
+        "below it"
+    )
+    for theme, palette in (
         ("light", re.search(
             r':root, :root\[data-theme="light"\] \{(.*?)\n\}',
             css, re.DOTALL).group(1)),
         ("dark", _dark_block(css)),
     ):
-        value = re.search(r"--header-bg:\s*#([0-9a-fA-F]{6})", block)
+        value = re.search(r"--header-bg:\s*#([0-9a-fA-F]{6})", palette)
         assert value, f"{theme} has no header colour"
 
         red, green, blue = (
@@ -906,11 +932,6 @@ async def test_the_listing_header_is_tinted_apart_from_its_rows(tmp_path):
         )
         assert green > red and green >= blue, (
             f"{theme} #{value.group(1)} is not green-tinted"
-        )
-        # Tinted, not coloured: a saturated band would shout louder than
-        # anything it contains.
-        assert max(red, green, blue) - min(red, green, blue) <= 24, (
-            f"{theme} #{value.group(1)} is too saturated for a background"
         )
 
 
@@ -1800,3 +1821,39 @@ async def test_the_whole_library_row_is_not_a_fourth_playlist(tmp_path):
     # current row already has its own weight, from its own rule.
     current = re.search(r"\n#nav li\.current button \{([^}]*)\}", css)
     assert current and "font-weight: 600" in current.group(1), css[-400:]
+
+
+async def test_the_chrome_around_the_listing_is_one_frame(tmp_path):
+    """The playlist's header and the side column both surround the
+    listing, so they share one surface. Two tints would draw a boundary
+    where there is none.
+
+    The page header keeps its own: it belongs to the application rather
+    than to this playlist, and it is the only thing above the fold that
+    is not about the songs.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    def background(selector):
+        block = re.search(
+            re.escape(selector) + r"\s*\{(.*?)\n\}", css, re.DOTALL
+        )
+        assert block, selector
+        found = re.search(r"background:\s*var\((--[\w-]+)\)", block.group(1))
+        assert found, f"{selector} paints no background"
+
+        return found.group(1)
+
+    frame = {sel: background(sel) for sel in ("#tabs", "#toolbar", "#nav")}
+    assert len(set(frame.values())) == 1, (
+        f"the chrome around the listing is not one surface: {frame}"
+    )
+    assert background("#list") != background("#toolbar"), (
+        "the playlist header is the same surface as the rows under it"
+    )
+    assert background("#header") != background("#toolbar"), (
+        "the page header lost the tint that sets it apart from the "
+        "playlist's own"
+    )

@@ -510,7 +510,11 @@ button:has(.icon) { display: inline-flex; align-items: center;
    queue counter in it there is nothing for the server to render, so it
    stays out of the fragment that gets swapped. */
 #toolbar {
-  background: var(--header-bg);
+  /* The same surface as the side column. The playlist's header and the
+     nav are both chrome around the listing, so they read as one frame
+     rather than as two tints; the page header above keeps the green,
+     because it belongs to the application and not to this playlist. */
+  background: var(--surface);
   border-bottom: 1px solid var(--line);
   padding: var(--space-3) var(--block-pad-x);
   display: flex;
@@ -558,7 +562,10 @@ button:has(.icon) { display: inline-flex; align-items: center;
 #tabs {
   display: flex;
   gap: var(--space-1);
-  background: var(--header-bg);
+  /* With the toolbar under it: the strip and the row it heads are one
+     header, and splitting their surfaces would draw a line where there
+     is no boundary. */
+  background: var(--surface);
   border-bottom: 1px solid var(--line);
   padding: 0 var(--block-pad-x);
 }
