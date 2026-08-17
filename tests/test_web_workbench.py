@@ -193,3 +193,43 @@ async def test_the_card_states_its_keys(tmp_path):
     # correct-then-enter without reaching for the mouse.
     assert 'event.key !== "Enter" || !inWorkbench()' in script
     assert "form.requestSubmit()" in script
+
+
+async def test_the_panel_wanted_counts_as_much_as_the_song(tmp_path):
+    """The workbench could open on a song the inspector was already
+    showing and load nothing at all.
+
+    You got the plain panel full frame — no listing, no nav, and no Done
+    — and nothing on screen could leave the mode, so the page had to be
+    reloaded. Comparing only the song id is what did it.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        script = (await client.get("/static/console.js")).text
+
+    body = script[script.index("function inspect(id)"):]
+    body = body[: body.index("\n  }")]
+
+    assert "showing === wanted" in body, (
+        "inspect() decides on the song alone, so asking for a different "
+        "panel on the same song loads nothing"
+    )
+    assert '"/fragments/" + wanted' in body, body[-300:]
+
+
+async def test_a_tab_is_a_way_out_of_the_workbench(tmp_path):
+    """The tabs switch the pane under them and the workbench covers that
+    pane entirely, so asking for a tab is asking to be back in the layout
+    that has one. It is also the escape hatch if the panel ever fails to
+    arrive."""
+
+    async with _client(create_app(tmp_path)) as client:
+        script = (await client.get("/static/console.js")).text
+
+    handler = script[script.index('closest("#tabs [data-tab]")'):]
+    handler = handler[: handler.index("\n      return;")]
+
+    assert "leaveWorkbench()" in handler, (
+        "clicking a tab leaves the workbench on screen with its panes "
+        "hidden behind it"
+    )

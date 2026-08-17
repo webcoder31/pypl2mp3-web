@@ -109,6 +109,11 @@
   document.addEventListener("click", function (event) {
     const tab = event.target.closest("#tabs [data-tab]");
     if (tab) {
+      // The tabs switch the pane under them, and the workbench covers
+      // that pane entirely — so asking for a tab is asking to be back in
+      // the layout that has one. It doubles as the way out if the panel
+      // itself ever fails to arrive.
+      leaveWorkbench();
       showTab(tab.dataset.tab);
       return;
     }
@@ -268,11 +273,19 @@
   function inspect(id) {
     if (dirty) return;
 
+    // The song *and* which panel is wanted. Comparing only the song let
+    // the workbench open on a song the inspector was already showing and
+    // load nothing at all: you got the plain panel full frame, with no
+    // listing, no nav, and no Done — nothing on screen could leave the
+    // mode, so the page had to be reloaded.
     const shown = document.querySelector("#inspector [data-song-id]");
-    if (shown && shown.dataset.songId === id) return;
+    const showing = document.querySelector("#inspector .workbench")
+      ? "workbench"
+      : "inspector";
+    const wanted = inWorkbench() ? "workbench" : "inspector";
+    if (shown && shown.dataset.songId === id && showing === wanted) return;
 
-    const panel = inWorkbench() ? "/fragments/workbench/" : "/fragments/inspector/";
-    window.htmx.ajax("GET", panel + id, "#inspector");
+    window.htmx.ajax("GET", "/fragments/" + wanted + "/" + id, "#inspector");
   }
 
   function play(i) {
