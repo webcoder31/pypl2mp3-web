@@ -36,8 +36,13 @@
             <span class="pl-owner">{{ summary.owner }}</span>
           {% endif %}
         </span>
+        {# The mark leads, the number ends the line. Everywhere else on
+           the page the warning comes before the thing it warns about —
+           a junk row, a junk song in the panel — and putting it last
+           here also pushed the counts off the right edge they were
+           lining up on. #}
         <span class="count {% if summary.junk_songs %}junk{% endif %}">
-          {{ summary.total_songs }}{% if summary.junk_songs %} ⚠{% endif %}
+          {% if summary.junk_songs %}⚠ {% endif %}{{ summary.total_songs }}
         </span>
       </button>
     </li>

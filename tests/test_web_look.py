@@ -1691,3 +1691,27 @@ async def test_the_side_column_gives_way_when_the_listing_is_squeezed(
     assert narrow and "--pane-nav" in narrow.group(1), (
         "the side column keeps its wide-screen floor on a narrow one"
     )
+
+
+async def test_the_junk_mark_leads_and_the_count_ends_the_line(tmp_path):
+    """Everywhere else on the page the warning comes before the thing it
+    warns about — a junk row, a junk song in the panel.
+
+    It also puts the counts back on the one right edge they line up on:
+    trailing the mark pushed a flagged playlist's number left of every
+    other, so a column of tabular numerals no longer lined up anywhere.
+    """
+
+    _make_song(tmp_path, "ARTIST", "Fine", "aaaaaaaaaaa")
+    _make_song(tmp_path, "UNKNOWN", "Junk", "bbbbbbbbbbb", junk=True)
+
+    async with _client(create_app(tmp_path)) as client:
+        nav = (await client.get("/fragments/nav")).text
+
+    count = re.search(
+        r'<span class="count [^"]*junk[^"]*">\s*(.*?)\s*</span>', nav, re.DOTALL
+    )
+    assert count, nav
+    body = count.group(1).strip()
+    assert body.startswith("⚠"), f"the mark trails the number: {body!r}"
+    assert body.rstrip().endswith("2"), body
