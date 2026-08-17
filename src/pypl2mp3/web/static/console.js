@@ -167,6 +167,10 @@
     });
   }
 
+  // The song the listing was last scrolled to. Kept so that following
+  // happens when the song changes and not when the list is repainted.
+  let followed = null;
+
   function paint() {
     const current = queue[index];
 
@@ -181,6 +185,32 @@
     rows().forEach(function (row) {
       row.classList.toggle("playing", row.dataset.songId === currentId);
     });
+
+    // Bring the playing row into view — once per song, not on every
+    // repaint. A listing of 944 rows is 51 000 pixels tall, and after a
+    // few skips the row that is lit is nowhere near the screen. Doing it
+    // on every paint would yank the page back the moment you scrolled
+    // off to look at something else; `nearest` then does nothing at all
+    // when the row is already visible, so it never moves a list that
+    // does not need moving.
+    if (currentId !== followed) {
+      followed = currentId;
+      const playing = document.querySelector("#list tr.playing");
+      if (playing) playing.scrollIntoView({ block: "nearest" });
+    }
+
+    // Three buttons that act on the selection. With nothing selected
+    // they used to stay lit and do nothing at all, which reads as a
+    // broken page rather than as an empty one.
+    const empty = rows().length === 0;
+    document.querySelectorAll("#toolbar [data-queue-action]").forEach(
+      function (button) {
+        button.disabled = empty;
+        button.title = empty
+          ? "Nothing to play — no song matches this filter"
+          : button.dataset.hint || button.title;
+      }
+    );
 
     if (!current) {
       bar.classList.add("idle");
@@ -271,7 +301,13 @@
   document.body.addEventListener("htmx:afterSwap", markInspectorCursor);
 
   function inspect(id) {
-    if (dirty) return;
+    // Held back by an edit nobody has saved. The panel deliberately
+    // stops following the player here — but it used to do it in
+    // silence, so the panel simply looked stuck on the wrong song.
+    if (dirty) {
+      document.getElementById("inspector").classList.add("holding-edits");
+      return;
+    }
 
     // The song *and* which panel is wanted. Comparing only the song let
     // the workbench open on a song the inspector was already showing and
@@ -797,7 +833,11 @@
   });
 
   document.addEventListener("htmx:afterSwap", function (event) {
-    if (event.target.id === "inspector") dirty = false;
+    if (event.target.id !== "inspector") return;
+
+    // A fresh panel carries no unsaved edits, and nothing left to hold.
+    dirty = false;
+    event.target.classList.remove("holding-edits");
   });
 
   // Shazam proposes; you decide. Filling the fields rather than writing

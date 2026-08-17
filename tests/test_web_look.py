@@ -1543,3 +1543,58 @@ async def test_the_header_band_is_as_deep_above_as_below(tmp_path):
         f"the top does not account for the {border.group(1)}px rule below: "
         f"{top.group(1)}"
     )
+
+
+async def test_the_panel_says_when_it_is_holding_edits(tmp_path):
+    """The mention is rendered always and revealed by the page, because
+    only the page knows whether anything has been typed."""
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        panel = (await client.get("/fragments/inspector/aaaaaaaaaaa")).text
+        css = (await client.get("/static/console.css")).text
+
+    assert 'class="held"' in panel, panel[:400]
+
+    hidden = re.search(r"\n\.held \{([^}]*)\}", css)
+    shown = re.search(r"#inspector\.holding-edits \.held \{([^}]*)\}", css)
+    assert hidden and "display: none" in hidden.group(1), css[-400:]
+    assert shown and "display: inline" in shown.group(1), css[-400:]
+
+
+async def test_nothing_to_play_offers_nothing(tmp_path):
+    """The three buttons act on the selection. With nothing selected they
+    stayed lit and did nothing, which reads as a broken page rather than
+    an empty one."""
+
+    async with _client(create_app(tmp_path)) as client:
+        script = (await client.get("/static/console.js")).text
+
+    assert "button.disabled = empty" in script, (
+        "the queue actions are never disabled, so an empty listing still "
+        "offers to play itself"
+    )
+
+
+async def test_the_listing_follows_the_song_but_only_when_it_changes(tmp_path):
+    """944 rows is 51 000 pixels: after a few skips the row that is lit
+    is nowhere near the screen.
+
+    Once per song, not per repaint — otherwise scrolling off to look at
+    something else yanks the page straight back. `nearest` then does
+    nothing when the row is already in view.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        script = (await client.get("/static/console.js")).text
+
+    assert 'scrollIntoView({ block: "nearest" })' in script, (
+        "the listing never follows what is playing"
+    )
+    follow = script[script.index("if (currentId !== followed)"):]
+    follow = follow[: follow.index("\n    }")]
+    assert "followed = currentId" in follow, (
+        "nothing remembers which song was followed, so every repaint "
+        "scrolls the list back"
+    )

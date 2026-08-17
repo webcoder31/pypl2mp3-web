@@ -22,6 +22,12 @@
     </h2>
     <p class="id">
       {{ song.playlist_name }} · {{ song.short_duration }}
+      {# Shown only while the panel is holding edits nobody has saved.
+         It stops following the player then — on purpose, so a track
+         ending mid-sentence does not wipe what you were typing — and
+         used to do it in silence, which left the panel looking stuck on
+         the wrong song. #}
+      <span class="held">· unsaved edits — the panel is staying here</span>
     </p>
 
     {# Shazam is not called on load: it takes seconds and waits fifteen

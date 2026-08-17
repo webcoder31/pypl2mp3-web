@@ -274,7 +274,17 @@ async def test_the_script_guards_unsaved_edits_before_following_the_player(
         script = (await client.get("/static/console.js")).text
 
     assert "/fragments/inspector/" in script, "the panel never follows"
-    assert "if (dirty) return" in script, "no guard on unsaved edits"
+    guard = script[script.index("function inspect(id)"):]
+    guard = guard[: guard.index("\n  }")]
+    assert "if (dirty)" in guard, "no guard on unsaved edits"
+    assert "return" in guard, guard[:200]
+
+    # And it says so. Holding the panel back is deliberate — a track
+    # ending mid-sentence must not wipe what you were typing — but doing
+    # it in silence left the panel looking stuck on the wrong song.
+    assert "holding-edits" in guard, (
+        "the panel stops following the player without saying why"
+    )
     assert 'event.target.closest("#inspector")' in script, (
         "nothing marks the panel dirty when you type in it"
     )

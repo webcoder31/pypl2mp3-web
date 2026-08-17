@@ -782,6 +782,10 @@ tbody tr.playing td.num { color: var(--accent); }
 .inspector-title { font-size: var(--fs-lg); line-height: 1.25;
                    margin: 0.2rem 0 0.1rem; letter-spacing: -0.01em; }
 #inspector .id { color: var(--text-3); }
+/* Only while the panel is refusing to follow the player, and saying so
+   where it says everything else about this song. */
+.held { display: none; color: var(--junk); }
+#inspector.holding-edits .held { display: inline; }
 /* Gone when the panel already describes what you are hearing: an offer
    to play the song that is playing is noise, and its absence is what
    tells you the two cursors have met. */
