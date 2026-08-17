@@ -629,3 +629,52 @@ async def test_a_revalidated_asset_costs_nothing(tmp_path):
 
     assert again.status_code == 304
     assert not again.content
+
+
+async def test_the_panel_describes_the_first_song_on_arrival(tmp_path):
+    """It used to say "Select a song." and nothing else.
+
+    The first row is the obvious one to describe, and describing a song
+    is not playing it: the player stays silent until asked, and the
+    panel's own Play this button is what asks.
+    """
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        script = (await client.get("/static/console.js")).text
+
+    # The block that runs on arrival, and only that block: slicing from
+    # its own guard rather than from a nearby landmark, which caught the
+    # rest of the file the first time this was written.
+    start = script.index(
+        'if (!document.querySelector("#inspector [data-song-id]"))'
+    )
+    arrival = script[start:]
+    arrival = arrival[: arrival.index("\n  }") + 4]
+
+    assert "rows()[0]" in arrival, (
+        "nothing picks the first row when the panel arrives empty"
+    )
+    assert "inspect(first.dataset.songId)" in arrival, arrival
+
+    # Describing, not starting: no queue is built and no audio is set.
+    assert "setQueue" not in arrival, "arriving on the page starts playing"
+    assert "audio.play" not in arrival, arrival
+
+
+async def test_a_panel_the_server_already_filled_is_left_alone(tmp_path):
+    """A reload during playback, or a bookmarked song: the shell renders
+    the panel itself, and overwriting it with row one would throw that
+    away."""
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        script = (await client.get("/static/console.js")).text
+
+    guard = script[script.index('if (!document.querySelector("#inspector [data-song-id]"))'):]
+    guard = guard[: guard.index("\n  }")]
+    assert "rows()[0]" in guard, (
+        "the first row is chosen whatever the panel already holds"
+    )

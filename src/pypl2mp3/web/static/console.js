@@ -988,4 +988,16 @@
   if (list) observer.observe(list, { childList: true, subtree: true });
 
   paint();
+
+  // Arriving, the panel described nothing: "Select a song." The first
+  // row is the obvious one to describe, so it describes that — and
+  // describing a song is not playing it. The player stays silent until
+  // asked, and the panel's own Play this button is what asks.
+  //
+  // Only when nothing is showing: a panel already filled by the server —
+  // a reload during playback, a bookmarked song — is not overwritten.
+  if (!document.querySelector("#inspector [data-song-id]")) {
+    const first = rows()[0];
+    if (first) inspect(first.dataset.songId);
+  }
 })();
