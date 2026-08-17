@@ -573,10 +573,6 @@ button:has(.icon) { display: inline-flex; align-items: center;
 #tabs {
   display: flex;
   gap: var(--space-1);
-  /* With the toolbar under it: the strip and the row it heads are one
-     header, and splitting their surfaces would draw a line where there
-     is no boundary. */
-  background: var(--frame-bg);
   border-bottom: 1px solid var(--line);
   padding: 0 var(--block-pad-x);
 }
@@ -939,7 +935,6 @@ tbody tr.playing td.num { color: var(--accent); }
    as a pause and not only as an edge. */
 #player {
   background: var(--content-bg);
-  border-bottom: 1px solid var(--line);
   padding: var(--space-3) var(--block-pad-x) var(--space-5);
   display: flex;
   align-items: center;

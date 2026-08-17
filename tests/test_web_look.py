@@ -1816,40 +1816,43 @@ async def test_the_whole_library_row_is_not_a_fourth_playlist(tmp_path):
     assert current and "font-weight: 600" in current.group(1), css[-400:]
 
 
-async def test_the_frame_is_the_tab_strip_and_the_side_column(tmp_path):
+async def test_the_side_column_is_the_frame(tmp_path):
     """Where chrome stops and content starts.
 
-    The tab strip and the nav surround the listing and share one surface.
-    The toolbar does not: it carries the rows' own surface, because it is
-    the top of the listing rather than a header above it, and the rule
-    under it is what marks it off.
+    The nav is the frame. Everything in the main column — the song, its
+    transport, the toolbar and the rows — is on the content surface, and
+    the tab strip paints nothing of its own, so it takes whatever is
+    behind it, which is that same surface.
     """
 
     async with _client(create_app(tmp_path)) as client:
         css = (await client.get("/static/console.css")).text
 
-    def background(selector):
+    def rule(selector):
         found = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", css)
         assert found, selector
-        colour = re.search(r"background:\s*var\((--[\w-]+)\)", found.group(1))
+
+        return found.group(1)
+
+    def background(selector):
+        colour = re.search(r"background:\s*var\((--[\w-]+)\)", rule(selector))
         assert colour, f"{selector} paints no background"
 
         return colour.group(1)
 
-    assert background("#tabs") == background("#nav"), (
-        "the tab strip and the side column are not one frame"
-    )
-    for content in ("#toolbar", "#inspector", "#player"):
-        assert background(content) == background("#list"), (
-            f"{content} is not on the listing's surface"
+    assert background("#nav") == "--frame-bg", background("#nav")
+    for content in ("#toolbar", "#inspector", "#player", "#list"):
+        assert background(content) == "--content-bg", (
+            f"{content} is not on the content surface"
         )
-    assert background("#tabs") != background("#list"), (
-        "the frame and the content are the same surface, so nothing "
-        "separates them"
-    )
-    assert background("#header") != background("#tabs"), (
+    assert background("#header") != background("#nav"), (
         "the page header lost the tint that sets it apart from the frame"
     )
+
+    # The strip paints nothing, so it cannot disagree with what is under
+    # it — but it keeps the rule that marks where the panes begin.
+    assert "background" not in rule("#tabs"), rule("#tabs")
+    assert "border-bottom" in rule("#tabs"), rule("#tabs")
 
 
 async def test_the_two_palettes_assign_the_surfaces_oppositely(tmp_path):
