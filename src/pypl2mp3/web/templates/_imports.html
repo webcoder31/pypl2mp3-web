@@ -70,6 +70,13 @@
             hx-post="/playlists/{{ playlist_id }}/import"
             hx-target="#imports-body"
             hx-swap="outerHTML">
+        {# An unticked checkbox sends nothing, so a form with every row
+           unticked is indistinguishable from a form with no rows at all
+           — and the server read that as "no selection given", which
+           means everything missing. Unticking the lot downloaded the
+           lot. This field is always sent, so its presence is what says a
+           selection was made, however empty. #}
+        <input type="hidden" name="selection" value="1">
 
         {% if phase == "choosing" %}
           {# Choose, then act: the box that changes what is ticked comes

@@ -297,12 +297,16 @@ def create_app(repository_path: Path) -> FastAPI:
         is_htmx = request.headers.get("HX-Request") is not None
         job_id = f"import:{playlist_id}"
 
-        # The ticked rows, straight off the form. Absent means no panel
-        # sent them — the CLI's behaviour, everything missing. Present
-        # and empty means every row was unticked, which is a request to
-        # import nothing, and the service keeps those two apart.
+        # The ticked rows, straight off the form.
+        #
+        # An unticked checkbox sends nothing, so "songs" being absent
+        # cannot tell "no panel sent a selection" from "every row was
+        # unticked" — and reading the second as the first downloaded the
+        # whole playlist on a gesture that asked for none of it. The
+        # panel always sends `selection`, so that is what decides; the
+        # service already keeps None and [] apart.
         form = await request.form()
-        only = form.getlist("songs") if "songs" in form else None
+        only = form.getlist("songs") if "selection" in form else None
         app.state.import_selection[playlist_id] = (
             set(only) if only is not None else None
         )

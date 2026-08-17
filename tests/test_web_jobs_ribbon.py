@@ -1001,7 +1001,8 @@ async def test_pressing_start_keeps_the_list_on_screen(tmp_path, monkeypatch):
             started = await client.post(
                 f"/playlists/{PLAYLIST_ID}/import",
                 headers=HX,
-                data={"songs": ["aaaaaaaaaaa", "ccccccccccc"]},
+                data={"selection": "1",
+                      "songs": ["aaaaaaaaaaa", "ccccccccccc"]},
             )
             await reached.wait()
 
@@ -1061,7 +1062,7 @@ async def test_a_new_look_is_not_narrowed_by_the_last_selection(
         await _settle_pane(client, app, f"check:{PLAYLIST_ID}")
         await client.post(
             f"/playlists/{PLAYLIST_ID}/import", headers=HX,
-            data={"songs": ["aaaaaaaaaaa"]},
+            data={"selection": "1", "songs": ["aaaaaaaaaaa"]},
         )
         await _settle_pane(client, app, f"import:{PLAYLIST_ID}")
 
@@ -1071,3 +1072,110 @@ async def test_a_new_look_is_not_narrowed_by_the_last_selection(
     assert "IAMX - Spit It Out" in again, (
         "the new list is still narrowed by what was ticked last time"
     )
+
+
+async def test_unticking_every_row_imports_nothing(tmp_path, monkeypatch):
+    """The worst reading of a gesture, and it was the one taken.
+
+    An unticked checkbox sends nothing, so a form with every row unticked
+    reaches the server looking exactly like a form with no rows at all —
+    which the route read as "no selection given", which means everything
+    missing. Unticking the lot downloaded the lot.
+    """
+
+    asked = {}
+
+    def fake_check(repository_path, playlist_id, progress=None,
+                   with_labels=False):
+        progress.item_listed("aaaaaaaaaaa", "IAMX - Kiss")
+        progress.item_listed("bbbbbbbbbbb", "IAMX - Spit It Out")
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            total_remote=2, already_local=0,
+            missing=["aaaaaaaaaaa", "bbbbbbbbbbb"],
+        )
+
+    async def fake_import(repository_path, playlist_id, progress=None,
+                          only=None):
+        asked["only"] = only
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            total_remote=2, already_local=0, imported=[], failed=[]
+        )
+
+    monkeypatch.setattr("pypl2mp3.web.app.check_new_songs", fake_check)
+    monkeypatch.setattr("pypl2mp3.web.app.import_playlist", fake_import)
+    _make_song(tmp_path, "ARTIST", "Song", "zzzzzzzzzzz")
+    app = create_app(tmp_path)
+
+    async with _client(app) as client:
+        await client.post(f"/playlists/{PLAYLIST_ID}/check", headers=HX)
+        await _settle_pane(client, app, f"check:{PLAYLIST_ID}")
+        # Exactly what the browser sends when nothing is ticked: the
+        # marker, and not one song.
+        await client.post(
+            f"/playlists/{PLAYLIST_ID}/import", headers=HX,
+            data={"selection": "1"},
+        )
+        await _settle_pane(client, app, f"import:{PLAYLIST_ID}")
+
+    assert asked["only"] == [], (
+        f"unticking every row asked the service for {asked['only']!r}, and "
+        "None means everything missing"
+    )
+
+
+async def test_a_caller_that_sends_no_selection_still_gets_everything(
+    tmp_path, monkeypatch
+):
+    """The other half. Nothing in the panel does this, but the route is
+    the CLI's shape too: no selection means the whole of what is
+    missing, and that must not be collateral of the fix above."""
+
+    asked = {}
+
+    async def fake_import(repository_path, playlist_id, progress=None,
+                          only=None):
+        asked["only"] = only
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            total_remote=1, already_local=0, imported=[], failed=[]
+        )
+
+    monkeypatch.setattr("pypl2mp3.web.app.import_playlist", fake_import)
+    _make_song(tmp_path, "ARTIST", "Song", "zzzzzzzzzzz")
+    app = create_app(tmp_path)
+
+    async with _client(app) as client:
+        await client.post(f"/playlists/{PLAYLIST_ID}/import", headers=HX)
+        await _settle_pane(client, app, f"import:{PLAYLIST_ID}")
+
+    assert asked["only"] is None, asked
+
+
+async def test_the_panel_always_says_a_selection_was_made(tmp_path,
+                                                          monkeypatch):
+    """The marker is what carries the distinction, so it has to be in
+    the form whatever is ticked."""
+
+    def fake_check(repository_path, playlist_id, progress=None,
+                   with_labels=False):
+        progress.item_listed("aaaaaaaaaaa", "IAMX - Kiss")
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            total_remote=1, already_local=0, missing=["aaaaaaaaaaa"]
+        )
+
+    monkeypatch.setattr("pypl2mp3.web.app.check_new_songs", fake_check)
+    _make_song(tmp_path, "ARTIST", "Song", "zzzzzzzzzzz")
+    app = create_app(tmp_path)
+
+    async with _client(app) as client:
+        await client.post(f"/playlists/{PLAYLIST_ID}/check", headers=HX)
+        pane = await _settle_pane(client, app, f"check:{PLAYLIST_ID}")
+
+    assert '<input type="hidden" name="selection"' in pane, pane
