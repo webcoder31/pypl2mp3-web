@@ -878,18 +878,15 @@ async def test_the_player_carries_no_second_video_link(tmp_path):
         in script, "tab no longer knows which video to open"
 
 
-async def test_the_listing_header_stands_apart_from_its_rows(tmp_path):
-    """It has to be distinguishable from the rows under it, and not by a
-    hair.
+async def test_the_toolbar_is_marked_off_by_its_rule(tmp_path):
+    """It shares the rows' surface deliberately, so the 1px rule under it
+    is the only thing separating the two. Losing that leaves the queue
+    readout looking like a song.
 
-    It used to carry a green tint for that, because a lone band a shade
-    lighter than its rows reads as a rendering artefact. It is no longer
-    alone: it shares its surface with the whole side column, so the
-    distinction is a large coherent frame rather than a stripe — and a
-    rule under it, in case the two surfaces are close in one palette.
-
-    The green did not go anywhere. The page header keeps it, and it is
-    still the only tinted thing on screen.
+    It used to carry a green tint instead, on the grounds that a band a
+    shade lighter than its rows reads as a rendering artefact. That tint
+    is on the page header now, and it is still the only tinted thing on
+    screen.
     """
 
     async with _client(create_app(tmp_path)) as client:
@@ -905,15 +902,11 @@ async def test_the_listing_header_stands_apart_from_its_rows(tmp_path):
         return found.group(1)
 
     bar = block("#toolbar")
-    assert re.search(r"background:\s*var\(--surface\)", bar), bar
+    assert re.search(r"background:\s*var\(--bg\)", bar), bar
     assert "border-bottom" in bar, (
-        "nothing separates the header from the rows if a palette brings "
-        "the two surfaces close"
+        "nothing separates the queue readout from the songs under it"
     )
-    assert "--surface" not in block("#list"), "the header no longer stands apart"
 
-    # And the tint still exists, on the one thing that is not about the
-    # songs. Green-tinted, in both palettes.
     assert re.search(r"background:\s*var\(--header-bg\)", block("#header")), (
         "the page header lost the tint that sets it apart from everything "
         "below it"
@@ -1823,37 +1816,37 @@ async def test_the_whole_library_row_is_not_a_fourth_playlist(tmp_path):
     assert current and "font-weight: 600" in current.group(1), css[-400:]
 
 
-async def test_the_chrome_around_the_listing_is_one_frame(tmp_path):
-    """The playlist's header and the side column both surround the
-    listing, so they share one surface. Two tints would draw a boundary
-    where there is none.
+async def test_the_frame_is_the_tab_strip_and_the_side_column(tmp_path):
+    """Where chrome stops and content starts.
 
-    The page header keeps its own: it belongs to the application rather
-    than to this playlist, and it is the only thing above the fold that
-    is not about the songs.
+    The tab strip and the nav surround the listing and share one surface.
+    The toolbar does not: it carries the rows' own surface, because it is
+    the top of the listing rather than a header above it, and the rule
+    under it is what marks it off.
     """
 
     async with _client(create_app(tmp_path)) as client:
         css = (await client.get("/static/console.css")).text
 
     def background(selector):
-        block = re.search(
-            re.escape(selector) + r"\s*\{(.*?)\n\}", css, re.DOTALL
+        found = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", css)
+        assert found, selector
+        colour = re.search(r"background:\s*var\((--[\w-]+)\)", found.group(1))
+        assert colour, f"{selector} paints no background"
+
+        return colour.group(1)
+
+    assert background("#tabs") == background("#nav"), (
+        "the tab strip and the side column are not one frame"
+    )
+    for content in ("#toolbar", "#inspector", "#player"):
+        assert background(content) == background("#list"), (
+            f"{content} is not on the listing's surface"
         )
-        assert block, selector
-        found = re.search(r"background:\s*var\((--[\w-]+)\)", block.group(1))
-        assert found, f"{selector} paints no background"
-
-        return found.group(1)
-
-    frame = {sel: background(sel) for sel in ("#tabs", "#toolbar", "#nav")}
-    assert len(set(frame.values())) == 1, (
-        f"the chrome around the listing is not one surface: {frame}"
+    assert background("#tabs") != background("#list"), (
+        "the frame and the content are the same surface, so nothing "
+        "separates them"
     )
-    assert background("#list") != background("#toolbar"), (
-        "the playlist header is the same surface as the rows under it"
-    )
-    assert background("#header") != background("#toolbar"), (
-        "the page header lost the tint that sets it apart from the "
-        "playlist's own"
+    assert background("#header") != background("#tabs"), (
+        "the page header lost the tint that sets it apart from the frame"
     )
