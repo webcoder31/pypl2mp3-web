@@ -220,10 +220,17 @@ async def test_every_control_is_drawn_by_the_stylesheet(tmp_path):
     for rule in ("button:hover", "button:active", ":focus-visible"):
         assert rule in css, rule
 
-    # The platform's focus ring is the loudest default of all.
-    assert "outline: 2px solid var(--accent)" in css, (
-        "focus falls back to the operating system's blue ring"
+    # The ring is gone, and suppressed rather than deleted — dropping the
+    # rule would hand it back to the browser, which is the platform blue
+    # this file exists to keep out. A field still says focus, with its own
+    # border and halo.
+    assert re.search(r"\n:focus-visible \{ outline: none; \}", css), (
+        "focus falls back to the operating system's own ring"
     )
+    field = re.search(r"input:focus-visible \{([^}]*)\}", css)
+    assert field, "a field no longer says when it has the focus"
+    assert "border-color: var(--accent)" in field.group(1), field.group(1)
+    assert "box-shadow" in field.group(1), field.group(1)
 
 
 async def test_the_page_has_designed_surfaces(tmp_path):

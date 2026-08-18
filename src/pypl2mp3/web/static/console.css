@@ -303,8 +303,20 @@ input[type="search"], input[type="text"], input[type="url"] {
 }
 input::placeholder { color: var(--text-3); }
 
-/* One focus treatment for everything, and never the platform's blue. */
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* No ring, and suppressed rather than deleted: dropping the rule would
+   hand the ring straight back to the browser, which is the platform blue
+   this file exists to keep out.
+   
+   Why none at all. Tab is the video shortcut here, matching the CLI, so
+   it never moves focus except from inside a field. A ring on a button
+   therefore announces somewhere the keyboard cannot go — and, worse,
+   Chrome withholds it on a pointer click and then reveals it on the next
+   key press, so it appeared a beat late on a button that had not acted.
+   
+   A field is the exception, and it needs no outline: it says focus with
+   its own border and halo, which is the only focus on this page a
+   keyboard can actually reach and move between. */
+:focus-visible { outline: none; }
 input:focus-visible {
   outline: none;
   border-color: var(--accent);
