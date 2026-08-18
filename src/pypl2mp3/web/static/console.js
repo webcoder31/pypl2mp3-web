@@ -754,6 +754,18 @@
           audio.pause();
         }
       }
+
+      // Hand the focus back after a *mouse* click. Chrome does not ring a
+      // button clicked with the pointer, but it rings it the moment the
+      // next key is pressed — so clicking next and then reaching for the
+      // arrow keys lit up a button that had nothing to do with the change:
+      // the arrows are handled on the document.
+      //
+      // event.detail is the click count, and it is 0 when a button is
+      // activated from the keyboard. Blurring only when it is not leaves
+      // Tab and Enter working exactly as they did.
+      if (event.detail > 0) playerButton.blur();
+
       return;
     }
 

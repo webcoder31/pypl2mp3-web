@@ -1935,3 +1935,30 @@ async def test_a_field_stands_off_its_surroundings_in_both_themes(tmp_path):
             f"in the {theme} theme a field is {step:.1f} from the surface it "
             "sits on, which leaves only a 9% hairline to mark it"
         )
+
+
+async def test_a_clicked_transport_button_hands_the_focus_back(tmp_path):
+    """Chrome does not ring a button clicked with the pointer, but it
+    rings it the moment the next key is pressed. So clicking next and
+    then reaching for the arrow keys lit up a button that had nothing to
+    do with the change — the arrows are handled on the document.
+
+    event.detail is the click count, and it is 0 when a button is
+    activated from the keyboard. Blurring only when it is not is what
+    leaves Tab and Enter working exactly as they did, ring included.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        script = (await client.get("/static/console.js")).text
+
+    handler = script[script.index('closest("[data-player-action]")'):]
+    handler = handler[: handler.index("\n      return;")]
+
+    assert "playerButton.blur()" in handler, (
+        "a clicked transport button keeps the focus, so the next key press "
+        "rings it"
+    )
+    assert "event.detail > 0" in handler, (
+        "the focus is dropped however the button was activated, which "
+        "breaks operating it from the keyboard"
+    )
