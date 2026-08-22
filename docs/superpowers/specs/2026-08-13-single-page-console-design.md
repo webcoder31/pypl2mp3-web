@@ -176,13 +176,6 @@ et écarté tant que ça ne gêne pas.
 où il ressemblait à un bouton désactivé. Le remonter encore le
 rapprocherait du côté actif, qui plafonne à 4,0 en clair.
 
-### Rien ne vérifie la parité des deux palettes
-
-Une variable définie dans un seul `:root` n'est signalée par personne :
-la valeur de l'autre thème est simplement héritée. `--accent-dim` a son
-garde parce que c'est la variable qui a révélé le trou ; les autres non.
-Un test comparant les deux blocs a été proposé et n'a pas été demandé.
-
 ## Tranches — toutes livrées
 
 | # | Tranche | Commit |
@@ -481,12 +474,34 @@ alors que contre la page sombre il atteint 9,2:1. Mesuré sur le fond du
 lecteur, glyphe au repos contre glyphe actif : **2,4 contre 4,0 en clair,
 3,1 contre 9,2 en sombre**.
 
-Dette de bord, ouverte puis refermée à moitié : une contre-épreuve a
-montré que **rien ne vérifiait qu'une variable de palette existe dans les
-deux thèmes**. Supprimer `--accent-dim` de la palette sombre ne cassait
-rien de visible — le glyphe aurait simplement hérité de la valeur claire
-sur la page sombre. Un garde a été posé pour cette variable-là ; le cas
-général reste ouvert, voir plus bas.
+Dette de bord, ouverte et refermée : une contre-épreuve a montré que
+**rien ne vérifiait qu'une variable de palette existe dans les deux
+thèmes**. Supprimer `--accent-dim` de la palette sombre ne cassait rien
+de visible — le glyphe aurait simplement hérité de la valeur claire sur
+la page sombre. Voir la section suivante.
+
+### La parité des deux palettes n'était vérifiée par personne
+
+Une variable définie dans un seul `:root` ne dit rien : l'autre thème
+hérite simplement de la valeur qu'on lui a laissée, et un vert réglé pour
+un écran clair atterrit sur un écran sombre sans que rien ne le signale.
+Trouvé par contre-épreuve, pas par relecture.
+
+La règle posée est mécanique, donc elle ne peut pas être oubliée : **une
+variable dont la valeur est une couleur littérale demande une réponse
+dans l'autre palette**. Les échelles — espacement, typo, tailles — et les
+variables de rôle qui pointent vers d'autres variables sont partagées
+exprès et en sont dispensées ; elles peuvent tout de même être redéfinies,
+et deux le sont, ce qui est précisément ce qui permet aux deux surfaces
+de permuter.
+
+Vérifié sur l'état du jour : 55 variables côté clair dont 26 à valeur-
+couleur, 28 côté sombre, aucune orpheline dans un sens ni dans l'autre.
+Cinq contre-épreuves, dont une qui doit passer — ajouter une variable
+d'échelle au seul bloc clair reste licite.
+
+Le garde local qui avait été posé sur `--accent-dim` a été retiré : la
+règle générale le dit de toutes les couleurs.
 
 ### La pochette en fondu enchaîné — `c0cd740` à `717a096`
 

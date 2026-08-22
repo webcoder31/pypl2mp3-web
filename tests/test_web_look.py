@@ -1425,6 +1425,60 @@ async def test_a_waveform_arriving_does_not_move_the_page(tmp_path):
             )
 
 
+async def test_every_colour_is_answered_by_both_palettes(tmp_path):
+    """A variable set in one palette and not the other is silent: the
+    page simply inherits the value it was given, and a light-screen green
+    lands on a dark screen with nothing to say so.
+
+    It was found by counter-experiment, not by review — deleting
+    --accent-dim from the dark palette broke nothing visible and no test
+    at the time.
+
+    The rule is mechanical, so it cannot be forgotten: a variable whose
+    value is a literal colour is theme-dependent by nature and needs an
+    answer in the other palette. The scales — spacing, type, sizes — and
+    the role variables that point at other variables are shared on
+    purpose and are exempt. They may still be overridden; two of them
+    are, and that is what lets the two surfaces swap.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    def palette(selector):
+        head = selector + " {"
+        start = css.index(head)
+        return css[start:css.index("\n}", start)]
+
+    def declared(text):
+        return {
+            name: value.strip()
+            for name, value in re.findall(
+                r"^  (--[\w-]+): ([^;]+);", text, re.MULTILINE
+            )
+        }
+
+    base = declared(palette(':root, :root[data-theme="light"]'))
+    dark = declared(palette(':root[data-theme="dark"]'))
+    assert base and dark, "the palettes are not where this test looks"
+
+    is_colour = re.compile(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(")
+    unanswered = sorted(
+        name
+        for name, value in base.items()
+        if is_colour.search(value) and name not in dark
+    )
+    assert not unanswered, (
+        f"set on a light screen and left to leak onto a dark one: "
+        f"{unanswered}"
+    )
+
+    # And the other way: a variable that exists only in the dark palette
+    # leaves the light one with nothing at all.
+    orphaned = sorted(set(dark) - set(base))
+    assert not orphaned, f"dark-only, so unset on a light screen: {orphaned}"
+
+
 async def test_the_cover_dissolves_between_songs(tmp_path):
     """The panel is replaced wholesale on every song, so the outgoing
     picture leaves with it and a transition has nothing to hold on to.
@@ -1574,12 +1628,9 @@ async def test_the_transport_says_which_way_the_queue_is_walked(tmp_path):
     button = re.search(r"\n#transport button \{([^}]*)\}", css).group(1)
     assert "color: var(--accent-dim)" in button, button
     assert "--accent-dim" != "--accent-line"  # they are two roles
-
-    # And it exists in both palettes. Nothing else here would notice a
-    # variable defined in one and not the other: the glyph would simply
-    # inherit the light value onto the dark page.
-    defined = len(re.findall(r"^  --accent-dim: ", css, re.MULTILINE))
-    assert defined == 2, f"--accent-dim is set in {defined} palette(s)"
+    # That it exists in both palettes is no longer said here:
+    # test_every_colour_is_answered_by_both_palettes says it of every
+    # colour, which is the rule this variable happened to reveal.
 
     # Except with nothing playing: there is no walk to point at, so the
     # whole transport goes neutral — frame and glyph both, the way the
