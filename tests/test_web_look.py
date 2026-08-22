@@ -1425,6 +1425,75 @@ async def test_a_waveform_arriving_does_not_move_the_page(tmp_path):
             )
 
 
+async def test_the_cover_dissolves_between_songs(tmp_path):
+    """The panel is replaced wholesale on every song, so the outgoing
+    picture leaves with it and a transition has nothing to hold on to.
+    The old one is kept as the container's background for the length of
+    the fade and the new one comes up over it — a dissolve rather than a
+    blank square between two songs.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+        js = (await client.get("/static/console.js")).text
+
+    fade = re.search(
+        r"\n\.inspector-cover \.cover, \.workbench-cover \.cover \{"
+        r"([^}]*)\}",
+        css,
+    )
+    assert fade, "nothing fades"
+    # A transition and not a keyframe animation: the reduced-motion rule
+    # at the foot of the stylesheet neutralises durations, and an
+    # animation would walk straight past it.
+    assert "transition: opacity" in fade.group(1), fade.group(1)
+    assert "animation" not in fade.group(1), fade.group(1)
+    assert re.search(
+        r"@media \(prefers-reduced-motion: reduce\) \{\s*"
+        r"\* \{ transition-duration: [^}]*\}",
+        css,
+    ), "the rule this choice relies on is gone"
+
+    # Transparent only with the class on, never by default: if the script
+    # never runs — no swap, an error, a browser that skips load — the
+    # cover is simply there, which is what it was before any of this.
+    hidden = [
+        selector
+        for selector, body in re.findall(
+            r"\n([^\n{}]+(?:,\s*\n?[^\n{}]+)*)\{([^}]*)\}", css
+        )
+        if ".cover" in selector and re.search(r"opacity: 0(?!\.)", body)
+    ]
+    assert hidden and all("arriving" in one for one in hidden), (
+        f"a cover can be invisible with no class asking for it: {hidden}"
+    )
+
+    # The script makes it transparent and then opaque, in that order.
+    assert 'img.classList.add("arriving");' in js, js[:0]
+    assert js.count('img.classList.remove("arriving");') == 2, (
+        "only one of the two endings puts the picture back"
+    )
+    assert "box.style.backgroundImage = 'url(\"' + outgoing + '\")';" in js
+
+    # And the picture underneath goes once its job is done: left there it
+    # would show through the next transparent cover, and every panel
+    # after that would carry a ghost.
+    assert js.count('box.style.backgroundImage = "";') == 2, (
+        "the outgoing picture is left behind"
+    )
+
+    # Bound unguarded, this ran on the imports poll — once a second, on
+    # markup with no cover in it at all.
+    hook = re.search(
+        r'document\.body\.addEventListener\("htmx:afterSwap", function \(event\) \{'
+        r"(.*?)\n  \}\);",
+        js,
+        re.DOTALL,
+    )
+    assert hook and "crossfadeCover(box)" in hook.group(1), "no guarded hook"
+    assert ".inspector-cover, .workbench-cover" in hook.group(1), hook.group(1)
+
+
 async def test_the_transport_says_which_way_the_queue_is_walked(tmp_path):
     """Pressing the back button does not step back once — it turns the
     player round, and a track ending then carries on backwards. The

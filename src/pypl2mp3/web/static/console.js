@@ -328,6 +328,81 @@
 
   document.body.addEventListener("htmx:afterSwap", markInspectorCursor);
 
+  // The cover, crossfading.
+  //
+  // The panel is replaced wholesale on every song, so the outgoing
+  // picture leaves with it and a transition has nothing to hold on to.
+  // The way round it is to keep the old picture as the container's
+  // background for the length of the fade and bring the new one up over
+  // it — a crossfade rather than a blank square between two songs.
+  //
+  // The image is opaque by default and this makes it transparent, never
+  // the other way round: if any of the below is skipped — no swap, an
+  // error, a browser that never fires load — the cover is simply there,
+  // which is what it was before any of this.
+  let lastCover = "";
+
+  function crossfadeCover(box) {
+    const img = box.querySelector(".cover");
+    if (!img) {
+      lastCover = "";
+      return;
+    }
+
+    const outgoing = lastCover;
+    lastCover = img.getAttribute("src");
+
+    // Runs inside htmx's swap, before the browser has painted the new
+    // markup, so the image never shows at full strength first.
+    img.classList.add("arriving");
+    if (outgoing) {
+      box.style.backgroundImage = 'url("' + outgoing + '")';
+    }
+
+    function reveal() {
+      img.classList.remove("arriving");
+      // The picture underneath has done its work once the new one is
+      // opaque. Left there it would show through the next transparent
+      // cover, and every panel after that would carry a ghost.
+      window.setTimeout(function () {
+        box.style.backgroundImage = "";
+      }, 400);
+    }
+
+    function giveUp() {
+      img.classList.remove("arriving");
+      box.style.backgroundImage = "";
+      // This song has no art of its own, so there is nothing to fade
+      // from next time either.
+      lastCover = "";
+    }
+
+    // A cached picture is already complete, and a class added and
+    // removed inside one frame transitions nothing — the element has
+    // never been painted transparent.
+    if (img.complete) {
+      if (img.naturalWidth) window.requestAnimationFrame(reveal);
+      else giveUp();
+      return;
+    }
+
+    img.addEventListener("load", reveal, { once: true });
+    img.addEventListener("error", giveUp, { once: true });
+  }
+
+  document.body.addEventListener("htmx:afterSwap", function (event) {
+    const swapped = event.target;
+    if (!swapped || !swapped.querySelector) return;
+
+    // Only when the swap actually brought a panel with it. Bound
+    // unguarded, this ran on the imports poll — once a second, on
+    // markup with no cover in it at all.
+    const box = swapped.matches(".inspector-cover, .workbench-cover")
+      ? swapped
+      : swapped.querySelector(".inspector-cover, .workbench-cover");
+    if (box) crossfadeCover(box);
+  });
+
   function inspect(id) {
     // Held back by an edit nobody has saved. The panel deliberately
     // stops following the player here — but it used to do it in

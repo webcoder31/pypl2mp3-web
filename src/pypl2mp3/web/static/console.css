@@ -867,6 +867,27 @@ tbody tr.playing td.num { color: var(--accent); }
 .inspector-cover .cover { width: var(--cover-size);
                           height: var(--cover-size);
                           object-fit: cover; box-shadow: var(--shadow); }
+
+/* Crossfading covers. The outgoing picture is left as the container's
+   background while the incoming one comes up over it, so a song change
+   is a dissolve and not a blank square.
+
+   A transition and not a keyframe animation, deliberately: the
+   reduced-motion rule at the foot of this file neutralises durations,
+   and an animation would walk straight past it.
+
+   Opaque by default, made transparent by the script: if the script never
+   runs the cover is simply there, which is what it was before. */
+.inspector-cover, .workbench-cover {
+  background-size: cover;
+  background-position: center;
+}
+.inspector-cover .cover, .workbench-cover .cover {
+  transition: opacity 0.22s ease;
+}
+.inspector-cover .cover.arriving, .workbench-cover .cover.arriving {
+  opacity: 0;
+}
 /* No cap. The panel had one so the fields would not stretch to a
    thousand pixels, but it capped the title with them — and a title is
    the one thing here that earns the room. The fields are capped
