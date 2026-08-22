@@ -1479,7 +1479,11 @@ async def test_the_transport_says_which_way_the_queue_is_walked(tmp_path):
         css,
     )
     assert pair, "the two step buttons are not framed alike"
-    assert "border-color: var(--accent)" in pair.group(1), pair.group(1)
+    # Muted, not the full accent: at full strength two green frames
+    # beside the filled play button made the transport the loudest thing
+    # in the row, and the frames are there to hold it together rather
+    # than to be read.
+    assert "border-color: var(--accent-line)" in pair.group(1), pair.group(1)
 
     # Except with nothing playing: there is no walk to point at, and the
     # play button already falls back this way.

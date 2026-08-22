@@ -71,6 +71,7 @@
   --accent: #0a8f7c;
   --accent-text: #ffffff;
   --accent-soft: rgba(10, 143, 124, 0.13);
+  --accent-line: rgba(10, 143, 124, 0.4);
   /* Its own variable rather than an alpha on the accent: over a light
      background low alpha lightens, over a dark one it darkens, so one
      opacity cannot mean "lighter" in both themes.
@@ -176,6 +177,7 @@
   --accent: #46c9b1;
   --accent-text: #04211c;
   --accent-soft: rgba(70, 201, 177, 0.15);
+  --accent-line: rgba(70, 201, 177, 0.35);
   --wave-played: #97bbb3;
   --junk: #e0a24a;
   --junk-soft: rgba(224, 162, 74, 0.14);
@@ -995,8 +997,13 @@ tbody tr.playing td.num { color: var(--accent); }
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--fs-sm);
-  color: var(--text-2);
+  /* The glyph, not the box: these are pictures rather than text, and at
+     the label size they sat small in a target built to be hit. */
+  font-size: var(--fs-lg);
+  /* A step further back than the rest of the secondary text. The accent
+     opposite it has to read as a state, and against --text-2 the two
+     were close enough to look like one colour twice. */
+  color: var(--text-3);
 }
 
 /* The two step buttons keep the accent border at all times. They are a
@@ -1005,7 +1012,10 @@ tbody tr.playing td.num { color: var(--accent); }
    different frames. */
 #transport [data-player-action="previous"],
 #transport [data-player-action="next"] {
-  border-color: var(--accent);
+  /* Muted: at full strength two accent frames beside the filled play
+     button made the transport the loudest thing in the row, and the
+     frames are meant to hold it together, not to be read. */
+  border-color: var(--accent-line);
 }
 
 /* Which way the queue is being walked, said on the button that sets it.
