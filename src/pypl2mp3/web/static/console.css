@@ -883,11 +883,13 @@ tbody tr.playing td.num { color: var(--accent); }
   background-position: center;
 }
 .inspector-cover .cover, .workbench-cover .cover {
-  /* Half a second, which is long for this stylesheet — everything else
-     here is a tenth. A dissolve you cannot see the middle of is a cut
-     with extra steps, and at a fifth of a second that is what this was.
-     The script reads this number back rather than carrying its own. */
-  transition: opacity 0.5s ease;
+  /* Three quarters of a second, which is very long for this stylesheet —
+     everything else here is a tenth. It is the one place the page is
+     asked to be looked at rather than used: a dissolve you cannot see
+     the middle of is a cut with extra steps, and a fifth of a second,
+     then half of one, both were that. The script reads this number back
+     rather than carrying its own. */
+  transition: opacity 0.75s ease;
 }
 .inspector-cover .cover.arriving, .workbench-cover .cover.arriving {
   opacity: 0;
