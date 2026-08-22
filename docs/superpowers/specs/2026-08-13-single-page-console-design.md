@@ -168,6 +168,21 @@ reprend à 55 %, soit 9 % effectifs. C'est cohérent avec la crête non
 jouée, tout aussi discrète. Lui donner sa propre couleur a été proposé
 et écarté tant que ça ne gêne pas.
 
+### Le glyphe au repos du transport, sous le seuil du texte
+
+2,4:1 en clair, 3,1:1 en sombre sur le fond du lecteur. Le seuil de
+4,5:1 vise le texte à lire ; un pictogramme dont le rôle est de dire
+« pas ce sens-ci » n'a rien à lire. Monté d'un cran depuis 1,7 et 2,1,
+où il ressemblait à un bouton désactivé. Le remonter encore le
+rapprocherait du côté actif, qui plafonne à 4,0 en clair.
+
+### Rien ne vérifie la parité des deux palettes
+
+Une variable définie dans un seul `:root` n'est signalée par personne :
+la valeur de l'autre thème est simplement héritée. `--accent-dim` a son
+garde parce que c'est la variable qui a révélé le trou ; les autres non.
+Un test comparant les deux blocs a été proposé et n'a pas été demandé.
+
 ## Tranches — toutes livrées
 
 | # | Tranche | Commit |
@@ -429,7 +444,85 @@ chiffres gris sur le reflet joué étaient illisibles ; et `z-index: 1`,
 parce que `#seek` est positionné et vient après eux dans le markup — le
 fond était peint puis recouvert. Le temps écoulé prend `--accent`, la
 durée totale reste grise : l'un dit où on est et bouge, l'autre est une
-propriété du morceau.
+propriété du morceau. Descendus d'un pixel ensuite (`d90c4e6`) : posés à
+`bottom: 0` ils touchaient la ligne de base sous laquelle ils sont censés
+pendre.
+
+### Le transport — `d90c4e6` à `0881995`
+
+**Plus gros.** `1,95 × 1,6 rem` → `2,5 × 2 rem`, soit 40 × 32 px contre
+31 × 26 : +60 % de surface. Le glyphe passe de `--fs-sm` à `--fs-lg`,
+12 px → 17 px. Le tout reste sous les 38 px du waveform, donc la rangée
+du lecteur ne grandit pas — 74 px avant comme après, et un test l'exige
+désormais explicitement. L'écart entre boutons passe de 4 à 6 px.
+
+**Le sens de lecture, dit là où il se décide.** Un indicateur existait —
+`NEXT ←` / `NEXT →` dans la barre d'outils — mais la barre est en haut de
+page et le transport en bas : appuyer sur ⏮ retournait le lecteur avec
+pour seul signe une flèche à trois cents pixels de la main qui venait de
+le faire. `#transport` porte maintenant `data-direction`, écrit à un seul
+endroit, juste à côté du libellé qui dit la même chose en mots ; un test
+compte les écrivains, parce que deux auraient divergé. À l'arrêt
+l'attribut est retiré : rien ne joue, il n'y a pas de parcours à
+désigner.
+
+**Trois passes sur la forme du signal**, chacune corrigeant la
+précédente. D'abord la bordure du bouton actif seule : mais n'encadrer
+qu'un des deux se lisait comme une différence de nature. Puis les deux
+bordures en permanence et le glyphe en gris : mais gris contre vert dit
+« désactivé », deux choses différentes, là où la paire est une seule
+chose qui pointe dans un sens. Enfin un seul vert en deux forces —
+`--accent-line` pour les cadres, `--accent-dim` pour le glyphe au repos,
+`--accent` pour l'actif.
+
+Les deux palettes prennent des alphas différents parce qu'elles n'ont pas
+la même marge : contre le blanc, l'accent plein ne monte qu'à 4,0:1,
+alors que contre la page sombre il atteint 9,2:1. Mesuré sur le fond du
+lecteur, glyphe au repos contre glyphe actif : **2,4 contre 4,0 en clair,
+3,1 contre 9,2 en sombre**.
+
+Dette de bord, ouverte puis refermée à moitié : une contre-épreuve a
+montré que **rien ne vérifiait qu'une variable de palette existe dans les
+deux thèmes**. Supprimer `--accent-dim` de la palette sombre ne cassait
+rien de visible — le glyphe aurait simplement hérité de la valeur claire
+sur la page sombre. Un garde a été posé pour cette variable-là ; le cas
+général reste ouvert, voir plus bas.
+
+### La pochette en fondu enchaîné — `c0cd740` à `717a096`
+
+Le panneau est remplacé en entier à chaque morceau, donc la pochette
+sortante part avec lui et une transition n'a rien à quoi s'accrocher.
+L'ancienne est conservée en `background-image` du conteneur le temps du
+fondu et la nouvelle monte par-dessus : dissolution, pas carré vide.
+
+Trois décisions portent le reste :
+
+- **Une transition, pas des keyframes.** La règle
+  `@media (prefers-reduced-motion: reduce)` en bas de la feuille
+  neutralise les `transition-duration` ; une animation serait passée à
+  côté. L'outil de navigateur n'expose pas cette préférence, donc c'est
+  un test statique qui la couvre — le choix *et* l'existence de la règle
+  dont il dépend.
+- **Opaque par défaut, rendue transparente par le script.** Si rien ne
+  tourne — pas de swap, une erreur, un navigateur qui n'émet pas `load` —
+  la pochette est simplement là. L'inverse l'aurait laissée invisible.
+- **Le hook est gardé.** Branché sans condition sur `htmx:afterSwap`, il
+  tournait sur le poll des imports, une fois par seconde, sur du markup
+  sans pochette.
+
+La durée a été portée à 0,22 s puis 0,5 s puis 0,75 s — très long pour
+cette feuille, où tout le reste est à un dixième de seconde, mais c'est
+le seul endroit où la page demande à être regardée plutôt qu'utilisée.
+Au passage, le délai avant d'effacer l'image du dessous était écrit en
+dur à 400 ms : à 500 ms de fondu, l'ancienne aurait disparu **avant** la
+fin, et la nouvelle aurait fini de monter au-dessus de rien. Le script
+lit maintenant la durée dans la feuille, donc il n'y a plus deux nombres
+qui doivent s'accorder — et en `prefers-reduced-motion` le nettoyage suit
+tout seul.
+
+Mesuré frame par frame : **783 ms sur 43 frames intermédiaires, zéro
+frame vide**, image du dessous effacée 66 ms après la fin. Sur un swap
+sans rapport, l'opacité reste à 1 sur 85 frames.
 
 ## Méthode — trois échecs de procédure, et ce qui les a arrêtés
 
