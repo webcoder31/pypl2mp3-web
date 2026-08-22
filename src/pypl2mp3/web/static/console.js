@@ -467,6 +467,41 @@
   const brush = waveform.getContext("2d");
   let peaks = null;
 
+  // Peaks reduced to the bars actually drawn, and how many that was.
+  // Recomputing this every frame would be four hundred comparisons sixty
+  // times a second for an answer that only changes when the box or the
+  // song does.
+  let shown = null;
+  let shownCount = 0;
+
+  // The loudest of each group, not their average. Averaging flattens a
+  // snare into the quiet either side of it, and where the loud parts are
+  // is the entire content of a waveform.
+  function resample(count) {
+    if (shown && shownCount === count) return shown;
+
+    shownCount = count;
+    // Never more bars than peaks: past that there is nothing left to
+    // draw but detail that was never measured.
+    if (count >= peaks.length) {
+      shown = peaks;
+      return shown;
+    }
+
+    const out = new Array(count);
+    for (let i = 0; i < count; i++) {
+      const from = Math.floor((i * peaks.length) / count);
+      const to = Math.max(
+        from + 1, Math.floor(((i + 1) * peaks.length) / count)
+      );
+      let top = 0;
+      for (let j = from; j < to; j++) if (peaks[j] > top) top = peaks[j];
+      out[i] = top;
+    }
+    shown = out;
+    return shown;
+  }
+
   // Skipping through a playlist leaves slower requests in flight behind
   // faster ones. Without this, the waveform you end up looking at is
   // whichever response happened to land last, not the song playing.
@@ -476,6 +511,8 @@
     const mine = ++wanted;
 
     peaks = null;
+    shown = null;
+    shownCount = 0;
     seek.classList.remove("has-waveform");
 
     window.fetch("/songs/" + id + "/peaks")
@@ -504,6 +541,16 @@
   // third of the crest, and keeps a bit over half its colour.
   const MIRROR = 0.36;
   const MIRROR_INK = 0.55;
+
+  // A bar and the step to the next one, in CSS pixels. These are what
+  // stay fixed: the box is fluid — the window, the nav's clamp and the
+  // workbench all change it — and dividing a fixed number of peaks
+  // across it made the bars thinner as it narrowed. At six hundred
+  // pixels four hundred bars came out half a pixel wide with no gap at
+  // all, which is not a waveform, it is a smear. How many bars there are
+  // is what gives way instead.
+  const BAR = 3;
+  const PITCH = 4;
 
   function paintWaveform() {
     if (!peaks) return;
@@ -535,14 +582,26 @@
     // whole one, the boundary sat still for the two-thirds of a second
     // it takes a four-minute song to cross a bar, then jumped — and
     // that jump was the whole of what made this look mechanical.
-    const mark = done * peaks.length;
-    const edge = Math.min(Math.floor(mark), peaks.length - 1);
+    const count = Math.max(
+      1, Math.min(peaks.length, Math.floor(width / (PITCH * dpr)))
+    );
+    const bars = resample(count);
+
+    const mark = done * bars.length;
+    const edge = Math.min(Math.floor(mark), bars.length - 1);
     const into = Math.min(1, mark - edge);
 
-    const slot = width / peaks.length;
-    // One device-independent pixel of air between bars, and never less
-    // than one device pixel of bar.
-    const bar = Math.max(1, slot - dpr);
+    const slot = width / bars.length;
+    // The bar keeps its width and the gap takes the slack: on a box wide
+    // enough to want more bars than there are peaks, the alternative was
+    // bars that grow fat, which is the thing this is here to prevent.
+    //
+    // Whole device pixels, and the left edge rounded to one below: the
+    // step between bars is almost never a round number, and a three
+    // pixel bar starting at x.0135 spreads its edges over the pixel
+    // either side. The gutter is one pixel wide, so half of it went grey
+    // and the bars ran together — the very thing the resampling is for.
+    const ink = Math.round(Math.max(1, Math.min(BAR * dpr, slot - dpr)));
 
     // The picture is asymmetric, and the lower half is not the negative
     // half of the signal — there is no negative half here, the peaks are
@@ -564,22 +623,22 @@
     // the alpha are the expensive part of a canvas, and setting them per
     // bar rather than per run is four hundred state changes a frame at
     // sixty frames a second.
-    function band(from, to, colour, ink) {
+    function band(from, to, colour, wash) {
       if (to <= from) return;
       brush.fillStyle = colour;
 
-      brush.globalAlpha = ink;
+      brush.globalAlpha = wash;
       for (let i = from; i < to; i++) {
         // Silence still draws a hairline: the bar is the control, and a
         // gap in it would read as a gap in the song.
-        const up = Math.max(dpr, peaks[i] * crest);
-        brush.fillRect(i * slot, crest - up, bar, up);
+        const up = Math.max(dpr, bars[i] * crest);
+        brush.fillRect(Math.round(i * slot), crest - up, ink, up);
       }
 
-      brush.globalAlpha = ink * MIRROR_INK;
+      brush.globalAlpha = wash * MIRROR_INK;
       for (let i = from; i < to; i++) {
-        const down = Math.max(dpr, peaks[i] * shadow);
-        brush.fillRect(i * slot, crest + gap, bar, down);
+        const down = Math.max(dpr, bars[i] * shadow);
+        brush.fillRect(Math.round(i * slot), crest + gap, ink, down);
       }
     }
 
@@ -591,7 +650,7 @@
     // and no timer, only the position told instead of rounded.
     band(edge, edge + 1, rest, 1);
     band(edge, edge + 1, played, into);
-    band(edge + 1, peaks.length, rest, 1);
+    band(edge + 1, bars.length, rest, 1);
     brush.globalAlpha = 1;
   }
 

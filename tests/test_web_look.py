@@ -1473,10 +1473,17 @@ async def test_the_reflection_is_shorter_and_fainter_than_the_crest(
 
     # Two bars per peak, from the one number, on either side of a
     # baseline that is not the middle of the box.
-    up, down = re.findall(r"brush\.fillRect\(([^)]*)\);", body)
+    up, down = re.findall(r"brush\.fillRect\((.*)\);", body)
     assert "crest - up" in up, up
     assert "crest + gap" in down, down
-    assert "peaks[i] * crest" in body and "peaks[i] * shadow" in body, body
+
+    # On whole device pixels. The step between bars is almost never
+    # round, and a bar drawn at x.0135 spreads its edges into the pixel
+    # either side — half of a one-pixel gutter goes grey and the bars run
+    # together, which is what the resampling exists to prevent.
+    assert up.startswith("Math.round(i * slot)"), up
+    assert down.startswith("Math.round(i * slot)"), down
+    assert "bars[i] * crest" in body and "bars[i] * shadow" in body, body
 
     # And the baseline is where the split says, not halfway: a centred
     # drawing is exactly what this replaced.
@@ -1500,22 +1507,89 @@ async def test_the_colour_boundary_moves_by_less_than_a_bar(tmp_path):
         r"\n  function paintWaveform\(\) \{(.*?)\n  \}\n", js, re.DOTALL
     ).group(1)
 
-    assert "Math.round(done * peaks.length)" not in body, (
+    assert "Math.round(done * bars.length)" not in body, (
         "the boundary is back to whole bars"
     )
     assert re.search(r"const into = .*mark - edge", body), body
 
     # The last bar is a real index: at the end of the song the fraction
     # reaches the count itself, and floor() alone would read past it.
-    assert "Math.min(Math.floor(mark), peaks.length - 1)" in body, body
+    assert "Math.min(Math.floor(mark), bars.length - 1)" in body, body
 
     runs = re.findall(r"\n    band\(([^)]*)\);", body)
     assert runs == [
         "0, edge, played, 1",
         "edge, edge + 1, rest, 1",
         "edge, edge + 1, played, into",
-        "edge + 1, peaks.length, rest, 1",
+        "edge + 1, bars.length, rest, 1",
     ], runs
+
+
+async def test_a_bar_is_the_same_width_in_any_size_of_box(tmp_path):
+    """The box is fluid — the window, the nav's clamp and the workbench
+    all change it — and a fixed number of peaks spread across it made the
+    bars thinner as it narrowed. Four hundred bars in six hundred pixels
+    is half a pixel of bar and no gap at all, which is not a waveform but
+    a smear.
+
+    So the bar and the step to the next one are what stay fixed, and how
+    many bars there are is what gives way. Same reading at any width,
+    which is the whole point of a picture you are meant to aim at.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        js = (await client.get("/static/console.js")).text
+
+    bar = int(re.search(r"const BAR = (\d+);", js).group(1))
+    pitch = int(re.search(r"const PITCH = (\d+);", js).group(1))
+    assert 0 < bar < pitch, f"no gap left between bars: {bar} of {pitch}"
+
+    body = re.search(
+        r"\n  function paintWaveform\(\) \{(.*?)\n  \}\n", js, re.DOTALL
+    ).group(1)
+
+    # How many bars follows from the width, and stops at the number of
+    # peaks: past that there is nothing left to draw but detail nobody
+    # measured.
+    count = re.search(r"const count = ([^;]*);", body, re.DOTALL).group(1)
+    assert "Math.floor(width / (PITCH * dpr))" in count, count
+    assert "Math.min(peaks.length" in count, count
+
+    # And when the box is wide enough to want more, the gap takes the
+    # slack rather than the bar: fat bars are the thing this prevents.
+    ink = re.search(r"const ink = ([^;]*);", body).group(1)
+    assert "Math.min(BAR * dpr" in ink, ink
+
+
+async def test_the_bars_dropped_by_resampling_are_the_quiet_ones(tmp_path):
+    """Reducing four hundred peaks to a hundred and fifty bars means
+    choosing one number per group. The loudest, not the average: an
+    average flattens a snare into the quiet either side of it, and where
+    the loud parts are is the entire content of a waveform."""
+
+    async with _client(create_app(tmp_path)) as client:
+        js = (await client.get("/static/console.js")).text
+
+    body = re.search(
+        r"\n  function resample\(count\) \{(.*?)\n  \}\n", js, re.DOTALL
+    ).group(1)
+
+    assert "if (peaks[j] > top) top = peaks[j];" in body, body
+    assert "/ (to - from)" not in body, "the groups are being averaged"
+
+    # A group is never empty, however many bars are asked for.
+    assert "Math.max(\n        from + 1," in body, body
+
+    # And the answer is kept: this runs behind a repaint that happens
+    # sixty times a second, and the shape only changes when the box or
+    # the song does.
+    assert "if (shown && shownCount === count) return shown;" in body, body
+    fresh = re.search(
+        r"\n  function loadWaveform\(id\) \{(.*?)\n  \}\n", js, re.DOTALL
+    ).group(1)
+    assert "shown = null;" in fresh, (
+        "a new song would be drawn with the last one's bars"
+    )
 
 
 async def test_the_picture_follows_the_display_only_while_it_plays(tmp_path):
