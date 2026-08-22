@@ -329,13 +329,15 @@ input::placeholder { color: var(--text-3); }
    Save submits the form, and the panel that replaces it takes the button
    with it.
 
-   One pixel in, not four: the offset is the green band left showing
+   Two pixels in, not four: the offset is the green band left showing
    outside the ring, and at four it was the thickest line of the three,
-   which read as the border rather than as the ring it frames. */
+   which read as the border rather than as the ring it frames. One pixel
+   was too far the other way — the band disappears into the button's own
+   border and the ring stops looking framed at all. */
 #inspector button[type="submit"]:focus-visible,
 .workbench-detail button[type="submit"]:focus-visible {
   outline: 1px solid var(--accent-text);
-  outline-offset: -1px;
+  outline-offset: -2px;
 }
 
 /* The accent border alone. A wash around it added a second edge for no
