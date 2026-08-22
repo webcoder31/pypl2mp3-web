@@ -334,10 +334,11 @@ input::placeholder { color: var(--text-3); }
   outline-offset: -4px;
 }
 
+/* The accent border alone. A wash around it added a second edge for no
+   information: the border already says which field has the focus. */
 input:focus-visible {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent-soft);
 }
 
 input[type="checkbox"] { accent-color: var(--accent); margin: 0; }

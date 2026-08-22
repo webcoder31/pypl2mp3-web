@@ -230,7 +230,9 @@ async def test_every_control_is_drawn_by_the_stylesheet(tmp_path):
     field = re.search(r"input:focus-visible \{([^}]*)\}", css)
     assert field, "a field no longer says when it has the focus"
     assert "border-color: var(--accent)" in field.group(1), field.group(1)
-    assert "box-shadow" in field.group(1), field.group(1)
+    # The border alone. A wash around it added a second edge for no
+    # information, and at one pixel it said nothing at all.
+    assert "box-shadow" not in field.group(1), field.group(1)
 
 
 async def test_the_page_has_designed_surfaces(tmp_path):
