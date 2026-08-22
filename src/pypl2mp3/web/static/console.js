@@ -342,6 +342,16 @@
   // which is what it was before any of this.
   let lastCover = "";
 
+  // How long the fade lasts, asked of the stylesheet rather than repeated
+  // here. The picture underneath has to outlast it, and two numbers that
+  // must agree are two numbers that will not.
+  function fadeMillis(element) {
+    const value = getComputedStyle(element)
+      .transitionDuration.split(",")[0].trim();
+    const number = parseFloat(value) || 0;
+    return value.endsWith("ms") ? number : number * 1000;
+  }
+
   function crossfadeCover(box) {
     const img = box.querySelector(".cover");
     if (!img) {
@@ -366,7 +376,7 @@
       // cover, and every panel after that would carry a ghost.
       window.setTimeout(function () {
         box.style.backgroundImage = "";
-      }, 400);
+      }, fadeMillis(img) + 80);
     }
 
     function giveUp() {

@@ -883,7 +883,11 @@ tbody tr.playing td.num { color: var(--accent); }
   background-position: center;
 }
 .inspector-cover .cover, .workbench-cover .cover {
-  transition: opacity 0.22s ease;
+  /* Half a second, which is long for this stylesheet — everything else
+     here is a tenth. A dissolve you cannot see the middle of is a cut
+     with extra steps, and at a fifth of a second that is what this was.
+     The script reads this number back rather than carrying its own. */
+  transition: opacity 0.5s ease;
 }
 .inspector-cover .cover.arriving, .workbench-cover .cover.arriving {
   opacity: 0;

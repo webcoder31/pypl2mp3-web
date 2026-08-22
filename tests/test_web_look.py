@@ -1482,6 +1482,18 @@ async def test_the_cover_dissolves_between_songs(tmp_path):
         "the outgoing picture is left behind"
     )
 
+    # It has to outlast the fade, and the length of the fade is the
+    # stylesheet's to say. Repeated here it would be a second number that
+    # must agree with the first, which is a number that will not.
+    assert "fadeMillis(img)" in js, (
+        "the script carries its own idea of how long the fade lasts"
+    )
+    assert "transitionDuration" in js, js[:0]
+    assert not re.search(r"}, \d+\);", js.split("function crossfadeCover")[1]
+                         .split("\n  document.body")[0]), (
+        "a literal delay is back inside the crossfade"
+    )
+
     # Bound unguarded, this ran on the imports poll — once a second, on
     # markup with no cover in it at all.
     hook = re.search(
