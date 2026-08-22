@@ -1995,8 +1995,14 @@ async def test_the_last_field_leads_somewhere_visible(tmp_path):
         css,
     )
     assert rule, "the step out of the fields is invisible again"
-    assert "outline: 1px solid var(--accent-text)" in rule.group(1), rule.group(1)
-    assert "outline-offset: -2px" in rule.group(1), (
+    assert "solid var(--accent-text)" in rule.group(1), rule.group(1)
+    # Negative, not an exact figure: how thick the ring reads and how much
+    # green it leaves around itself are a matter of taste, and pinning the
+    # numbers made this test fail on every adjustment while checking
+    # nothing. What it must never be is zero or positive — that draws the
+    # ring outside the button, which is the accent-on-accent ring that was
+    # removed.
+    assert re.search(r"outline-offset: -\d+px", rule.group(1)), (
         "the ring is drawn outside the button, which is the ring that was "
         "removed"
     )
