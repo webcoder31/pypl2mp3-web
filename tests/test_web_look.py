@@ -1485,11 +1485,21 @@ async def test_the_transport_says_which_way_the_queue_is_walked(tmp_path):
     # than to be read.
     assert "border-color: var(--accent-line)" in pair.group(1), pair.group(1)
 
-    # Except with nothing playing: there is no walk to point at, and the
-    # play button already falls back this way.
+    # The side not in use takes the frame's own colour, not grey: grey
+    # against green reads as disabled, two different things, where the
+    # pair is one thing pointing one way.
+    button = re.search(r"\n#transport button \{([^}]*)\}", css).group(1)
+    assert "color: var(--accent-line)" in button, button
+
+    # Except with nothing playing: there is no walk to point at, so the
+    # whole transport goes neutral — frame and glyph both, the way the
+    # play button already did on its own.
     idle = re.search(r"\n#player\.idle #transport button \{([^}]*)\}", css)
-    assert idle and "border-color: var(--line-strong)" in idle.group(1), (
-        "an idle player keeps a lit transport"
+    assert idle, "an idle player keeps a lit transport"
+    assert "border-color: var(--line-strong)" in idle.group(1), idle.group(1)
+    assert "color: var(--text-3)" in idle.group(1), (
+        f"an idle transport keeps green glyphs above a grey frame: "
+        f"{idle.group(1)}"
     )
 
 

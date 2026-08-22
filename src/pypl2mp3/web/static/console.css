@@ -986,7 +986,7 @@ tbody tr.playing td.num { color: var(--accent); }
   gap: var(--space-4);
 }
 
-#transport { display: flex; gap: 0.25rem; flex: 0 0 auto; }
+#transport { display: flex; gap: 0.375rem; flex: 0 0 auto; }
 
 /* Sized to be hit, not merely clicked. They stay under the waveform's
    height so the row does not grow to fit them. */
@@ -1000,10 +1000,11 @@ tbody tr.playing td.num { color: var(--accent); }
   /* The glyph, not the box: these are pictures rather than text, and at
      the label size they sat small in a target built to be hit. */
   font-size: var(--fs-lg);
-  /* A step further back than the rest of the secondary text. The accent
-     opposite it has to read as a state, and against --text-2 the two
-     were close enough to look like one colour twice. */
-  color: var(--text-3);
+  /* The frame's own colour. Grey against green said "disabled" — two
+     different things — where the pair is one thing pointing one way:
+     the same green, quiet on the side not in use and full on the side
+     that is. */
+  color: var(--accent-line);
 }
 
 /* The two step buttons keep the accent border at all times. They are a
@@ -1037,7 +1038,10 @@ tbody tr.playing td.num { color: var(--accent); }
    the transport to be lit. The play button already falls back like this;
    leaving the other two green beside it would say the player was half
    awake. */
-#player.idle #transport button { border-color: var(--line-strong); }
+#player.idle #transport button {
+  border-color: var(--line-strong);
+  color: var(--text-3);
+}
 #transport [data-player-action="toggle"] {
   background: var(--accent);
   color: var(--accent-text);
