@@ -596,15 +596,28 @@ button:has(.icon) { display: inline-flex; align-items: center;
 #player-position { font-variant-numeric: tabular-nums;
                    font-size: var(--fs-sm); color: var(--text-2);
                    white-space: nowrap; flex: 0 0 auto; }
+/* A row of three: the key, the name, the length. The clipping moved off
+   this box and onto the name alone — with the length last, a box that
+   truncated as a whole would have eaten it, and the length is the one
+   part here that never gets longer. */
 #player-next {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: flex;
+  align-items: baseline;
   white-space: nowrap;
   font-size: var(--fs-md);
   color: var(--text-2);
   font-variant-numeric: tabular-nums;
+}
+#player-next-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Set apart and set back: it answers a different question from the name
+   — not what is coming but whether to let it — and reading as part of
+   the title is what it did when the two ran together. */
+#player-next-time {
+  flex: 0 0 auto;
+  margin-left: var(--space-4);
+  color: var(--text-3);
 }
 #player-next .k {
   font-size: var(--fs-xs);

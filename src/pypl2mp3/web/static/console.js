@@ -141,6 +141,7 @@
   const upNext = document.getElementById("player-next");
   const nextKey = document.getElementById("player-next-key");
   const nextText = document.getElementById("player-next-text");
+  const nextTime = document.getElementById("player-next-time");
   const elapsed = document.getElementById("player-elapsed");
   const total = document.getElementById("player-total");
   const seek = document.getElementById("seek");
@@ -228,6 +229,7 @@
       if (toolbar) toolbar.classList.add("idle");
       nextKey.textContent = "NEXT";
       nextText.textContent = "Nothing playing";
+      nextTime.textContent = "";
       upNext.title = "";
       transport.removeAttribute("data-direction");
       // The count the toolbar used to render server-side. It is the
@@ -266,11 +268,19 @@
     // pressing ⏮ turned the player round with the only sign of it three
     // hundred pixels away from the hand that did it.
     transport.dataset.direction = direction < 0 ? "backward" : "forward";
+    // The name first and the length after it, in its own element: they
+    // are read at different moments — the name to know what is coming,
+    // the length only if you are deciding whether to let it. Two
+    // elements and not one string because they are also drawn
+    // differently, and because the name is the part that truncates.
     nextText.textContent = following
-      ? following.duration + "  " + following.label +
-        (following.junk ? " (JUNK)" : "")
+      ? following.label + (following.junk ? " (JUNK)" : "")
       : "";
-    upNext.title = nextKey.textContent + " " + nextText.textContent;
+    nextTime.textContent = following ? following.duration : "";
+    upNext.title = following
+      ? nextKey.textContent + " " + nextText.textContent + "  " +
+        nextTime.textContent
+      : nextKey.textContent;
   }
 
   // Set when the inspector's form has edits nobody has saved. The panel

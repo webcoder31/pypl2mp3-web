@@ -1560,6 +1560,67 @@ async def test_the_cover_dissolves_between_songs(tmp_path):
     assert ".inspector-cover, .workbench-cover" in hook.group(1), hook.group(1)
 
 
+async def test_the_next_up_length_comes_after_the_name_and_survives_it(
+    tmp_path,
+):
+    """The name first, the length after it. They are read at different
+    moments — the name to know what is coming, the length only if you are
+    deciding whether to let it — and run together in one string the
+    length read as part of the title.
+
+    Which makes the clipping the load-bearing part: with the length last,
+    a box that truncated as a whole would eat it, and the length is the
+    one thing here that never gets longer. So the name truncates on its
+    own and the length is never in the way.
+    """
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        page = (await client.get("/")).text
+        css = (await client.get("/static/console.css")).text
+        js = (await client.get("/static/console.js")).text
+
+    readout = re.search(r'<span id="player-next">(.*?)</span></span>', page,
+                        re.DOTALL)
+    assert readout, "the readout is not where this test looks"
+    assert (readout.group(1).index('id="player-next-text"')
+            < readout.group(1).index('id="player-next-time"')), (
+        "the length comes before the name it belongs to"
+    )
+
+    frame = re.search(r"\n#player-next \{([^}]*)\}", css).group(1)
+    assert "display: flex" in frame, frame
+    # The clipping is on the name, not on the box around all three.
+    assert "text-overflow" not in frame, (
+        f"the whole readout truncates, so the length goes with it: {frame}"
+    )
+
+    name = re.search(r"\n#player-next-text \{([^}]*)\}", css).group(1)
+    assert "text-overflow: ellipsis" in name, name
+    assert "min-width: 0" in name, (
+        f"a flex item will not shrink below its content without this: "
+        f"{name}"
+    )
+
+    length = re.search(r"\n#player-next-time \{([^}]*)\}", css).group(1)
+    assert "flex: 0 0 auto" in length, (
+        f"the length can be squeezed away by a long name: {length}"
+    )
+    assert re.search(r"margin-left: var\(--space-\d\)", length), length
+    # Set back from the name, which takes --text-2 from the box.
+    assert "color: var(--text-3)" in length, length
+    assert "color: var(--text-2)" in frame, frame
+
+    # Written apart, and the length cleared when there is nothing next:
+    # left behind it would date the words beside it.
+    assert 'nextTime.textContent = following ? following.duration : "";' in js
+    assert 'nextTime.textContent = "";' in js
+    assert "following.duration +" not in js, (
+        "the length is back inside the name's string"
+    )
+
+
 async def test_the_transport_says_which_way_the_queue_is_walked(tmp_path):
     """Pressing the back button does not step back once — it turns the
     player round, and a track ending then carries on backwards. The
