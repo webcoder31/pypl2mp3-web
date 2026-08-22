@@ -1443,7 +1443,7 @@ async def test_the_times_sit_in_the_band_under_the_baseline(tmp_path):
 
     label = re.search(r"\n#timeline \.t \{([^}]*)\}", css).group(1)
     assert "position: absolute" in label, label
-    assert "bottom: 0" in label, label
+    assert re.search(r"bottom: (0|-\d+px);", label), label
 
     # What is under them is the seek control, and a click on the time is
     # a click on the timeline.

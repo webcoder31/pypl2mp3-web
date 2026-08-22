@@ -1038,7 +1038,9 @@ tbody tr.playing td.num { color: var(--accent); }
    only showed through where the bars happened to be transparent. */
 #timeline .t {
   position: absolute;
-  bottom: 0;
+  /* A pixel below the box, not flush with it: sat on the bottom edge
+     the digits touched the baseline they are meant to hang under. */
+  bottom: -1px;
   z-index: 1;
   line-height: 1;
   pointer-events: none;
