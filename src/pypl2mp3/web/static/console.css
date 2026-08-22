@@ -985,15 +985,34 @@ tbody tr.playing td.num { color: var(--accent); }
 }
 
 #transport { display: flex; gap: 0.25rem; flex: 0 0 auto; }
+
+/* Sized to be hit, not merely clicked. They stay under the waveform's
+   height so the row does not grow to fit them. */
 #transport button {
-  width: 1.95rem;
-  height: 1.6rem;
+  width: 2.5rem;
+  height: 2rem;
   padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   color: var(--text-2);
+}
+
+/* Which way the queue is being walked, said on the button that sets it.
+   Pressing ⏮ does not step back once — it turns the player round, and a
+   track ending then carries on backwards. The toolbar says so in words,
+   but it is at the top of the page and the transport is at the bottom,
+   which put the only sign of it three hundred pixels from the hand that
+   did it.
+
+   Outlined, not filled: the filled accent already means play/pause here,
+   and two solid greens side by side would read as two of the same
+   thing. */
+#transport[data-direction="forward"] [data-player-action="next"],
+#transport[data-direction="backward"] [data-player-action="previous"] {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 #transport [data-player-action="toggle"] {
   background: var(--accent);

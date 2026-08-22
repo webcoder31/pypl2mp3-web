@@ -1425,6 +1425,78 @@ async def test_a_waveform_arriving_does_not_move_the_page(tmp_path):
             )
 
 
+async def test_the_transport_says_which_way_the_queue_is_walked(tmp_path):
+    """Pressing the back button does not step back once — it turns the
+    player round, and a track ending then carries on backwards. The
+    toolbar says so in words, but it is at the top of the page and the
+    transport is at the bottom, which put the only sign of it three
+    hundred pixels from the hand that did it.
+
+    Written in one place, beside the readout that says the same thing in
+    words: two writers would drift.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        js = (await client.get("/static/console.js")).text
+        css = (await client.get("/static/console.css")).text
+
+    # The attribute is set where the readout is, and cleared where the
+    # readout goes blank: nothing is playing, so there is no walk.
+    assert (
+        'transport.dataset.direction = direction < 0 ? "backward" : "forward";'
+        in js
+    ), "the mark and the words could disagree"
+    assert 'transport.removeAttribute("data-direction");' in js, (
+        "an idle player still points somewhere"
+    )
+    written = js.count("transport.dataset.direction")
+    assert written == 1, f"more than one writer for the mark: {written}"
+
+    marked = re.search(
+        r"\n(#transport\[data-direction[^{]*)\{([^}]*)\}", css
+    )
+    assert marked, "the mark is not drawn"
+    selector, body = marked.groups()
+    assert 'data-direction="forward"' in selector, selector
+    assert 'data-direction="backward"' in selector, selector
+    assert '[data-player-action="next"]' in selector, selector
+    assert '[data-player-action="previous"]' in selector, selector
+
+    # Outlined, not filled: the filled accent already means play/pause
+    # here, and two solid greens side by side read as two of the same.
+    assert "color: var(--accent)" in body, body
+    assert "background" not in body, body
+
+
+async def test_a_transport_button_is_big_enough_to_hit(tmp_path):
+    """Sized to be hit, not merely clicked — and kept under the
+    waveform's height, so making them comfortable does not make the whole
+    player row taller."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    def rem(value):
+        return float(value.removesuffix("rem"))
+
+    button = re.search(r"\n#transport button \{([^}]*)\}", css).group(1)
+    width = rem(re.search(r"width: ([\d.]+rem);", button).group(1))
+    height = rem(re.search(r"height: ([\d.]+rem);", button).group(1))
+
+    # 24 CSS px each way is the floor a pointer target is held to, and
+    # these carry the three most-used gestures on the page.
+    assert width * 16 >= 36, f"{width}rem is a narrow target"
+    assert height * 16 >= 30, f"{height}rem is a short target"
+
+    wave = float(
+        re.search(r"--wave-height: (\d+)px;", css).group(1)
+    )
+    assert height * 16 <= wave, (
+        f"a {height}rem button is taller than the {wave}px waveform beside "
+        f"it, so the row grows to fit it"
+    )
+
+
 async def test_the_times_sit_in_the_band_under_the_baseline(tmp_path):
     """The reflection leaves the strip under the baseline quiet, which is
     the second thing the asymmetry buys. Either side of the box the two

@@ -146,6 +146,7 @@
   const seek = document.getElementById("seek");
   const waveform = document.getElementById("waveform");
   const position = document.getElementById("player-position");
+  const transport = document.getElementById("transport");
   const toggle = document.querySelector('[data-player-action="toggle"]');
   const filters = document.getElementById("filters");
   const playlistField = document.getElementById("playlist-field");
@@ -228,6 +229,7 @@
       nextKey.textContent = "NEXT";
       nextText.textContent = "Nothing playing";
       upNext.title = "";
+      transport.removeAttribute("data-direction");
       // The count the toolbar used to render server-side. It is the
       // same number the position turns into once something plays, so
       // nothing is lost by letting one slot carry both.
@@ -259,6 +261,11 @@
     const following =
       queue[(index + direction + queue.length) % queue.length];
     nextKey.textContent = direction < 0 ? "NEXT ←" : "NEXT →";
+    // The same fact on the buttons that set it. The toolbar's arrow is
+    // at the top of the page and the transport is at the bottom, so
+    // pressing ⏮ turned the player round with the only sign of it three
+    // hundred pixels away from the hand that did it.
+    transport.dataset.direction = direction < 0 ? "backward" : "forward";
     nextText.textContent = following
       ? following.duration + "  " + following.label +
         (following.junk ? " (JUNK)" : "")
