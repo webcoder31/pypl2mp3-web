@@ -1009,14 +1009,48 @@ tbody tr.playing td.num { color: var(--accent); }
    line it was a full-width bar under three small buttons, which is a lot
    of room for one control and a wasted row. */
 #timeline {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
   flex: 1;
   min-width: 8rem;
 }
-#timeline .t { font-variant-numeric: tabular-nums; font-size: var(--fs-xs);
-               color: var(--text-3); white-space: nowrap; }
+
+/* In the band under the baseline, not either side of the picture. The
+   reflection leaves that strip quiet, which is the second thing the
+   asymmetry buys — and either side of the box the two of them were
+   eighty pixels of width the waveform now has instead.
+
+   Out of flow whether or not peaks ever arrive: laying them out only
+   once a waveform is showing would move the whole control the moment it
+   landed.
+
+   Deaf to the pointer, because what is under them is the seek control
+   and a click on the time is a click on the timeline.
+
+   On the player's own background rather than straight over the bars:
+   dim grey digits on the played reflection were unreadable, and the
+   three or four bars each label covers is the cheaper loss.
+
+   And above the canvas, which needs saying: #seek is positioned too and
+   comes after these in the markup, so at equal z-index it paints over
+   them. The background was being drawn and then covered — the digits
+   only showed through where the bars happened to be transparent. */
+#timeline .t {
+  position: absolute;
+  bottom: 0;
+  z-index: 1;
+  line-height: 1;
+  pointer-events: none;
+  background: var(--content-bg);
+  padding: 0 0.25rem;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+#player-elapsed { left: -0.25rem; }
+#player-total { right: -0.25rem; }
 
 /* Sharp edges, deliberately: a 3px track, not a pill. No playhead —
    where the colour changes is the position, and a marker on top of that

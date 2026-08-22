@@ -1425,6 +1425,60 @@ async def test_a_waveform_arriving_does_not_move_the_page(tmp_path):
             )
 
 
+async def test_the_times_sit_in_the_band_under_the_baseline(tmp_path):
+    """The reflection leaves the strip under the baseline quiet, which is
+    the second thing the asymmetry buys. Either side of the box the two
+    readouts were eighty pixels of width the picture now has instead.
+
+    Out of flow whether or not peaks ever arrive: positioning them only
+    once a waveform is showing would move the whole control the moment it
+    landed.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    frame = re.search(r"\n#timeline \{([^}]*)\}", css).group(1)
+    assert "position: relative" in frame, frame
+
+    label = re.search(r"\n#timeline \.t \{([^}]*)\}", css).group(1)
+    assert "position: absolute" in label, label
+    assert "bottom: 0" in label, label
+
+    # What is under them is the seek control, and a click on the time is
+    # a click on the timeline.
+    assert "pointer-events: none" in label, label
+
+    # Above the canvas, which needs saying: #seek is positioned too and
+    # comes after these in the markup, so at equal z-index it paints over
+    # them — the background was drawn and then covered, and the digits
+    # only showed through where the bars happened to be transparent.
+    assert re.search(r"z-index: [1-9]", label), label
+    assert "position: relative" in re.search(
+        r"\n#seek \{([^}]*)\}", css
+    ).group(1), "the stacking this z-index answers to is gone"
+
+    # On the player's own background: dim grey digits straight over the
+    # played reflection were unreadable.
+    assert "background: var(--content-bg)" in label, label
+
+    ends = {
+        name: body
+        for name, body in re.findall(r"\n#player-(elapsed|total) \{([^}]*)\}", css)
+    }
+    assert "left:" in ends["elapsed"], ends
+    assert "right:" in ends["total"], ends
+
+    # And never conditional on the peaks having landed.
+    for selector, body in re.findall(
+        r"\n([^\n{}]+(?:,\n[^\n{}]+)*)\{([^}]*)\}", css
+    ):
+        if "has-waveform" in selector and re.search(r"\.t\b", selector):
+            raise AssertionError(
+                f"the readouts move when peaks land: {selector.strip()}"
+            )
+
+
 async def test_the_waveform_is_decoration_over_a_working_control(tmp_path):
     """The canvas carries no information a screen reader can use — the
     slider already reports the position as a number. Announcing it twice
