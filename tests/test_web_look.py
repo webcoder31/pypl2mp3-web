@@ -1462,12 +1462,27 @@ async def test_the_times_sit_in_the_band_under_the_baseline(tmp_path):
     # played reflection were unreadable.
     assert "background: var(--content-bg)" in label, label
 
+    # Qualified by #timeline, and that is load-bearing: the shared rule
+    # is an id and a class, so a bare #player-elapsed loses to it and the
+    # colour below never lands.
     ends = {
         name: body
-        for name, body in re.findall(r"\n#player-(elapsed|total) \{([^}]*)\}", css)
+        for name, body in re.findall(
+            r"\n#timeline #player-(elapsed|total) \{([^}]*)\}", css
+        )
     }
+    assert set(ends) == {"elapsed", "total"}, ends
     assert "left:" in ends["elapsed"], ends
     assert "right:" in ends["total"], ends
+
+    # One of them is where you are and moves; the other is a property of
+    # the song and does not. The accent on the first says which is which
+    # without a second word — and it is the colour of the bars behind it.
+    assert "color: var(--accent)" in ends["elapsed"], ends["elapsed"]
+    assert "color:" not in ends["total"], (
+        f"both readouts the same colour says they are the same kind of "
+        f"thing: {ends['total']}"
+    )
 
     # And never conditional on the peaks having landed.
     for selector, body in re.findall(
