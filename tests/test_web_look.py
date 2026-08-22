@@ -1969,3 +1969,46 @@ async def test_a_clicked_transport_button_hands_the_focus_back(tmp_path):
         "the focus is dropped however the button was activated, which "
         "breaks operating it from the keyboard"
     )
+
+
+async def test_the_last_field_leads_somewhere_visible(tmp_path):
+    """Tab from the last field lands on Save, the only place a keyboard
+    can reach outside the fields themselves. Taking the ring away left
+    that one step blind.
+
+    Drawn inside the button, in the button's own text colour: an accent
+    ring around an accent fill would be the ring that was removed, and it
+    would light up again after a pointer click. This one cannot —
+    clicking Save submits the form, and the panel that replaces it takes
+    the button with it.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    rule = re.search(
+        r'#inspector button\[type="submit"\]:focus-visible,\s*\n'
+        r'\.workbench-detail button\[type="submit"\]:focus-visible \{'
+        r"([^}]*)\}",
+        css,
+    )
+    assert rule, "the step out of the fields is invisible again"
+    assert "outline: 2px solid var(--accent-text)" in rule.group(1), rule.group(1)
+    assert "outline-offset: -4px" in rule.group(1), (
+        "the ring is drawn outside the button, which is the ring that was "
+        "removed"
+    )
+
+    # And it stays the exception: no other button gets one back.
+    rings = [
+        selector
+        for selector, body in re.findall(
+            r"\n([^\n{}]+(?:,\n[^\n{}]+)*)\{([^}]*)\}", css
+        )
+        if ":focus-visible" in selector
+        # (?!none) after optional space, and \S so the space itself
+        # cannot satisfy it: written as [^;n] this matched "outline:
+        # none" through the space and counted every suppression as a ring.
+        and re.search(r"outline:\s*(?!none)\S", body)
+    ]
+    assert len(rings) == 1, f"more than the one step has a ring: {rings}"

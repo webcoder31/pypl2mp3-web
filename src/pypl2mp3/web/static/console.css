@@ -317,6 +317,23 @@ input::placeholder { color: var(--text-3); }
    its own border and halo, which is the only focus on this page a
    keyboard can actually reach and move between. */
 :focus-visible { outline: none; }
+
+/* The one exception, and it is one step: Tab from the last field lands
+   on Save, which is the only place a keyboard can reach outside the
+   fields themselves. Leaving that step blind was the price of taking the
+   ring away, and this pays it back without giving the ring back.
+
+   Drawn inside the button, in the button's own text colour: an accent
+   ring around an accent fill would be the thing that was removed, and
+   would light up again after a pointer click. This one cannot — clicking
+   Save submits the form, and the panel that replaces it takes the button
+   with it. */
+#inspector button[type="submit"]:focus-visible,
+.workbench-detail button[type="submit"]:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: -4px;
+}
+
 input:focus-visible {
   outline: none;
   border-color: var(--accent);
