@@ -1993,7 +1993,7 @@ async def test_the_last_field_leads_somewhere_visible(tmp_path):
         css,
     )
     assert rule, "the step out of the fields is invisible again"
-    assert "outline: 2px solid var(--accent-text)" in rule.group(1), rule.group(1)
+    assert "outline: 1px solid var(--accent-text)" in rule.group(1), rule.group(1)
     assert "outline-offset: -4px" in rule.group(1), (
         "the ring is drawn outside the button, which is the ring that was "
         "removed"

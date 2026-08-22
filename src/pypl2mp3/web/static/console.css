@@ -330,14 +330,14 @@ input::placeholder { color: var(--text-3); }
    with it. */
 #inspector button[type="submit"]:focus-visible,
 .workbench-detail button[type="submit"]:focus-visible {
-  outline: 2px solid var(--accent-text);
+  outline: 1px solid var(--accent-text);
   outline-offset: -4px;
 }
 
 input:focus-visible {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
+  box-shadow: 0 0 0 1px var(--accent-soft);
 }
 
 input[type="checkbox"] { accent-color: var(--accent); margin: 0; }
