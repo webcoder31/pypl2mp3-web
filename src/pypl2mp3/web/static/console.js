@@ -491,11 +491,19 @@
         // flips the class instead of clearing it.
         seek.classList.toggle("has-waveform", peaks !== null);
         paintWaveform();
+        // Peaks routinely land after the song has started; without this
+        // the picture is correct and frozen until the next pause.
+        if (peaks && !audio.paused) startFollowing();
       })
       .catch(function () {
         // Offline, aborted, malformed: the plain bar is already there.
       });
   }
+
+  // How the two halves relate: the reflection stands at a bit over a
+  // third of the crest, and keeps a bit over half its colour.
+  const MIRROR = 0.36;
+  const MIRROR_INK = 0.55;
 
   function paintWaveform() {
     if (!peaks) return;
@@ -522,28 +530,100 @@
     const done = isFinite(length) && length > 0
       ? Math.max(0, Math.min(1, audio.currentTime / length))
       : 0;
-    const edge = Math.round(done * peaks.length);
+
+    // Where the colour changes, to a fraction of a bar. Rounded to a
+    // whole one, the boundary sat still for the two-thirds of a second
+    // it takes a four-minute song to cross a bar, then jumped — and
+    // that jump was the whole of what made this look mechanical.
+    const mark = done * peaks.length;
+    const edge = Math.min(Math.floor(mark), peaks.length - 1);
+    const into = Math.min(1, mark - edge);
 
     const slot = width / peaks.length;
     // One device-independent pixel of air between bars, and never less
     // than one device pixel of bar.
     const bar = Math.max(1, slot - dpr);
 
-    brush.clearRect(0, 0, width, height);
+    // The picture is asymmetric, and the lower half is not the negative
+    // half of the signal — there is no negative half here, the peaks are
+    // absolute loudness. It is the same number drawn a second time,
+    // shorter and fainter.
+    //
+    // A truthful two-sided waveform would spend half its pixels
+    // repeating the shape above them, because for music the two sides
+    // are the same shape. Giving the crest the larger share buys that
+    // resolution back at the same widget height, and the reflection
+    // keeps the thing a centred drawing throws away: a baseline. Bars
+    // standing on a line compare at a glance. Bars floating either side
+    // of a middle have to be compared in two directions at once.
+    const gap = Math.round(dpr);
+    const crest = Math.round((height - gap) / (1 + MIRROR));
+    const shadow = height - gap - crest;
 
-    function paintBars(from, to, colour) {
+    // Both halves of a run of bars in one pass each: the fill colour and
+    // the alpha are the expensive part of a canvas, and setting them per
+    // bar rather than per run is four hundred state changes a frame at
+    // sixty frames a second.
+    function band(from, to, colour, ink) {
+      if (to <= from) return;
       brush.fillStyle = colour;
+
+      brush.globalAlpha = ink;
       for (let i = from; i < to; i++) {
         // Silence still draws a hairline: the bar is the control, and a
         // gap in it would read as a gap in the song.
-        const tall = Math.max(dpr, peaks[i] * height);
-        brush.fillRect(i * slot, (height - tall) / 2, bar, tall);
+        const up = Math.max(dpr, peaks[i] * crest);
+        brush.fillRect(i * slot, crest - up, bar, up);
+      }
+
+      brush.globalAlpha = ink * MIRROR_INK;
+      for (let i = from; i < to; i++) {
+        const down = Math.max(dpr, peaks[i] * shadow);
+        brush.fillRect(i * slot, crest + gap, bar, down);
       }
     }
 
-    paintBars(0, edge, played);
-    paintBars(edge, peaks.length, rest);
+    brush.clearRect(0, 0, width, height);
+    band(0, edge, played, 1);
+    // The one bar the playhead is inside, drawn twice: the played colour
+    // over the unplayed one, at the fraction of the bar already behind
+    // it. That fraction is the whole of the smoothness — no animation
+    // and no timer, only the position told instead of rounded.
+    band(edge, edge + 1, rest, 1);
+    band(edge, edge + 1, played, into);
+    band(edge + 1, peaks.length, rest, 1);
+    brush.globalAlpha = 1;
   }
+
+  // timeupdate fires four times a second. That is plenty for a clock and
+  // far too coarse for a boundary meant to slide, so while the song
+  // plays the picture repaints on the display's own cadence instead. The
+  // browser stops calling this when the tab is hidden, so the cost is
+  // only paid while somebody is looking at it.
+  let frame = 0;
+
+  function followPlayhead() {
+    frame = 0;
+    paintWaveform();
+    if (!audio.paused) frame = window.requestAnimationFrame(followPlayhead);
+  }
+
+  function startFollowing() {
+    if (!frame) frame = window.requestAnimationFrame(followPlayhead);
+  }
+
+  function stopFollowing() {
+    if (frame) window.cancelAnimationFrame(frame);
+    frame = 0;
+    // One last frame, on the position it actually stopped at: the loop
+    // ends between two repaints and would otherwise leave the boundary
+    // up to a frame behind.
+    paintWaveform();
+  }
+
+  audio.addEventListener("play", startFollowing);
+  audio.addEventListener("pause", stopFollowing);
+  audio.addEventListener("ended", stopFollowing);
 
   function paintTime() {
     const length = audio.duration;

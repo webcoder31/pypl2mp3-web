@@ -1444,6 +1444,110 @@ async def test_the_waveform_is_decoration_over_a_working_control(tmp_path):
     assert "aria-hidden" in canvas, canvas
 
 
+async def test_the_reflection_is_shorter_and_fainter_than_the_crest(
+    tmp_path,
+):
+    """The lower half is not the negative half of the signal — the peaks
+    are absolute loudness and there is no negative half to draw. It is
+    the same number a second time, shorter and fainter.
+
+    Drawing it truthfully at full size would spend half the pixels
+    repeating the shape above them, because for music the two sides are
+    the same shape. The crest takes the larger share, and what the
+    reflection buys in return is a baseline: bars standing on a line
+    compare at a glance, where bars floating either side of a middle
+    have to be compared in two directions at once.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        js = (await client.get("/static/console.js")).text
+
+    mirror = float(re.search(r"const MIRROR = ([\d.]+);", js).group(1))
+    ink = float(re.search(r"const MIRROR_INK = ([\d.]+);", js).group(1))
+    assert 0 < mirror < 1, f"the reflection is not shorter: {mirror}"
+    assert 0 < ink < 1, f"the reflection is not fainter: {ink}"
+
+    body = re.search(
+        r"\n  function paintWaveform\(\) \{(.*?)\n  \}\n", js, re.DOTALL
+    ).group(1)
+
+    # Two bars per peak, from the one number, on either side of a
+    # baseline that is not the middle of the box.
+    up, down = re.findall(r"brush\.fillRect\(([^)]*)\);", body)
+    assert "crest - up" in up, up
+    assert "crest + gap" in down, down
+    assert "peaks[i] * crest" in body and "peaks[i] * shadow" in body, body
+
+    # And the baseline is where the split says, not halfway: a centred
+    # drawing is exactly what this replaced.
+    assert "(height - tall) / 2" not in body, "still drawn around a middle"
+
+
+async def test_the_colour_boundary_moves_by_less_than_a_bar(tmp_path):
+    """Rounded to a whole bar, the boundary sits still for the two-thirds
+    of a second a four-minute song takes to cross one, then jumps. That
+    jump was the whole of what made this look mechanical.
+
+    The bar the playhead is inside is drawn twice — the played colour
+    over the unplayed one, at the fraction of the bar already behind it.
+    No animation and no timer: the position told instead of rounded.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        js = (await client.get("/static/console.js")).text
+
+    body = re.search(
+        r"\n  function paintWaveform\(\) \{(.*?)\n  \}\n", js, re.DOTALL
+    ).group(1)
+
+    assert "Math.round(done * peaks.length)" not in body, (
+        "the boundary is back to whole bars"
+    )
+    assert re.search(r"const into = .*mark - edge", body), body
+
+    # The last bar is a real index: at the end of the song the fraction
+    # reaches the count itself, and floor() alone would read past it.
+    assert "Math.min(Math.floor(mark), peaks.length - 1)" in body, body
+
+    runs = re.findall(r"\n    band\(([^)]*)\);", body)
+    assert runs == [
+        "0, edge, played, 1",
+        "edge, edge + 1, rest, 1",
+        "edge, edge + 1, played, into",
+        "edge + 1, peaks.length, rest, 1",
+    ], runs
+
+
+async def test_the_picture_follows_the_display_only_while_it_plays(tmp_path):
+    """timeupdate fires four times a second — plenty for a clock, far too
+    coarse for a boundary meant to slide. While the song plays the
+    picture repaints on the display's own cadence instead, and the moment
+    it stops so does the loop: a canvas redrawing sixty times a second
+    behind a paused player is pure battery."""
+
+    async with _client(create_app(tmp_path)) as client:
+        js = (await client.get("/static/console.js")).text
+
+    assert "window.requestAnimationFrame(followPlayhead)" in js
+    assert "window.cancelAnimationFrame(frame)" in js
+
+    bound = dict(
+        re.findall(r'audio\.addEventListener\("(\w+)", (\w*Following)\)', js)
+    )
+    assert bound == {
+        "play": "startFollowing",
+        "pause": "stopFollowing",
+        "ended": "stopFollowing",
+    }, bound
+
+    # Peaks routinely land after the song has started. Without this the
+    # picture is correct and frozen until the next pause.
+    arrival = re.search(
+        r"function loadWaveform\(id\) \{(.*?)\n  \}\n", js, re.DOTALL
+    ).group(1)
+    assert "if (peaks && !audio.paused) startFollowing();" in arrival, arrival
+
+
 async def test_the_player_leans_away_from_the_listing(tmp_path):
     """Which blocks belong together, said in whitespace.
 
