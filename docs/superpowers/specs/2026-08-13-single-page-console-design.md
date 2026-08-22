@@ -156,12 +156,17 @@ mesuré est chiffré, ce qui est un choix est motivé.
 Seul cas qui justifierait un `WebInteraction` : le port `InteractionPort`
 existe, la console ne s'en sert pas.
 
-### 2. Une seule page subsiste
+## Choix laissés ouverts
 
-`report.html`, servie uniquement aux requêtes non-HTMX de
-`/jobs/{id}/report`. Une URL de compte rendu mise en favori doit
-répondre autre chose qu'un fragment nu. Elle ne dépend plus de
-`base.html`, supprimé.
+Ni dettes ni tâches : des décisions prises, susceptibles d'être reprises,
+écrites ici pour qu'elles ne passent pas pour des oublis.
+
+### Le reflet du waveform non joué, très pâle
+
+Il dérive de `--line-strong` (17 % d'opacité) que la moitié basse
+reprend à 55 %, soit 9 % effectifs. C'est cohérent avec la crête non
+jouée, tout aussi discrète. Lui donner sa propre couleur a été proposé
+et écarté tant que ça ne gêne pas.
 
 ## Tranches — toutes livrées
 
@@ -240,7 +245,8 @@ dépendance ajoutée : ffmpeg était déjà un binaire requis.
 tronqué doit ressembler à ce qu'il est. Le canvas est *dans* `#seek`,
 donc le clic, le glisser et les flèches n'ont pas été réécrits.
 
-Dette ouverte par là : le point 1 ci-dessus.
+Dette ouverte par là : les 420 ms payées à la première écoute — voir la
+section suivante, qui la clôt.
 
 ### Les crêtes calculées pendant l'écoute — `9e495ce`
 
@@ -283,3 +289,173 @@ Une contre-épreuve a montré que le test du *check* était creux : il
 passait parce qu'un check terminé n'a pas de clé `imported`, pas parce
 que c'est un check. Corrigé en `09dfcef` avec le cas d'un check en échec,
 qui n'est refusé que par son type.
+
+### L'import repensé — de `0408b57` à `aff4a2c`
+
+Le compte rendu d'import était une page à part, atteinte après coup.
+Il est devenu un onglet : un bouton, la liste de ce qui manque avec son
+nombre et le nom de la playlist, des cases à cocher, un bouton de départ,
+puis ligne par ligne ce que le CLI montre — les quatre barres d'étape, le
+score Shazam nommé, l'erreur en clair, l'id et un lien vers la vidéo. Une
+pastille sur l'onglet et un bouton d'arrêt suivent.
+
+`report.html` a disparu avec. C'était le dernier point de « Reste à
+faire » à côté du mode interactif : une page servie aux seules requêtes
+non-HTMX de `/jobs/{id}/report`, pour qu'une URL de compte rendu mise en
+favori réponde autre chose qu'un fragment nu. Il n'y a plus d'URL de
+compte rendu, donc plus de page. **`console.html` est désormais le seul
+document du projet** — tout le reste est fragment, `base.html` avait
+déjà disparu.
+
+Deux couches ont dû naître pour ça. `ProgressPort` avait des *étapes* —
+une phase mesurée à la fois ; il a maintenant des *articles*, membres
+d'un lot portant une identité (`item_listed`, `item_started`, `item_done`,
+`item_failed`). Et `Job` a gagné `items`, une ligne par membre, à côté de
+`current` qui ne portait que le dernier état.
+
+Le chiffre qui a dicté la forme : un import de 34 morceaux produit plus
+de **10 000 événements contre un anneau de 500**. Chaque frontière de
+morceau du premier tiers était écrasée avant d'être lue. Les
+pourcentages mettent donc `current` à jour en place et n'entrent jamais
+dans l'anneau ; seules les transitions y vont.
+
+Quatre bogues trouvés en s'en servant, pas en le lisant :
+
+- **Décocher toutes les lignes importait tout.** Une case décochée
+  n'envoie rien, donc un formulaire entièrement décoché est
+  indiscernable d'un formulaire sans lignes — que le serveur lisait
+  comme « aucune sélection donnée », c'est-à-dire tout ce qui manque. Un
+  marqueur caché toujours envoyé dit maintenant qu'une sélection a eu
+  lieu, fût-elle vide.
+- **`KeyError('videoDetails')` n'était pas classé comme un refus**, donc
+  n'était pas réessayé. Le retour dépendait de la propriété pytubefix lue
+  en premier. Reclassé en `a462aa3`.
+- **Un second import ne pouvait pas suivre le premier** (`b31124c`).
+- **Appuyer sur Démarrer vidait la liste** qu'on venait de choisir
+  (`aff4a2c`).
+
+Trois tests se sont révélés creux à la contre-épreuve : la raison du job
+de *check*, le garde `import:`, et d'où une ligne tire son nom.
+
+### La marche à travers l'outil — `bf2f0a3` à `654126c`
+
+L'UI a été parcourue comme un utilisateur la parcourt, chaque
+fonctionnalité utilisée. Ce qui en est sorti, du plus grave au plus
+petit : l'établi pouvait s'ouvrir sur rien et vous y enfermer ; le volet
+des imports suivait le job le plus récent et non la playlist regardée ;
+trois silences — des états où la page ne disait rien de ce qu'elle
+faisait ; puis six points mineurs traités d'un bloc.
+
+Un test de câblage n'aurait vu aucun des trois premiers : ils ne sont
+visibles qu'en enchaînant les gestes dans l'ordre où on les enchaîne.
+
+### Les surfaces — `75db91b` à `00bd28a`
+
+Quelle colonne porte quel fond, et l'inversion volontaire entre les deux
+palettes : sur un écran clair le contenu veut la surface la plus blanche
+et le cadre la teintée, sur un écran sombre c'est le cadre qui se lève.
+Les rôles (`--content-bg`, `--frame-bg`) sont ce qui permet de permuter
+en un endroit au lieu d'un sélecteur sur deux.
+
+Ont suivi : l'en-tête de la playlist rejoint le cadre de la liste, la
+barre d'onglets ne peint plus rien, le lecteur perd sa règle du bas, et
+les champs de saisie s'éclaircissent dans les deux thèmes.
+
+### L'anneau de focus — `99646ca` à `f7b9554`
+
+Parti d'une observation : les boutons `<<` et `>>` affichaient parfois
+une bordure verte au changement de morceau. Cause réelle — Chrome ne
+montre pas `:focus-visible` sur un clic pointeur, mais le révèle à la
+frappe suivante. Le focus restait donc sur le bouton cliqué et
+réapparaissait à la première touche.
+
+`event.detail` est le nombre de clics et vaut **0** pour une activation
+au clavier : c'est le discriminant qui permet de rendre le focus après
+un clic pointeur sans rien casser au clavier (`99646ca`).
+
+Puis l'anneau a été retiré partout sauf sur les champs, où il se dit par
+la bordure accent et rien d'autre. Reste une exception, et c'est une
+seule marche : Tab depuis le dernier champ tombe sur Save, dessiné à
+l'intérieur du bouton dans la couleur de son texte — un anneau accent
+sur un fond accent serait précisément celui qu'on venait de supprimer.
+
+Deux pièges de CSS notés au passage : `outline-width: 0.5px` est arrondi
+à `1px` par Chrome, il n'existe pas de contour plus fin ; et supprimer
+une règle `:focus-visible` rend l'anneau par défaut du navigateur — il
+faut écrire `outline: none`, pas effacer la règle.
+
+### Le waveform, modèle SoundCloud — `6254ff0` à `fad3ef7`
+
+Quatre changements, chacun mesuré au navigateur.
+
+**Asymétrique.** Les barres partent d'une ligne de base à ~73 % de la
+hauteur : la crête au-dessus, un reflet en dessous à 36 % de sa hauteur
+et 55 % de sa couleur. Le bas n'est pas la moitié négative du signal —
+les crêtes sont des valeurs absolues, il n'y en a pas. Un vrai tracé à
+deux côtés dépenserait la moitié de ses pixels à répéter la forme du
+dessus. Ce que le reflet achète en échange, c'est une ligne de sol : des
+barres posées se comparent d'un coup d'œil, des barres flottant de part
+et d'autre d'un milieu se comparent dans deux directions à la fois.
+
+**Fluide.** Deux causes à l'à-coups. La frontière était arrondie à la
+barre entière, donc immobile deux tiers de seconde puis sautait ; elle
+est maintenant fractionnaire — la barre traversée est peinte deux fois,
+la couleur jouée par-dessus l'autre à l'opacité de la fraction
+parcourue. Et le repeint suivait `timeupdate`, qui ne tire que quatre
+fois par seconde ; il suit `requestAnimationFrame` tant que ça joue.
+Mesuré : **64 repeints/s en lecture, 0 en pause, 0,33 ms par repeint**.
+
+**Rééchantillonné.** Le nombre de barres était figé à 400 et c'est leur
+largeur qui absorbait la place : à 594 px, une barre d'un demi-pixel et
+aucune gouttière. Inversé — la barre fait 3 px et le pas 4 px, c'est le
+nombre de barres qui cède. Le maximum de chaque groupe, jamais la
+moyenne : une moyenne noie une caisse claire dans le silence voisin.
+Jamais plus de barres que de pics, sinon on dessinerait du détail que
+personne n'a mesuré.
+
+Le pas est **entier dès le calcul**. Arrondir le bord de chaque barre
+rendait les bords nets mais pas l'espacement : la fraction accumulée
+revenait d'un coup, un trou de 5 px toutes les 75 barres, et un seul
+trou large dans un champ régulier est la première chose que l'œil
+trouve. Mesuré aux colonnes du canvas, à cinq largeurs de 160 à 594 px :
+**3 px de barre et 4 px de pas partout**, contre `{4: 143, 5: 2}` avant.
+Le reste — moins d'un pas, donc au plus 3 px — est laissé au bord droit.
+
+**Les temps dans la bande basse**, ce que l'asymétrie achetait en second.
+La timeline y gagne les **72 px** qu'ils prenaient de part et d'autre.
+Trois détails porteurs : positionnés hors flux même sans waveform, sinon
+tout le contrôle bougerait à l'arrivée des pics ; un fond, parce que des
+chiffres gris sur le reflet joué étaient illisibles ; et `z-index: 1`,
+parce que `#seek` est positionné et vient après eux dans le markup — le
+fond était peint puis recouvert. Le temps écoulé prend `--accent`, la
+durée totale reste grise : l'un dit où on est et bouge, l'autre est une
+propriété du morceau.
+
+## Méthode — trois échecs de procédure, et ce qui les a arrêtés
+
+Le document dit ailleurs qu'aucune page n'avait jamais été rendue par un
+navigateur. Trois autres angles morts ont été trouvés depuis, tous par
+leurs conséquences et non par relecture.
+
+**La suite de tests atteignait le réseau.** Nommer chaque morceau
+manquant dans le check envoyait une requête YouTube par morceau ; les
+tests concernés sont passés d'instantanés à plusieurs secondes et ont
+commencé à échouer sur leurs propres budgets d'attente. Rien ne le
+disait : `Playlist` était patché, `YouTube` non. Mesuré à **quatre
+connexions réelles vers Google pour un check de deux morceaux**. Un
+`conftest.py` refuse maintenant toute connexion non-loopback.
+
+**Trois commits sur une suite rouge.** Cause unique : `pytest … | grep …`
+masque le code de sortie, donc le `&&` qui suit voit un succès. Le
+commit est désormais conditionné au code de sortie de pytest lui-même,
+la sortie allant dans un fichier.
+
+**Cinq destructions de travail non commité par `git checkout`.** À chaque
+fois pendant une contre-épreuve, pour restaurer un fichier modifié
+exprès. Les contre-épreuves passent maintenant par une copie hors de
+git.
+
+Les contre-épreuves, elles, ont payé : elles ont attrapé cinq tests
+creux, dont un `outline:\s*[^;n]` qui reconnaissait `outline: none` à
+travers l'espace et comptait donc chaque suppression comme un anneau, et
+un `".t" in selector` qui attrapait aussi `.track`.
