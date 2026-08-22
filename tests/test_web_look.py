@@ -1477,12 +1477,10 @@ async def test_the_reflection_is_shorter_and_fainter_than_the_crest(
     assert "crest - up" in up, up
     assert "crest + gap" in down, down
 
-    # On whole device pixels. The step between bars is almost never
-    # round, and a bar drawn at x.0135 spreads its edges into the pixel
-    # either side — half of a one-pixel gutter goes grey and the bars run
-    # together, which is what the resampling exists to prevent.
-    assert up.startswith("Math.round(i * slot)"), up
-    assert down.startswith("Math.round(i * slot)"), down
+    # On a whole number of device pixels, and stepped by one rather than
+    # rounded to one. See the width test for what that buys.
+    assert up.startswith("i * step"), up
+    assert down.startswith("i * step"), down
     assert "bars[i] * crest" in body and "bars[i] * shadow" in body, body
 
     # And the baseline is where the split says, not halfway: a centred
@@ -1551,14 +1549,25 @@ async def test_a_bar_is_the_same_width_in_any_size_of_box(tmp_path):
     # How many bars follows from the width, and stops at the number of
     # peaks: past that there is nothing left to draw but detail nobody
     # measured.
-    count = re.search(r"const count = ([^;]*);", body, re.DOTALL).group(1)
-    assert "Math.floor(width / (PITCH * dpr))" in count, count
-    assert "Math.min(peaks.length" in count, count
+    wanted = re.search(r"const wanted = (.*);", body).group(1)
+    assert "Math.floor(width / (PITCH * dpr))" in wanted, wanted
+    count = re.search(r"const count = (.*);", body).group(1)
+    assert count == "Math.min(peaks.length, wanted)", count
 
-    # And when the box is wide enough to want more, the gap takes the
-    # slack rather than the bar: fat bars are the thing this prevents.
-    ink = re.search(r"const ink = ([^;]*);", body).group(1)
-    assert "Math.min(BAR * dpr" in ink, ink
+    # The step is a whole number of device pixels. width / count is
+    # 4.0135 at the size this is usually drawn, and rounding each bar's
+    # own left edge instead gives the accumulated fraction back as one
+    # five-pixel gap every seventy-five bars — a single wide gap in a
+    # field of even ones, which is the first thing the eye finds. The
+    # remainder is left unused at the right edge instead.
+    step = re.search(r"const step = (.*);", body).group(1)
+    assert "Math.floor(width / count)" in step, step
+
+    # And when the box is wide enough to want more bars than there are
+    # peaks, the step grows and the gap takes the slack — the bar keeps
+    # its width, since fat bars are the thing this prevents.
+    ink = re.search(r"const ink = ([^;]*);", body, re.DOTALL).group(1)
+    assert "Math.min(Math.round(BAR * dpr), step" in " ".join(ink.split()), ink
 
 
 async def test_the_bars_dropped_by_resampling_are_the_quiet_ones(tmp_path):

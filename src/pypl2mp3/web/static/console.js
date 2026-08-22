@@ -582,26 +582,34 @@
     // whole one, the boundary sat still for the two-thirds of a second
     // it takes a four-minute song to cross a bar, then jumped — and
     // that jump was the whole of what made this look mechanical.
-    const count = Math.max(
-      1, Math.min(peaks.length, Math.floor(width / (PITCH * dpr)))
-    );
+    // As many bars as fit at the target step, and never more than there
+    // are peaks: past that there is nothing left to draw but detail
+    // nobody measured.
+    const wanted = Math.max(1, Math.floor(width / (PITCH * dpr)));
+    const count = Math.min(peaks.length, wanted);
     const bars = resample(count);
 
     const mark = done * bars.length;
     const edge = Math.min(Math.floor(mark), bars.length - 1);
     const into = Math.min(1, mark - edge);
 
-    const slot = width / bars.length;
-    // The bar keeps its width and the gap takes the slack: on a box wide
-    // enough to want more bars than there are peaks, the alternative was
-    // bars that grow fat, which is the thing this is here to prevent.
+    // A whole number of device pixels from one bar to the next, and that
+    // is the point of it. Dividing the width by the count gives 4.0135,
+    // and rounding each bar's own left edge got the edges crisp but not
+    // the spacing: the accumulated fraction comes back as one five-pixel
+    // gap every seventy-five bars, and a single wide gap in a field of
+    // even ones is the first thing the eye finds. What a whole step
+    // costs is the remainder — under one step, so at most three pixels —
+    // left unused at the right edge, where nobody will find it.
     //
-    // Whole device pixels, and the left edge rounded to one below: the
-    // step between bars is almost never a round number, and a three
-    // pixel bar starting at x.0135 spreads its edges over the pixel
-    // either side. The gutter is one pixel wide, so half of it went grey
-    // and the bars ran together — the very thing the resampling is for.
-    const ink = Math.round(Math.max(1, Math.min(BAR * dpr, slot - dpr)));
+    // It also grows past the target on a box wide enough to want more
+    // bars than there are peaks. The gap takes that slack; the bar keeps
+    // its width, since bars that grow fat are what this exists to
+    // prevent.
+    const step = Math.max(1, Math.floor(width / count));
+    const ink = Math.max(
+      1, Math.min(Math.round(BAR * dpr), step - Math.round(dpr))
+    );
 
     // The picture is asymmetric, and the lower half is not the negative
     // half of the signal — there is no negative half here, the peaks are
@@ -632,13 +640,13 @@
         // Silence still draws a hairline: the bar is the control, and a
         // gap in it would read as a gap in the song.
         const up = Math.max(dpr, bars[i] * crest);
-        brush.fillRect(Math.round(i * slot), crest - up, ink, up);
+        brush.fillRect(i * step, crest - up, ink, up);
       }
 
       brush.globalAlpha = wash * MIRROR_INK;
       for (let i = from; i < to; i++) {
         const down = Math.max(dpr, bars[i] * shadow);
-        brush.fillRect(Math.round(i * slot), crest + gap, ink, down);
+        brush.fillRect(i * step, crest + gap, ink, down);
       }
     }
 
