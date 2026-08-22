@@ -999,6 +999,15 @@ tbody tr.playing td.num { color: var(--accent); }
   color: var(--text-2);
 }
 
+/* The two step buttons keep the accent border at all times. They are a
+   pair, and outlining one of them while the other stayed grey read as a
+   difference in kind rather than in state — three buttons, three
+   different frames. */
+#transport [data-player-action="previous"],
+#transport [data-player-action="next"] {
+  border-color: var(--accent);
+}
+
 /* Which way the queue is being walked, said on the button that sets it.
    Pressing ⏮ does not step back once — it turns the player round, and a
    track ending then carries on backwards. The toolbar says so in words,
@@ -1006,14 +1015,19 @@ tbody tr.playing td.num { color: var(--accent); }
    which put the only sign of it three hundred pixels from the hand that
    did it.
 
-   Outlined, not filled: the filled accent already means play/pause here,
-   and two solid greens side by side would read as two of the same
-   thing. */
+   The icon carries it, not the frame: the frames are what hold the row
+   together, and a border that comes and goes makes the pair look
+   unstable. Grey is not "off", it is the other direction. */
 #transport[data-direction="forward"] [data-player-action="next"],
 #transport[data-direction="backward"] [data-player-action="previous"] {
   color: var(--accent);
-  border-color: var(--accent);
 }
+
+/* Nothing is playing, so there is no walk to point at, and no reason for
+   the transport to be lit. The play button already falls back like this;
+   leaving the other two green beside it would say the player was half
+   awake. */
+#player.idle #transport button { border-color: var(--line-strong); }
 #transport [data-player-action="toggle"] {
   background: var(--accent);
   color: var(--accent-text);

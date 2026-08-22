@@ -1462,10 +1462,31 @@ async def test_the_transport_says_which_way_the_queue_is_walked(tmp_path):
     assert '[data-player-action="next"]' in selector, selector
     assert '[data-player-action="previous"]' in selector, selector
 
-    # Outlined, not filled: the filled accent already means play/pause
-    # here, and two solid greens side by side read as two of the same.
+    # The icon carries it, not the frame. Both step buttons hold the
+    # accent border at all times — they are a pair, and a border that
+    # comes and goes makes them look like two different kinds of control
+    # rather than one control in two states.
     assert "color: var(--accent)" in body, body
     assert "background" not in body, body
+    assert "border" not in body, (
+        f"the frame moves with the direction, so the pair never rests: "
+        f"{body}"
+    )
+
+    pair = re.search(
+        r'\n#transport \[data-player-action="previous"\],\s*\n'
+        r'#transport \[data-player-action="next"\] \{([^}]*)\}',
+        css,
+    )
+    assert pair, "the two step buttons are not framed alike"
+    assert "border-color: var(--accent)" in pair.group(1), pair.group(1)
+
+    # Except with nothing playing: there is no walk to point at, and the
+    # play button already falls back this way.
+    idle = re.search(r"\n#player\.idle #transport button \{([^}]*)\}", css)
+    assert idle and "border-color: var(--line-strong)" in idle.group(1), (
+        "an idle player keeps a lit transport"
+    )
 
 
 async def test_a_transport_button_is_big_enough_to_hit(tmp_path):
