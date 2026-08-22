@@ -1485,11 +1485,20 @@ async def test_the_transport_says_which_way_the_queue_is_walked(tmp_path):
     # than to be read.
     assert "border-color: var(--accent-line)" in pair.group(1), pair.group(1)
 
-    # The side not in use takes the frame's own colour, not grey: grey
-    # against green reads as disabled, two different things, where the
-    # pair is one thing pointing one way.
+    # The side not in use takes the same green, not grey: grey against
+    # green reads as disabled, two different things, where the pair is
+    # one thing pointing one way. One step above the frame, though — at
+    # the frame's own value the glyph came out at 1.7:1 against the
+    # player on a light screen, a shape you have to look for.
     button = re.search(r"\n#transport button \{([^}]*)\}", css).group(1)
-    assert "color: var(--accent-line)" in button, button
+    assert "color: var(--accent-dim)" in button, button
+    assert "--accent-dim" != "--accent-line"  # they are two roles
+
+    # And it exists in both palettes. Nothing else here would notice a
+    # variable defined in one and not the other: the glyph would simply
+    # inherit the light value onto the dark page.
+    defined = len(re.findall(r"^  --accent-dim: ", css, re.MULTILINE))
+    assert defined == 2, f"--accent-dim is set in {defined} palette(s)"
 
     # Except with nothing playing: there is no walk to point at, so the
     # whole transport goes neutral — frame and glyph both, the way the

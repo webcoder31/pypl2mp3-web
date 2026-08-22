@@ -72,6 +72,14 @@
   --accent-text: #ffffff;
   --accent-soft: rgba(10, 143, 124, 0.13);
   --accent-line: rgba(10, 143, 124, 0.4);
+  /* One step up from the frame, for a glyph rather than a rule. The two
+     palettes take different alphas because they have different room:
+     against white the full accent only reaches 4.0:1, so there is very
+     little headroom above the frame, while against the dark page it
+     reaches 9.2:1 and half the alpha is already plain. Measured on the
+     player's own background: 2.4:1 here, 3.1:1 there, against 1.7 and
+     2.1 when the glyph shared the frame's value. */
+  --accent-dim: rgba(10, 143, 124, 0.65);
   /* Its own variable rather than an alpha on the accent: over a light
      background low alpha lightens, over a dark one it darkens, so one
      opacity cannot mean "lighter" in both themes.
@@ -178,6 +186,7 @@
   --accent-text: #04211c;
   --accent-soft: rgba(70, 201, 177, 0.15);
   --accent-line: rgba(70, 201, 177, 0.35);
+  --accent-dim: rgba(70, 201, 177, 0.5);
   --wave-played: #97bbb3;
   --junk: #e0a24a;
   --junk-soft: rgba(224, 162, 74, 0.14);
@@ -1000,11 +1009,12 @@ tbody tr.playing td.num { color: var(--accent); }
   /* The glyph, not the box: these are pictures rather than text, and at
      the label size they sat small in a target built to be hit. */
   font-size: var(--fs-lg);
-  /* The frame's own colour. Grey against green said "disabled" — two
-     different things — where the pair is one thing pointing one way:
-     the same green, quiet on the side not in use and full on the side
-     that is. */
-  color: var(--accent-line);
+  /* The same green as the frame, one step stronger. Grey against green
+     said "disabled" — two different things — where the pair is one
+     thing pointing one way. At the frame's own value the glyph read as
+     switched off rather than merely quiet: 1.7:1 against the player on
+     a light screen, which is a shape you have to look for. */
+  color: var(--accent-dim);
 }
 
 /* The two step buttons keep the accent border at all times. They are a
