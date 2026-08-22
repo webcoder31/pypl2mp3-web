@@ -327,11 +327,15 @@ input::placeholder { color: var(--text-3); }
    ring around an accent fill would be the thing that was removed, and
    would light up again after a pointer click. This one cannot — clicking
    Save submits the form, and the panel that replaces it takes the button
-   with it. */
+   with it.
+
+   One pixel in, not four: the offset is the green band left showing
+   outside the ring, and at four it was the thickest line of the three,
+   which read as the border rather than as the ring it frames. */
 #inspector button[type="submit"]:focus-visible,
 .workbench-detail button[type="submit"]:focus-visible {
   outline: 1px solid var(--accent-text);
-  outline-offset: -4px;
+  outline-offset: -1px;
 }
 
 /* The accent border alone. A wash around it added a second edge for no
