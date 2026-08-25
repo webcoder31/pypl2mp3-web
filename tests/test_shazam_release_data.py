@@ -179,13 +179,16 @@ def test_the_four_fields_survive_a_round_trip_through_a_real_file(tmp_path):
 
 def test_frames_this_program_never_set_are_left_alone(tmp_path):
     """Before these four fields existed, update_id3_tags never mentioned
-    TALB, TPUB, TDRC or TCON, so whatever a downloaded file carried
-    survived every save untouched. Now that they are written they can
-    also be deleted, which is a way to lose data that did not exist
-    before — nine songs in one 944-song library carry a full set of
-    release frames that never came from Shazam.
+    TALB, TPUB, TDRC or TCON, so whatever a file carried survived every
+    save untouched. Now that they are written they can also be deleted,
+    which is a way to lose data that did not exist before.
 
-    They are read on the first open and written back on the next save.
+    No library has been found relying on this — the songs that looked
+    like evidence turned out to have been through Ask Shazam — but the
+    frames are standard and any tagger writes them, so a file arriving
+    with them is a matter of where it came from and not of what this
+    program did. They are read on the first open and written back on the
+    next save.
     """
 
     from mutagen.id3 import ID3, TALB, TPUB, TDRC, TCON, TPE1, TXXX
