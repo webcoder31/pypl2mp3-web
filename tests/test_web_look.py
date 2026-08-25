@@ -1564,6 +1564,56 @@ async def test_a_slot_turns_like_a_flap_and_not_like_a_fade(tmp_path):
     assert "if (slot.textContent === wanted) return;" in js
 
 
+async def test_a_landed_character_cools_from_the_accent_to_the_line(
+    tmp_path,
+):
+    """What a real board gives you and a text swap does not: the change
+    is legible after the fact. The character lands in the accent and
+    spends half a second cooling to the grey the rest of the line is in,
+    so a glance a moment late still shows which slots moved.
+
+    It has to *arrive* green rather than travel there, which is the whole
+    difficulty: colour is a transitioned property, so setting it green
+    would animate towards green over the same half second and the strike
+    would land after the flap had already closed.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+        js = (await client.get("/static/console.js")).text
+
+    slot = re.search(r"\n\.slot \{([^}]*)\}", css).group(1)
+    turn = float(re.search(r"transform ([\d.]+)s", slot).group(1))
+    cool = float(re.search(r"color ([\d.]+)s", slot).group(1))
+    assert cool > turn * 3, (
+        f"the colour settles as fast as the flap turns, so there is "
+        f"nothing left to read: {turn}s turn, {cool}s cool"
+    )
+
+    fresh = re.search(r"\n\.slot\.fresh \{([^}]*)\}", css).group(1)
+    assert "color: var(--accent)" in fresh, fresh
+    # Dropping colour from the list is what makes the accent snap on.
+    assert "transition-property: transform, opacity" in fresh, fresh
+    # And not `transition: none`, which would have taken the flap's own
+    # turn with it — the character would appear without falling.
+    assert "transition: none" not in fresh, (
+        f"the flap stops turning while the colour is held: {fresh}"
+    )
+
+    # Put on with the character, taken off once it has settled in place,
+    # and both waits know whether they are still wanted.
+    turning = re.search(
+        r'slot\.classList\.add\("turning"\);(.*?)\n      \}, turning',
+        js,
+        re.DOTALL,
+    ).group(1)
+    assert turning.index('slot.textContent = wanted;') < turning.index(
+        'slot.classList.add("fresh");'
+    ), "the accent lands before the character it marks"
+    assert 'slot.classList.remove("fresh");' in turning, turning
+    assert turning.count("if (era !== boardEra) return;") == 2, turning
+
+
 async def test_the_board_holds_each_face_and_stops_when_there_is_one(tmp_path):
     """Five seconds a face, and no clock at all for a song Shazam never
     matched: a board with one face has nothing to turn to.
@@ -1593,10 +1643,20 @@ async def test_the_board_holds_each_face_and_stops_when_there_is_one(tmp_path):
     assert 'board.dataset.face = "playlist";' in restart, restart
 
     # A turn in flight has to know it is stale: a song changed mid-flap
-    # would otherwise finish spelling out the one before it.
-    assert "if (era !== boardEra) return;" in js
-    assert js.count("if (era !== boardEra) return;") == 2, (
-        "only one of the two waits checks whether it is still wanted"
+    # would otherwise finish spelling out the one before it. Every step
+    # that runs later has to ask, so the guards are counted against the
+    # waits rather than against a number written here.
+    turn = re.search(
+        r"function showFace\(board, text, turning\) \{(.*?)\n  \}",
+        js,
+        re.DOTALL,
+    ).group(1)
+    waits = turn.count("window.setTimeout(")
+    guards = turn.count("if (era !== boardEra) return;")
+    assert waits >= 2, turn
+    assert guards == waits, (
+        f"{waits} deferred steps in a turn, {guards} of them check whether "
+        f"they are still wanted"
     )
 
 

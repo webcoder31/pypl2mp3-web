@@ -961,9 +961,27 @@ tbody tr.playing td.num { color: var(--accent); }
 .slot {
   display: inline-block;
   transform-origin: 50% 0;
-  transition: transform 0.09s ease-in, opacity 0.09s ease-in;
+  /* The turn is quick and the colour is not: the flap lands in a
+     twentieth of a second and then spends half of one cooling back to
+     the line's own grey, which is what makes the change legible on a
+     line this quiet. */
+  transition: transform 0.09s ease-in, opacity 0.09s ease-in,
+              color 0.6s ease-out;
 }
 .slot.turning { transform: rotateX(-90deg); opacity: 0; }
+
+/* The character that has just landed. It has to arrive green rather than
+   travel there, so while this class is on, colour is dropped from the
+   list of properties that transition — the accent snaps on. Taking the
+   class off puts colour back in the list, and that is the transition you
+   see: green cooling to grey.
+   
+   Dropping the property rather than `transition: none`, which would have
+   taken the flap's own turn with it. */
+.slot.fresh {
+  color: var(--accent);
+  transition-property: transform, opacity;
+}
 /* Only while the panel is refusing to follow the player, and saying so
    where it says everything else about this song. */
 .held { display: none; color: var(--junk); }

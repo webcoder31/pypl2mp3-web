@@ -633,7 +633,18 @@
           if (era !== boardEra) return;
 
           slot.textContent = wanted;
+          // Green on arrival, grey once it has settled. Added with the
+          // character and released after the flap has finished falling
+          // back, so the accent is on for the whole of the turn and the
+          // cooling starts from a character already in place.
+          slot.classList.add("fresh");
           slot.classList.remove("turning");
+
+          window.setTimeout(function () {
+            if (era !== boardEra) return;
+
+            slot.classList.remove("fresh");
+          }, half);
         }, half);
       }, turning ? i * 18 : 0);
     });
