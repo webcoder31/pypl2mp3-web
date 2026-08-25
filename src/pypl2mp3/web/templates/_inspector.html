@@ -30,6 +30,18 @@
       <span class="held">· unsaved edits — the panel is staying here</span>
     </p>
 
+    {# The release, on its own line and only when there is one. It comes
+       from Shazam with the artist and the title and is written to the
+       standard ID3 frames, so any other player already shows it — this
+       is the same fact, in the one place that says what this song is.
+
+       Assembled in the summary rather than here: the four parts are each
+       optional, and a template putting separators between holes is where
+       a stray middot comes from. #}
+    {% if song.release %}
+      <p class="id release">{{ song.release }}</p>
+    {% endif %}
+
     {# Shazam is not called on load: it takes seconds and waits fifteen
        more between requests. It is a job the user starts. #}
     <p class="inspector-tools">

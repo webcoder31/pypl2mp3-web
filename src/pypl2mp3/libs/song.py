@@ -28,7 +28,7 @@ import urllib.request
 # Third party packages
 from colorama import Fore, Style, init
 from moviepy.editor import AudioFileClip
-from mutagen.id3 import TIT2, TPE1, TXXX, APIC
+from mutagen.id3 import TIT2, TPE1, TXXX, APIC, TALB, TPUB, TDRC, TCON
 import mutagen.mp3
 from proglog import ProgressBarLogger
 from pytubefix import YouTube, request
@@ -1178,6 +1178,39 @@ class SongModel:
             except:
                 pass
 
+        # Retrieve and set the release data Shazam carries alongside the
+        # artist and the title: album, publisher, year and genre.
+        #
+        # "publisher" and not "label", which is what Shazam and ID3 both
+        # call it: SongSummary — the view three templates read — already
+        # has a `label`, the "artist - title" line. The clash would land
+        # there rather than here, which is worse: nothing on this side
+        # would look wrong.
+        #
+        # Standard
+        # ID3 frames rather than TXXX customs — every player and every
+        # library already knows how to read TALB, TPUB, TDRC and TCON,
+        # and this is exactly what they are for.
+        #
+        # No `shazam_*` twin for these four, unlike the artist and the
+        # title: those are kept even when rejected because the workbench
+        # offers them for judgement. Nobody judges an album name against
+        # a YouTube video title, so a rejected copy would be four frames
+        # with no reader.
+        for field, frame in (
+            ("album", "TALB"),
+            ("publisher", "TPUB"),
+            ("year", "TDRC"),
+            ("genre", "TCON"),
+        ):
+            setattr(self, field, getattr(self, field, None))
+
+            if not self.is_already_initialized and not getattr(self, field):
+                try:
+                    setattr(self, field, str(self.mp3.tags[frame].text[0]))
+                except:
+                    pass
+
         # Set Shazam match level.
         # Try to get it from constructor parameters first or from song state.
         # At initialization time, also try to get it from ID3 tags.
@@ -1290,6 +1323,21 @@ class SongModel:
             ))
         else:
             self.mp3.tags.delall("TIT2")
+
+        # Update or remove the release data. Set-or-delete like the two
+        # above rather than wiped and rewritten like the TXXX block: they
+        # are standard frames, and a file may well carry ones this
+        # program never set.
+        for value, frame, factory in (
+            (self.album, "TALB", TALB),
+            (self.publisher, "TPUB", TPUB),
+            (self.year, "TDRC", TDRC),
+            (self.genre, "TCON", TCON),
+        ):
+            if value:
+                self.mp3.tags.add(factory(encoding=3, text=u"" + str(value)))
+            else:
+                self.mp3.tags.delall(frame)
 
         # Delete all custom tags
         self.mp3.tags.delall("TXXX")
@@ -1598,6 +1646,8 @@ class SongModel:
         # levenshtein distance algorithm.
         if "track" in shazam_metadata:
             try:
+                release = self._release_data(shazam_metadata["track"])
+
                 title = \
                     shazam_metadata["track"]["title"][:1].upper() \
                     + shazam_metadata["track"]["title"][1:]
@@ -1645,7 +1695,8 @@ class SongModel:
                             shazam_artist=artist,
                             shazam_title=title,
                             shazam_cover_art_url=cover_art_url,
-                            shazam_match_score=match_score
+                            shazam_match_score=match_score,
+                            **release
                         )
                     except:
                         # If cover art URL is not available, 
@@ -1655,7 +1706,8 @@ class SongModel:
                             title=title,
                             shazam_artist=artist,
                             shazam_title=title,
-                            shazam_match_score=match_score
+                            shazam_match_score=match_score,
+                            **release
                         )
                 else:
                     # If match score is not good enough, only save 
@@ -1680,6 +1732,55 @@ class SongModel:
                 raise SongModelException(
                     f"Hook \"post_shazam_song\" failed"
                 ) from exc
+
+
+    @staticmethod
+    def _release_data(track: dict) -> dict:
+        """
+        Read album, publisher, year and genre out of a Shazam track.
+
+        Only the keys that were actually answered are returned, so a
+        caller can splat the result into `update_state` and leave every
+        absent field at its current value rather than clearing it.
+
+        The album, the publisher and the year live in a list of display rows
+        under `sections`, addressed by their own `title`. That list is
+        display copy, not an interface: the rows are ordered as Shazam
+        feels like ordering them and there is no guarantee all three are
+        present, so it is read by name and every one of them is optional.
+        The genre sits on the track itself.
+
+        Returns:
+            dict: any of "album", "publisher", "year", "genre" that
+                Shazam gave a non-empty value for.
+        """
+
+        wanted = {
+            "Album": "album", "Label": "publisher", "Released": "year"
+        }
+        found = {}
+
+        # Squeezed the same way the artist and the title are. Shazam
+        # answers with non-breaking spaces in album names — "X:\xa0The
+        # Godless Void" — which survive into the tag and then into every
+        # search that expects a space.
+        def tidy(text):
+            return re.sub(r"\s+", " ", str(text or "").strip())
+
+        for section in track.get("sections") or []:
+            for row in section.get("metadata") or []:
+                field = wanted.get(row.get("title"))
+                text = tidy(row.get("text"))
+
+                if field and text:
+                    found[field] = text
+
+        genre = tidy((track.get("genres") or {}).get("primary"))
+
+        if genre:
+            found["genre"] = genre
+
+        return found
 
 
     def fix_filename(self, mark_as_junk: Optional[bool] = None) -> None:
@@ -1750,7 +1851,11 @@ class SongModel:
         shazam_artist: Union[str, None, bool] = False,
         shazam_title: Union[str, None, bool] = False,
         shazam_cover_art_url: Union[str, None, bool] = False,
-        shazam_match_score: Union[float, None, int] = -1
+        shazam_match_score: Union[float, None, int] = -1,
+        album: Union[str, None, bool] = False,
+        publisher: Union[str, None, bool] = False,
+        year: Union[str, None, bool] = False,
+        genre: Union[str, None, bool] = False
     ) -> None:
         """
         Update song metadata and refresh state.
@@ -1781,6 +1886,14 @@ class SongModel:
                 cover URL. Defaults to False.
             shazam_match_score (Union[float, None, int], optional): New match
                 score. Defaults to -1.
+            album (Union[str, None, bool], optional): New album name.
+                Defaults to False.
+            publisher (Union[str, None, bool], optional): New label.
+                Defaults to False.
+            year (Union[str, None, bool], optional): New release year.
+                Defaults to False.
+            genre (Union[str, None, bool], optional): New genre.
+                Defaults to False.
 
         Example:
             >>> song.update_state(
@@ -1821,6 +1934,14 @@ class SongModel:
                 shazam_match_score != -1
             ]
 
+        self.album = (self.album, album)[album != False]
+
+        self.publisher = (self.publisher, publisher)[publisher != False]
+
+        self.year = (self.year, year)[year != False]
+
+        self.genre = (self.genre, genre)[genre != False]
+
         # Reinitialize song object according to new state
         self.__init__(self.path, self.youtube_id)
 
@@ -1832,6 +1953,7 @@ class SongModel:
         Clears all metadata and ID3 tags except for YouTube ID:
         - Removes artist and title
         - Removes cover art and its URL
+        - Clears album, publisher, year and genre
         - Clears all Shazam-related data (artist, title, match score)
         - Reinitializes song with minimal state
         - Preserves only the YouTube ID tag
@@ -1854,6 +1976,10 @@ class SongModel:
         self.shazam_title = None
         self.shazam_cover_art_url = None
         self.shazam_match_score = None
+        self.album = None
+        self.publisher = None
+        self.year = None
+        self.genre = None
 
         # Reinitialize song object according to cleared state
         self.__init__(self.path, self.youtube_id)

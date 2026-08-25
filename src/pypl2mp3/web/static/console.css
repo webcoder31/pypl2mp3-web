@@ -946,6 +946,9 @@ tbody tr.playing td.num { color: var(--accent); }
 .inspector-title { font-size: var(--fs-lg); line-height: 1.25;
                    margin: 0.2rem 0 0.1rem; letter-spacing: -0.01em; }
 #inspector .id { color: var(--text-3); }
+/* The release sits under the line that names the playlist, close enough
+   to read as a continuation of it rather than as a new block. */
+.release { margin: 0.15rem 0 0; }
 /* Only while the panel is refusing to follow the player, and saying so
    where it says everything else about this song. */
 .held { display: none; color: var(--junk); }

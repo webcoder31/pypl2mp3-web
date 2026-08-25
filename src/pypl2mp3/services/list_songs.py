@@ -30,6 +30,28 @@ class SongSummary:
     playlist: str
     duration: str
     is_junk: bool
+    # What Shazam knows about the release, when it matched the song.
+    # Empty strings rather than None: every consumer is a template, and
+    # a template treats both the same while None reads back as "None".
+    album: str = ""
+    publisher: str = ""
+    year: str = ""
+    genre: str = ""
+
+    @property
+    def release(self) -> str:
+        """The release data as one line, or nothing at all.
+
+        Joined here rather than in the template because the parts are
+        each optional: Shazam answers with all four, three, or none, and
+        a template assembling separators around holes is where the stray
+        middot comes from.
+        """
+
+        return " · ".join(
+            part for part in (self.album, self.year, self.genre,
+                              self.publisher) if part
+        )
 
     @property
     def label(self) -> str:
@@ -117,4 +139,8 @@ def summarize(song: SongModel) -> SongSummary:
         playlist=song.playlist,
         duration=song.duration,
         is_junk=bool(song.has_junk_filename),
+        album=song.album or "",
+        publisher=song.publisher or "",
+        year=song.year or "",
+        genre=song.genre or "",
     )

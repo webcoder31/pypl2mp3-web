@@ -20,6 +20,13 @@
       {{ song.label }}
     </h2>
 
+    {# The release, only when there is one. Same line as the inspector's,
+       and worth as much here: judging a match is easier knowing the
+       album Shazam thinks this came from. #}
+    {% if song.release %}
+      <p class="id release">{{ song.release }}</p>
+    {% endif %}
+
     {# Fires immediately. If a prefetch already ran, the job is finished
        and this first poll returns the answer at once. #}
     <div id="shazam" class="job"
