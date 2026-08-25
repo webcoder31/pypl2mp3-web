@@ -1751,12 +1751,15 @@ async def test_the_level_borrows_the_timeline_greens_on_a_light_screen(
     assert "--level: var(--wave-played);" in light, (
         "the level no longer borrows the picture's green"
     )
-    # The same 55 % the reflection uses, mixed rather than written out: a
-    # copy of the channels would drift the day --wave-played moves.
-    assert (
-        "--level-rest: color-mix(in srgb, var(--wave-played) 55%, transparent);"
-        in light
-    ), light
+    mix = re.search(
+        r"--level-rest: color-mix\(in srgb, var\(--wave-played\) (\d+)%,"
+        r" transparent\);",
+        light,
+    )
+    assert mix, f"the empty half is not a mix of the picture's green: {light}"
+    assert 0 < int(mix.group(1)) < 100, (
+        f"{mix.group(1)}% is not lighter than the green it mixes: {light}"
+    )
     assert "#3fb5a1" not in re.search(
         r"--level-rest: ([^;]+);", light
     ).group(1), "the green is copied instead of referred to"

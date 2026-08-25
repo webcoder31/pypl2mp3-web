@@ -89,11 +89,13 @@
      On a dark screen the accent is already the picture's own colour
      family and there is nothing to reconcile.
 
-     color-mix rather than the channels written out: 55 % is the same
-     figure the reflection uses, and a copy of #3fb5a1 here would drift
-     the day --wave-played moves. */
+     color-mix rather than the channels written out: a copy of #3fb5a1
+     here would drift the day --wave-played moves. Lighter than the
+     reflection's own 55 %, though — the reflection is read against bars
+     of the same green and only has to be quieter than them, while this
+     is the empty half of a track and has to read as empty. */
   --level: var(--wave-played);
-  --level-rest: color-mix(in srgb, var(--wave-played) 55%, transparent);
+  --level-rest: color-mix(in srgb, var(--wave-played) 45%, transparent);
   /* Its own variable rather than an alpha on the accent: over a light
      background low alpha lightens, over a dark one it darkens, so one
      opacity cannot mean "lighter" in both themes.
