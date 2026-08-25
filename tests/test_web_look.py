@@ -1621,6 +1621,118 @@ async def test_the_next_up_length_comes_after_the_name_and_survives_it(
     )
 
 
+async def test_the_volume_never_takes_from_the_timeline(tmp_path):
+    """At the far end of the row, and fixed: the picture has fought for
+    that width twice — once to get the readouts out of its way, once to
+    give some back to bigger buttons — and a control that grew with the
+    window would take it a third time.
+
+    Beside the timeline rather than beside the transport, because the
+    transport now means movement through the queue, which is what the lit
+    arrow on it says, and a level is not a movement.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        page = (await client.get("/")).text
+        css = (await client.get("/static/console.css")).text
+
+    footer = re.search(r'<footer id="player".*?</footer>', page, re.DOTALL)
+    assert footer, "the player is not where this test looks"
+    assert (footer.group(0).index('id="timeline"')
+            < footer.group(0).index('id="volume"')), (
+        "the volume sits inside the transport's half of the row"
+    )
+
+    group = re.search(r"\n#volume \{([^}]*)\}", css).group(1)
+    assert "flex: 0 0 auto" in group, (
+        f"the volume grows with the window, at the picture's expense: "
+        f"{group}"
+    )
+
+    # Drawn, like #seek and for the same reason: a range input is one of
+    # the shapes no stylesheet can reach.
+    block = footer.group(0)
+    block = block[block.index('<div id="volume">'):block.index("<audio")]
+    assert "<input" not in block, "the level is a range input"
+    slider = re.search(r'<div id="volume-track"([^>]*)>', page).group(1)
+    for attribute in ('role="slider"', 'aria-valuemin="0"',
+                      'aria-valuemax="100"', 'aria-valuenow', 'tabindex="0"'):
+        assert attribute in slider, f"{attribute} missing: {slider}"
+
+
+async def test_the_level_lands_on_a_notch(tmp_path):
+    """#seek maps a click straight onto the duration, because there a
+    pixel means a moment you asked for. A level has no value to land on
+    exactly, and a track of sixty-four pixels gives twenty notches of
+    three — each reachable with a mouse, and the same gesture twice
+    giving the same number. The waveform's whole-pixel step again: a
+    round number beats an exact one.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+        js = (await client.get("/static/console.js")).text
+
+    step = int(re.search(r"const VOLUME_STEP = (\d+);", js).group(1))
+    assert 100 % step == 0, f"{step}% does not divide the range evenly"
+
+    setter = re.search(
+        r"function setVolume\(next, nowMuted\) \{(.*?)\n  \}", js, re.DOTALL
+    ).group(1)
+    assert "Math.round(next / VOLUME_STEP) * VOLUME_STEP" in setter, setter
+    assert "Math.max(\n      0, Math.min(100," in setter, (
+        f"the level can leave the ends: {setter}"
+    )
+
+    # Wide enough that every notch is a target a mouse can hit.
+    track = re.search(r"\n#volume-track \{([^}]*)\}", css).group(1)
+    width = float(re.search(r"width: ([\d.]+)rem;", track).group(1)) * 16
+    assert width / (100 / step) >= 3, (
+        f"{width}px over {100 // step} notches is under 3px each"
+    )
+
+
+async def test_silence_is_one_state_however_it_was_reached(tmp_path):
+    """Dragging the track to nothing left the speaker saying the sound
+    was on while none came out. A second state that looks identical to
+    the first is a state nobody can act on, so a level of zero *is*
+    muted — and coming back from it has nowhere to return to, so it
+    returns to one notch rather than to silence again.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        js = (await client.get("/static/console.js")).text
+        css = (await client.get("/static/console.css")).text
+
+    assert "muted = Boolean(nowMuted) || level === 0;" in js, (
+        "silence reached by dragging is a different state from mute"
+    )
+    assert "if (muted) setVolume(level || VOLUME_STEP, false);" in js, (
+        "unmuting from nothing returns to nothing"
+    )
+
+    # Muting keeps the level, so coming back comes back to where it was:
+    # what goes to zero is the output, not the remembered number.
+    paint = re.search(
+        r"function paintVolume\(\) \{(.*?)\n  \}", js, re.DOTALL
+    ).group(1)
+    assert "const shown = muted ? 0 : level;" in paint, paint
+    assert "level =" not in paint, f"the painter moves the level: {paint}"
+
+    # The speaker is the only thing that can say it, because a fill at
+    # zero and a fill hidden look alike.
+    assert re.search(
+        r'#volume-mute\[aria-pressed="true"\] \.crossed \{ display: block; \}',
+        css,
+    ), "muted looks the same as quiet"
+
+    # Remembered between sessions, and a stored zero is a choice.
+    assert 'const VOLUME_KEY = "pypl2mp3.volume";' in js
+    assert "typeof stored.level === \"number\"" in js, (
+        "a stored zero would be read as nothing stored"
+    )
+
+
 async def test_the_transport_says_which_way_the_queue_is_walked(tmp_path):
     """Pressing the back button does not step back once — it turns the
     player round, and a track ending then carries on backwards. The

@@ -154,6 +154,39 @@
           <span class="t" id="player-total">0:00</span>
         </div>
 
+        {# The volume, at the far end rather than beside the transport.
+           The transport means movement through the queue — that is what
+           the lit arrow on it says — and a level is not a movement.
+
+           Drawn, like #seek and for the same reason: a range input is
+           one of the shapes in a browser no stylesheet can reach. Same
+           role, same attributes, same keyboard.
+
+           The speaker is the mute switch, not a label. Its icon is two
+           paths so muting can swap the waves for a cross without
+           reaching for a second glyph — and an inline icon rather than
+           an emoji because 🔊 carries its own colour in every browser
+           that has it, which is the one thing this row cannot use. #}
+        <div id="volume">
+          <button type="button" id="volume-mute" aria-pressed="false"
+                  title="Mute" aria-label="Mute">
+            <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"
+                 fill="none" stroke="currentColor" stroke-width="1.4"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 6h2.4L8 3v10L4.4 10H2z"/>
+              <path class="waves" d="M10.6 5.9a3 3 0 0 1 0 4.2"/>
+              <path class="waves" d="M12.6 4a5.6 5.6 0 0 1 0 8"/>
+              <path class="crossed" d="M10.8 6.2l4 3.6M14.8 6.2l-4 3.6"/>
+            </svg>
+          </button>
+          <div id="volume-track" role="slider" aria-label="Volume"
+               aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"
+               aria-valuetext="100%" tabindex="0">
+            <span class="track"></span>
+            <span class="fill"></span>
+          </div>
+        </div>
+
         <audio id="audio"></audio>
       </footer>
 

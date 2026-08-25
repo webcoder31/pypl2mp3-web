@@ -1183,6 +1183,55 @@ tbody tr.playing td.num { color: var(--accent); }
 #seek:hover .fill { opacity: 1; }
 #player.idle #seek { cursor: default; }
 
+/* The volume, at the far end of the row. Fixed width, and it never
+   takes any of what is left: the timeline has fought for that space
+   twice, and a level needs sixty-four pixels to be useful where the
+   picture uses every one it gets. */
+#volume {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+#volume-mute {
+  /* Narrower than a transport button — it is one gesture, not a
+     destination — and framed like the pair so the row keeps one
+     vocabulary. */
+  width: 1.9rem;
+  height: 2rem;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-color: var(--accent-line);
+  color: var(--accent-dim);
+}
+/* The level is the state worth showing, so the speaker lights only when
+   there is nothing to show: muted is the one condition a fill cannot
+   say, because a fill at zero and a fill hidden look alike. */
+#volume-mute[aria-pressed="true"] { color: var(--accent); }
+#volume-mute .crossed { display: none; }
+#volume-mute[aria-pressed="true"] .waves { display: none; }
+#volume-mute[aria-pressed="true"] .crossed { display: block; }
+
+/* Sharp edges and a 3px rule, the same as the seek bar's fallback: they
+   are the same kind of control and there was no reason to invent a
+   second look for the smaller one. */
+#volume-track {
+  position: relative;
+  width: 4rem;
+  height: 2rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+#volume-track .track { position: absolute; left: 0; right: 0; height: 3px;
+                       background: var(--accent-line); }
+#volume-track .fill { position: absolute; left: 0; height: 3px;
+                      background: var(--accent); }
+#volume.is-muted .fill { background: var(--accent-line); }
+
 /* The two ways of drawing the same position never show together: the
    plain bar is the fallback, and the waveform replaces it outright
    rather than sitting on top of it. */

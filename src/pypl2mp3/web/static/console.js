@@ -149,6 +149,9 @@
   const position = document.getElementById("player-position");
   const transport = document.getElementById("transport");
   const toggle = document.querySelector('[data-player-action="toggle"]');
+  const volume = document.getElementById("volume");
+  const volumeMute = document.getElementById("volume-mute");
+  const volumeTrack = document.getElementById("volume-track");
   const filters = document.getElementById("filters");
   const playlistField = document.getElementById("playlist-field");
   const artistField = document.getElementById("artist-field");
@@ -556,6 +559,129 @@
     // characters of nothing, repeated on every row.
     return h ? h + ":" + String(m).padStart(2, "0") + ":" + s : m + ":" + s;
   }
+
+  // ---------------------------------------------------------------
+  // The volume
+  //
+  // Notched, not continuous. #seek maps a click straight onto the
+  // duration because there a pixel means a moment you asked for; a level
+  // has no value to land on exactly, and twenty notches of five percent
+  // are each three pixels wide — reachable with a mouse, and the same
+  // number twice for the same gesture. It is the waveform's whole-pixel
+  // step again: a round number beats an exact one.
+  // ---------------------------------------------------------------
+
+  const VOLUME_KEY = "pypl2mp3.volume";
+  const VOLUME_STEP = 5;
+
+  // What to come back to. Mute is not a level of its own — coming back
+  // to silence is coming back to nothing — so the level it interrupted
+  // is kept here and the audio element's own volume goes to zero.
+  let level = 100;
+  let muted = false;
+
+  function paintVolume() {
+    const shown = muted ? 0 : level;
+
+    audio.volume = shown / 100;
+    audio.muted = muted;
+
+    volumeTrack.querySelector(".fill").style.width = shown + "%";
+    volumeTrack.setAttribute("aria-valuenow", String(shown));
+    volumeTrack.setAttribute("aria-valuetext", shown + "%");
+    volumeMute.setAttribute("aria-pressed", String(muted));
+    volumeMute.title = muted ? "Unmute" : "Mute";
+    volumeMute.setAttribute("aria-label", volumeMute.title);
+    volume.classList.toggle("is-muted", muted);
+  }
+
+  function rememberVolume() {
+    try {
+      localStorage.setItem(VOLUME_KEY, JSON.stringify({ level, muted }));
+    } catch (error) {
+      // Private browsing refuses localStorage, the same as the theme
+      // switch. The control works for this page; it just will not be
+      // remembered.
+    }
+  }
+
+  function setVolume(next, nowMuted) {
+    // To the nearest notch, and never off the ends.
+    level = Math.max(
+      0, Math.min(100, Math.round(next / VOLUME_STEP) * VOLUME_STEP)
+    );
+    // Silence is silence however it was reached. Dragging the track to
+    // nothing left the speaker saying the sound was on while none came
+    // out, and a second state that looks identical to the first is a
+    // state nobody can act on.
+    muted = Boolean(nowMuted) || level === 0;
+    paintVolume();
+    rememberVolume();
+  }
+
+  (function restoreVolume() {
+    let stored = null;
+    try {
+      stored = JSON.parse(localStorage.getItem(VOLUME_KEY) || "null");
+    } catch (error) {
+      // Absent, refused, or written by an older version: full volume is
+      // the right answer to all three.
+    }
+    // Not `stored.level || 100`: a stored zero is a choice, and falsy.
+    const kept = stored && typeof stored.level === "number"
+      ? stored.level
+      : 100;
+    setVolume(kept, Boolean(stored && stored.muted));
+  })();
+
+  function volumeFrom(event) {
+    const box = volumeTrack.getBoundingClientRect();
+    // Unmuting: pointing at a level is asking to hear it.
+    setVolume(((event.clientX - box.left) / box.width) * 100, false);
+  }
+
+  volumeTrack.addEventListener("mousedown", function (event) {
+    volumeFrom(event);
+
+    function drag(moved) { volumeFrom(moved); }
+    function stop() {
+      window.removeEventListener("mousemove", drag);
+      window.removeEventListener("mouseup", stop);
+    }
+
+    window.addEventListener("mousemove", drag);
+    window.addEventListener("mouseup", stop);
+  });
+
+  // Arrows on the track, the same as on the seek bar, and stopping
+  // propagation for the same reason: the document handler below would
+  // otherwise change track as well.
+  volumeTrack.addEventListener("keydown", function (event) {
+    const up = event.key === "ArrowUp" || event.key === "ArrowRight";
+    const down = event.key === "ArrowDown" || event.key === "ArrowLeft";
+    if (!up && !down) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    setVolume((muted ? 0 : level) + (up ? VOLUME_STEP : -VOLUME_STEP), false);
+  });
+
+  volumeMute.addEventListener("click", function () {
+    // Muting keeps the level, so coming back comes back to where it was.
+    // Coming back from a level of nothing has nowhere to return to, so
+    // it returns to one notch instead of to silence again.
+    if (muted) setVolume(level || VOLUME_STEP, false);
+    else setVolume(level, true);
+  });
+
+  // On the whole group, so the speaker answers the wheel as well: it is
+  // the larger of the two targets and aiming at the smaller one to turn
+  // the sound down is a distinction nobody makes.
+  volume.addEventListener("wheel", function (event) {
+    event.preventDefault();
+    const step = event.deltaY < 0 ? VOLUME_STEP : -VOLUME_STEP;
+    setVolume((muted ? 0 : level) + step, false);
+  }, { passive: false });
 
   // ---------------------------------------------------------------
   // The waveform
@@ -1094,6 +1220,14 @@
       case "ArrowLeft":
         event.preventDefault();
         move(-1);
+        break;
+      case "ArrowUp":
+        event.preventDefault();
+        setVolume((muted ? 0 : level) + VOLUME_STEP, false);
+        break;
+      case "ArrowDown":
+        event.preventDefault();
+        setVolume((muted ? 0 : level) - VOLUME_STEP, false);
         break;
       case " ":
         event.preventDefault();
