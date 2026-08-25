@@ -176,6 +176,14 @@ et écarté tant que ça ne gêne pas.
 où il ressemblait à un bouton désactivé. Le remonter encore le
 rapprocherait du côté actif, qui plafonne à 4,0 en clair.
 
+### Le volume prend 112 px à la timeline
+
+640 → 508 px, soit 160 → 127 barres. Annoncé à ~90 px avant d'être
+écrit ; le bouton et ses marges pèsent plus que je ne l'avais estimé. Le
+levier le plus propre serait la piste à 3 rem au lieu de 4, mais elle
+tomberait à 2,4 px par cran, sous le seuil que le test impose. Accepté en
+connaissance de cause.
+
 ## Tranches — toutes livrées
 
 | # | Tranche | Commit |
@@ -538,6 +546,84 @@ tout seul.
 Mesuré frame par frame : **783 ms sur 43 frames intermédiaires, zéro
 frame vide**, image du dessous effacée 66 ms après la fin. Sur un swap
 sans rapport, l'opacité reste à 1 sur 85 frames.
+
+### La durée du morceau suivant — `d3cb1d0`
+
+`NEXT → 2:52 June The Girl` est devenu `NEXT → June The Girl … 2:52`. Les
+deux se lisent à des moments différents — le nom pour savoir ce qui
+vient, la durée seulement si on hésite à la laisser passer — et dans une
+même chaîne la durée se lisait comme un début de titre.
+
+Le vrai point de conception n'était pas l'ordre mais **la troncature**.
+Elle portait sur toute la boîte ; en mettant la durée en dernier, un nom
+long l'aurait mangée, alors que la durée est la seule chose ici qui ne
+s'allonge jamais. `#player-next` est donc devenu une rangée flex, l'ellipse
+vit sur le nom seul et la durée est en `flex: 0 0 auto`. Vérifié au
+navigateur : `nameClipped` et `timeVisible` vrais **en même temps**, ce qui
+est exactement le cas qui posait problème.
+
+### Le contrôle de volume — `a41ccbb` à `4cf7745`
+
+Proposé avant d'être écrit, avec trois contraintes du projet posées
+d'abord : les popups sont proscrits (la spec en autorise un), la largeur
+de la timeline est disputée, et les contrôles sont dessinés et non laissés
+au navigateur. Plus deux ressources libres : **↑ et ↓** — ← → font
+morceau précédent/suivant, Espace lecture/pause, Tab ouvre la vidéo — et
+le précédent `localStorage` du thème, note sur la navigation privée
+comprise.
+
+Retenu : le haut-parleur et une piste courte tout à droite de la rangée,
+`flex: 0 0 auto` pour qu'ils ne reprennent jamais de la place à l'image.
+À droite et non collés au transport, parce que le transport signifie
+désormais « déplacement dans la file » depuis le marquage du sens.
+
+**Crans de 5 %, pas de continu.** `#seek` mappe le clic directement sur la
+durée parce qu'un pixel y désigne un instant demandé ; un niveau n'a
+aucune valeur à atteindre exactement. Vingt crans de 3,2 px sont chacun
+atteignables à la souris, et le même geste deux fois donne le même
+nombre. C'est le pas entier du waveform à nouveau : un nombre rond vaut
+mieux qu'un nombre juste. Un test refuse un pas qui ne divise pas 100 et
+une piste trop étroite pour ses crans.
+
+**Le silence est la sourdine, quel qu'en soit le chemin.** Ma première
+version gardait deux états distincts, et glisser la piste à zéro laissait
+le haut-parleur dire que le son était ouvert alors que rien ne sortait —
+un second état identique au premier est un état sur lequel personne ne
+peut agir. La sourdine conserve le niveau ; ce qui tombe à zéro est la
+sortie, pas le nombre retenu. Et revenir de zéro n'ayant nulle part où
+revenir, ça revient à un cran.
+
+Une branche morte supprimée au passage : `setVolume` acceptait un second
+argument `undefined` avec un commentaire décrivant un comportement
+qu'aucun appelant ne déclenchait.
+
+**Trois passes sur la forme**, chacune demandée après avoir vu la
+précédente : le haut-parleur perd son cadre pour n'être plus que l'icône
+(mais reste un `<button>`, sinon le clic ne serait pas atteignable au
+clavier), le lavis de survol passe sur le groupe entier plutôt que sur
+chaque moitié, l'icône prend `--fs-lg` — le jeton du transport, parce
+qu'elle sortait un tiers plus petite que les flèches d'à côté — et la
+piste emprunte les deux verts de l'image en thème clair.
+
+Ce dernier point a été **mesuré et non deviné** : les pixels du canvas
+disent que la timeline claire ne peint que deux verts, `#3fb5a1` pour la
+crête et le même à 55 % pour le reflet ; le côté non joué est gris. La
+piste prend le premier tel quel pour son remplissage, et **45 %** pour sa
+moitié vide — plus clair que le reflet, parce que le reflet se lit contre
+des barres du même vert et n'a qu'à être plus discret qu'elles, alors que
+ceci est la moitié vide d'une piste et doit se lire comme vide.
+
+D'où deux rôles, `--level` et `--level-rest`, assignés différemment par
+palette comme `--content-bg` / `--frame-bg` — en sombre l'accent appartient
+déjà à la famille de l'image et il n'y avait rien à réconcilier. Et un
+`color-mix` plutôt que les canaux réécrits, qui auraient dérivé le jour où
+`--wave-played` bouge.
+
+Mesuré au navigateur, geste par geste : clics à 60/62/63 % → 60, 60, 65 ;
+↑↓ partout dans la page, et un champ de saisie qui garde ses flèches ;
+↑ sur la piste focalisée **sans changer de morceau** ; sourdine 70 → 0 →
+70 ; glissé à zéro puis clic → 5 ; niveau inchangé au changement de
+morceau et relu au rechargement, un zéro stocké restant un zéro.
 
 ## Méthode — trois échecs de procédure, et ce qui les a arrêtés
 
