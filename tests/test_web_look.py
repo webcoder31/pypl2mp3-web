@@ -1479,6 +1479,127 @@ async def test_every_colour_is_answered_by_both_palettes(tmp_path):
     assert not orphaned, f"dark-only, so unset on a light screen: {orphaned}"
 
 
+async def test_the_meta_line_holds_two_faces_and_only_one_line(tmp_path):
+    """Two lines under the title was one too many. The playlist is always
+    one face of a single line; what Shazam answered about the release is
+    the other, when there is one. The duration went with the second line —
+    the listing row and the player both carry it already.
+
+    Whatever else shares the line comes before the board, never after:
+    the shorter face is padded out to the width of the longer one so the
+    slots hold still, and those trailing spaces are real. A middot after
+    them floated half the panel away.
+    """
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        page = (await client.get("/")).text
+        css = (await client.get("/static/console.css")).text
+
+    # Rendered from the console, so read the fragment the panel is built
+    # from rather than the shell.
+    for name in ("_inspector.html", "_workbench.html"):
+        markup = (
+            Path("src/pypl2mp3/web/templates") / name
+        ).read_text()
+
+        assert markup.count('class="board"') == 1, name
+        assert 'data-playlist="{{ song.playlist_name }}"' in markup, name
+        # Only when there is one — an empty attribute would start a clock
+        # for a face with nothing on it.
+        assert '{%- if song.release %} data-release=' in markup, name
+        assert "release\">" not in markup, (
+            f"{name} still draws the release on a line of its own"
+        )
+        assert "song.short_duration" not in markup, name
+
+        line = re.search(r'<p class="id">(.*?)</p>', markup, re.DOTALL).group(1)
+        board_at = line.index('class="board"')
+        for other in re.findall(r'<span (?!class="board")[^>]*>', line):
+            assert line.index(other) < board_at, (
+                f"{name}: {other.strip()} sits after the board's padding"
+            )
+
+    board = re.search(r"\n\.board \{([^}]*)\}", css).group(1)
+    assert "white-space: pre" in board, (
+        f"the padding that keeps the slots still would collapse: {board}"
+    )
+
+
+async def test_a_slot_turns_like_a_flap_and_not_like_a_fade(tmp_path):
+    """A departures board, so each slot falls forward from its own top
+    edge — that hinge is the whole illusion, and a rotation about the
+    middle is a coin flip instead.
+
+    A transition and not a keyframe animation: the reduced-motion rule at
+    the foot of the stylesheet neutralises durations, and an animation
+    would walk straight past it, leaving the one part of this page that
+    moves for its own sake moving.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+        js = (await client.get("/static/console.js")).text
+
+    slot = re.search(r"\n\.slot \{([^}]*)\}", css).group(1)
+    assert "transition: transform" in slot, slot
+    assert "animation" not in slot, slot
+    assert "transform-origin: 50% 0" in slot, (
+        f"the slot spins about its middle rather than hinging: {slot}"
+    )
+    # Needs a box to rotate: an inline span has no height of its own.
+    assert "display: inline-block" in slot, slot
+
+    turning = re.search(r"\n\.slot\.turning \{([^}]*)\}", css).group(1)
+    assert "rotateX(-90deg)" in turning, turning
+
+    # Half the turn, read from the stylesheet: the character is swapped at
+    # the point the flap is edge-on, and a duration repeated here would be
+    # a second number that has to agree with the first.
+    assert "transitionMillis(slots[0])" in js, js[:0]
+
+    # A slot already showing the right character does not turn — cheaper,
+    # and what the real thing does.
+    assert "if (slot.textContent === wanted) return;" in js
+
+
+async def test_the_board_holds_each_face_and_stops_when_there_is_one(tmp_path):
+    """Five seconds a face, and no clock at all for a song Shazam never
+    matched: a board with one face has nothing to turn to.
+
+    Restarted rather than left running when the song changes — a song
+    clicked a second before the tick would otherwise show its playlist
+    for one second and then flip, which reads as a glitch rather than as
+    a cycle.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        js = (await client.get("/static/console.js")).text
+
+    assert re.search(r"const BOARD_HOLD = (\d+);", js), js[:0]
+    hold = int(re.search(r"const BOARD_HOLD = (\d+);", js).group(1))
+    assert hold >= 2000, f"{hold}ms a face is a flicker, not a cycle"
+    assert "window.setInterval(turnBoards, BOARD_HOLD)" in js
+
+    restart = re.search(
+        r"function restartBoards\(\) \{(.*?)\n  \}", js, re.DOTALL
+    ).group(1)
+    assert "window.clearInterval(boardClock)" in restart, restart
+    # The clock only starts where there is a second face.
+    assert 'document.querySelector(".board[data-release]")' in restart, restart
+    # And every board goes back to the playlist, not to whichever face it
+    # happened to be showing.
+    assert 'board.dataset.face = "playlist";' in restart, restart
+
+    # A turn in flight has to know it is stale: a song changed mid-flap
+    # would otherwise finish spelling out the one before it.
+    assert "if (era !== boardEra) return;" in js
+    assert js.count("if (era !== boardEra) return;") == 2, (
+        "only one of the two waits checks whether it is still wanted"
+    )
+
+
 async def test_the_cover_dissolves_between_songs(tmp_path):
     """The panel is replaced wholesale on every song, so the outgoing
     picture leaves with it and a transition has nothing to hold on to.
@@ -1539,7 +1660,7 @@ async def test_the_cover_dissolves_between_songs(tmp_path):
     # It has to outlast the fade, and the length of the fade is the
     # stylesheet's to say. Repeated here it would be a second number that
     # must agree with the first, which is a number that will not.
-    assert "fadeMillis(img)" in js, (
+    assert "transitionMillis(img)" in js, (
         "the script carries its own idea of how long the fade lasts"
     )
     assert "transitionDuration" in js, js[:0]

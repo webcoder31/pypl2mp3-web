@@ -21,26 +21,29 @@
       {{ song.label }}
     </h2>
     <p class="id">
-      {{ song.playlist_name }} · {{ song.short_duration }}
+      {# One line, two faces. The playlist is always one of them; the release
+         Shazam answered with is the other, when there is one. Two lines
+         was one too many, and the duration went with them — the listing
+         row and the player both carry it already.
+
+         The faces travel as attributes and the slots are built by the
+         page: a split-flap board needs as many slots as the longer face
+         and they must not move when the content changes, which is a
+         measurement the server cannot make. #}
+      {# Whatever shares this line comes before the board, never after:
+         the shorter face is padded out to the width of the longer one so
+         the slots hold still, and those trailing spaces are real. A
+         middot after them floated half the panel away. #}
       {# Shown only while the panel is holding edits nobody has saved.
          It stops following the player then — on purpose, so a track
          ending mid-sentence does not wipe what you were typing — and
          used to do it in silence, which left the panel looking stuck on
          the wrong song. #}
-      <span class="held">· unsaved edits — the panel is staying here</span>
+      <span class="held">unsaved edits — the panel is staying here ·</span>
+      <span class="board" data-playlist="{{ song.playlist_name }}"
+            {%- if song.release %} data-release="{{ song.release }}"{% endif
+            %}>{{ song.playlist_name }}</span>
     </p>
-
-    {# The release, on its own line and only when there is one. It comes
-       from Shazam with the artist and the title and is written to the
-       standard ID3 frames, so any other player already shows it — this
-       is the same fact, in the one place that says what this song is.
-
-       Assembled in the summary rather than here: the four parts are each
-       optional, and a template putting separators between holes is where
-       a stray middot comes from. #}
-    {% if song.release %}
-      <p class="id release">{{ song.release }}</p>
-    {% endif %}
 
     {# Shazam is not called on load: it takes seconds and waits fifteen
        more between requests. It is a job the user starts. #}

@@ -946,9 +946,24 @@ tbody tr.playing td.num { color: var(--accent); }
 .inspector-title { font-size: var(--fs-lg); line-height: 1.25;
                    margin: 0.2rem 0 0.1rem; letter-spacing: -0.01em; }
 #inspector .id { color: var(--text-3); }
-/* The release sits under the line that names the playlist, close enough
-   to read as a continuation of it rather than as a new block. */
-.release { margin: 0.15rem 0 0; }
+
+/* The split-flap board. `pre` because the shorter face is padded out to
+   the width of the longer one and those spaces are the empty slots.
+
+   The transform-origin at the top edge is the whole illusion: the slot
+   falls forward from its own top like a hinged flap, rather than
+   spinning about its middle. */
+.board { white-space: pre; }
+/* The separator belongs to the count, not to the line: the count is
+   filled by the page and is empty until something plays, which left a
+   middot leading the line with nothing in front of it. */
+#workbench-position:not(:empty)::after { content: " · "; }
+.slot {
+  display: inline-block;
+  transform-origin: 50% 0;
+  transition: transform 0.09s ease-in, opacity 0.09s ease-in;
+}
+.slot.turning { transform: rotateX(-90deg); opacity: 0; }
 /* Only while the panel is refusing to follow the player, and saying so
    where it says everything else about this song. */
 .held { display: none; color: var(--junk); }

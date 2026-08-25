@@ -12,20 +12,28 @@
 
   <div class="workbench-detail">
     <p class="id">
-      {{ song.playlist_name }} · {{ song.duration }} ·
+      {# One line, two faces. The playlist is always one of them; the release
+         Shazam answered with is the other, when there is one. Two lines
+         was one too many, and the duration went with them — the listing
+         row and the player both carry it already.
+
+         The faces travel as attributes and the slots are built by the
+         page: a split-flap board needs as many slots as the longer face
+         and they must not move when the content changes, which is a
+         measurement the server cannot make. #}
+      {# Whatever shares this line comes before the board, never after:
+         the shorter face is padded out to the width of the longer one so
+         the slots hold still, and those trailing spaces are real. A
+         middot after them floated half the panel away. #}
       <span id="workbench-position"></span>
+      <span class="board" data-playlist="{{ song.playlist_name }}"
+            {%- if song.release %} data-release="{{ song.release }}"{% endif
+            %}>{{ song.playlist_name }}</span>
     </p>
     <h2 class="inspector-title">
       {% if song.is_junk %}<span class="junk">⚠</span> {% endif %}
       {{ song.label }}
     </h2>
-
-    {# The release, only when there is one. Same line as the inspector's,
-       and worth as much here: judging a match is easier knowing the
-       album Shazam thinks this came from. #}
-    {% if song.release %}
-      <p class="id release">{{ song.release }}</p>
-    {% endif %}
 
     {# Fires immediately. If a prefetch already ran, the job is finished
        and this first poll returns the answer at once. #}

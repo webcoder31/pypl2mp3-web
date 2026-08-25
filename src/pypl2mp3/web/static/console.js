@@ -355,10 +355,12 @@
   // which is what it was before any of this.
   let lastCover = "";
 
-  // How long the fade lasts, asked of the stylesheet rather than repeated
-  // here. The picture underneath has to outlast it, and two numbers that
-  // must agree are two numbers that will not.
-  function fadeMillis(element) {
+  // How long a transition on this element lasts, asked of the stylesheet
+  // rather than repeated here. Two numbers that must agree are two
+  // numbers that will not. Used by the cover's crossfade, which has to
+  // outlast it, and by the board below, which turns at its halfway
+  // point.
+  function transitionMillis(element) {
     const value = getComputedStyle(element)
       .transitionDuration.split(",")[0].trim();
     const number = parseFloat(value) || 0;
@@ -389,7 +391,7 @@
       // cover, and every panel after that would carry a ghost.
       window.setTimeout(function () {
         box.style.backgroundImage = "";
-      }, fadeMillis(img) + 80);
+      }, transitionMillis(img) + 80);
     }
 
     function giveUp() {
@@ -559,6 +561,120 @@
     // characters of nothing, repeated on every row.
     return h ? h + ":" + String(m).padStart(2, "0") + ":" + s : m + ":" + s;
   }
+
+  // ---------------------------------------------------------------
+  // The board
+  //
+  // One line under the title, holding two things in turn: the playlist,
+  // always, and what Shazam answered about the release, when it answered
+  // anything. Two lines was one too many; this is the same information
+  // in the space of one.
+  //
+  // Split-flap, like a departures board. Each slot turns on its own a
+  // beat after the one before, so the change reads as a mechanism rather
+  // than as a redraw — and a slot already showing the right character
+  // does not turn at all, which is both cheaper and what the real thing
+  // does.
+  //
+  // The turn is a CSS transition rather than a keyframe animation, so the
+  // reduced-motion rule at the foot of the stylesheet neutralises it and
+  // the line simply changes.
+  // ---------------------------------------------------------------
+
+  const BOARD_HOLD = 5000;
+
+  // Bumped on every new face. A turn in flight checks it before touching
+  // a slot, so a song changed mid-flap does not finish spelling out the
+  // previous one.
+  let boardEra = 0;
+
+  function boardFaces(board) {
+    return [board.dataset.playlist || "", board.dataset.release || ""];
+  }
+
+  function showFace(board, text, turning) {
+    // As many slots as the longer face, and rebuilt only when that
+    // number changes — which is once, on arrival. Rebuilding per face
+    // would drop every slot at once and there would be nothing left to
+    // turn.
+    //
+    // The shorter face is padded out with spaces, so the board is always
+    // the width of its longer face. That is why nothing shares this line
+    // after it: see the templates.
+    const width = Math.max(...boardFaces(board).map(function (face) {
+      return face.length;
+    }));
+    let slots = Array.from(board.querySelectorAll(".slot"));
+
+    if (slots.length !== width) {
+      board.textContent = "";
+      slots = [];
+      for (let i = 0; i < width; i++) {
+        const slot = document.createElement("span");
+        slot.className = "slot";
+        slot.textContent = " ";
+        board.appendChild(slot);
+        slots.push(slot);
+      }
+    }
+
+    const era = ++boardEra;
+    const half = turning ? transitionMillis(slots[0]) : 0;
+
+    slots.forEach(function (slot, i) {
+      const wanted = text[i] || " ";
+      if (slot.textContent === wanted) return;
+
+      window.setTimeout(function () {
+        if (era !== boardEra) return;
+
+        slot.classList.add("turning");
+        window.setTimeout(function () {
+          if (era !== boardEra) return;
+
+          slot.textContent = wanted;
+          slot.classList.remove("turning");
+        }, half);
+      }, turning ? i * 18 : 0);
+    });
+  }
+
+  function turnBoards() {
+    document.querySelectorAll(".board[data-release]").forEach(
+      function (board) {
+        const showing = board.dataset.face === "release";
+        board.dataset.face = showing ? "playlist" : "release";
+        showFace(board, boardFaces(board)[showing ? 0 : 1], true);
+      }
+    );
+  }
+
+  let boardClock = 0;
+
+  // Restarted rather than left running: a song clicked one second before
+  // the tick would otherwise show its playlist for one second and then
+  // flip, which reads as a glitch rather than as a cycle.
+  function restartBoards() {
+    if (boardClock) window.clearInterval(boardClock);
+    boardClock = 0;
+
+    document.querySelectorAll(".board").forEach(function (board) {
+      board.dataset.face = "playlist";
+      showFace(board, boardFaces(board)[0], false);
+    });
+
+    if (document.querySelector(".board[data-release]")) {
+      boardClock = window.setInterval(turnBoards, BOARD_HOLD);
+    }
+  }
+
+  restartBoards();
+  document.body.addEventListener("htmx:afterSwap", function (event) {
+    if (event.target && event.target.querySelector
+        && event.target.querySelector(".board")) {
+      restartBoards();
+    }
+  });
 
   // ---------------------------------------------------------------
   // The volume
