@@ -1656,29 +1656,11 @@ class SongModel:
                     shazam_metadata["track"]["subtitle"][:1].upper() \
                     + shazam_metadata["track"]["subtitle"][1:]
                 
-                artist_match_score = \
-                    fuzz.partial_token_sort_ratio(self.artist, artist, True)
-
-                title_match_score = \
-                    fuzz.partial_token_sort_ratio(self.title, title, True)
-
-                # If artist match score is too low, this probably means that 
-                # the song's title grabbed from YouTube video contains the 
-                # artist name. In this case, we need to check if the title
-                # match score is good enough to consider the song as  
-                # recognized by Shazam.
-                if artist_match_score < 2 * shazam_match_threshold / 3 \
-                        and title_match_score >= shazam_match_threshold:
-                    
-                    match_score = \
-                        fuzz.partial_token_sort_ratio(
-                            title, 
-                            f"{artist} - {title}", 
-                            True
-                        )
-                else:
-                    match_score = \
-                        int((artist_match_score + title_match_score * 2) / 3)
+                match_score = SongModel.match_score(
+                    self.artist, self.title,
+                    artist, title,
+                    shazam_match_threshold,
+                )
 
                 # If match score is good enough, update and save all 
                 # related MP3 file metadata with artist, title and 
@@ -1732,6 +1714,57 @@ class SongModel:
                 raise SongModelException(
                     f"Hook \"post_shazam_song\" failed"
                 ) from exc
+
+
+    @staticmethod
+    def match_score(
+        artist: Optional[str],
+        title: Optional[str],
+        shazam_artist: str,
+        shazam_title: str,
+        shazam_match_threshold: int = 50,
+    ) -> int:
+        """
+        How far Shazam's answer agrees with what this song already claims.
+
+        Lifted out of `shazam_song` so that anything asking the same
+        question asks it the same way. A backfill that only wants the
+        release data still has to know the match holds — and a second
+        implementation of this rule would be a second answer.
+
+        Args:
+            artist: what the song claims, or None.
+            title: what the song claims, or None.
+            shazam_artist: Shazam's `subtitle`.
+            shazam_title: Shazam's `title`.
+            shazam_match_threshold: the score the caller will compare
+                against, needed here because the artist rule is relative
+                to it.
+
+        Returns:
+            int: 0-100.
+        """
+
+        artist_match_score = \
+            fuzz.partial_token_sort_ratio(artist, shazam_artist, True)
+
+        title_match_score = \
+            fuzz.partial_token_sort_ratio(title, shazam_title, True)
+
+        # If artist match score is too low, this probably means that the
+        # song's title grabbed from YouTube video contains the artist
+        # name. In this case, we need to check if the title match score
+        # is good enough to consider the song as recognized by Shazam.
+        if artist_match_score < 2 * shazam_match_threshold / 3 \
+                and title_match_score >= shazam_match_threshold:
+
+            return fuzz.partial_token_sort_ratio(
+                shazam_title,
+                f"{shazam_artist} - {shazam_title}",
+                True
+            )
+
+        return int((artist_match_score + title_match_score * 2) / 3)
 
 
     @staticmethod

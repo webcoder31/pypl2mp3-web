@@ -224,3 +224,62 @@ def test_frames_this_program_never_set_are_left_alone(tmp_path):
     assert str(kept["TPUB"].text[0]) == "Universal Music Division"
     assert str(kept["TDRC"].text[0]) == "2014"
     assert str(kept["TCON"].text[0]) == "Hip-Hop/Rap"
+
+
+class TestMatchScore:
+    """The one rule that decides whether Shazam's answer is about this
+    song. Lifted out of shazam_song so that a backfill, which wants only
+    the release data, still asks the question the same way — a second
+    implementation would be a second answer.
+    """
+
+    def test_the_same_names_agree_completely(self):
+        assert SongModel.match_score("IAMX", "Kiss", "IAMX", "Kiss") == 100
+
+    def test_different_songs_do_not(self):
+        assert SongModel.match_score(
+            "IAMX", "Kiss", "Madonna", "Vogue"
+        ) < 50
+
+    def test_the_title_carries_the_artist_when_the_artist_does_not(self):
+        """A YouTube title is often "ARTIST - Title" pasted whole into the
+        artist field. The artist then matches nothing while the title
+        matches well, and scoring the pair against "artist - title"
+        recovers it — which is the reason this is not a plain average."""
+
+        assert SongModel.match_score(
+            "MADONNACONFESSIONSTV", "Madonna - SuperPop",
+            "Madonna", "SuperPop",
+        ) == 100
+
+    def test_the_threshold_moves_the_artist_rule(self):
+        """The artist test is relative to the threshold the caller will
+        compare against, which is why the threshold has to be passed in
+        rather than defaulted inside.
+
+        A channel name in the artist field with the real artist in the
+        title: at a threshold of 40 the artist scores well enough that the
+        plain average is used and the song looks like a poor match; at 50
+        the artist falls below two thirds of it, the recovery path fires,
+        and the same pair scores full marks. Same names, different answer.
+        """
+
+        song = ("Some Channel", "IAMX - Kiss")
+        shazam = ("IAMX", "Kiss")
+
+        lenient = SongModel.match_score(*song, *shazam,
+                                        shazam_match_threshold=40)
+        stricter = SongModel.match_score(*song, *shazam,
+                                         shazam_match_threshold=50)
+
+        assert lenient == 77, lenient
+        assert stricter == 100, stricter
+
+    def test_a_missing_name_is_not_a_crash(self):
+        """Songs exist with no artist, no title, or neither — that is what
+        junk is."""
+
+        for artist, title in ((None, None), (None, "Kiss"), ("IAMX", None)):
+            assert 0 <= SongModel.match_score(
+                artist, title, "IAMX", "Kiss"
+            ) <= 100
