@@ -581,7 +581,10 @@
   // the line simply changes.
   // ---------------------------------------------------------------
 
-  const BOARD_HOLD = 5000;
+  // Ten seconds a face. Five read as restless on a line you are not
+  // watching: the movement caught the eye more often than the second
+  // face was worth.
+  const BOARD_HOLD = 10000;
 
   // Bumped on every new face. A turn in flight checks it before touching
   // a slot, so a song changed mid-flap does not finish spelling out the
