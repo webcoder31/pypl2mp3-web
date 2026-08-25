@@ -1192,7 +1192,11 @@ tbody tr.playing td.num { color: var(--accent); }
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 0 var(--space-2);
+  /* More on the right than the left: the track ends in a hard edge
+     and the speaker in the white space its own glyph carries, so
+     equal padding sat the wash tight against one and loose around
+     the other. */
+  padding: 0 var(--space-3) 0 var(--space-2);
   border-radius: 2px;
   transition: background 0.12s ease;
 }
@@ -1219,6 +1223,10 @@ tbody tr.playing td.num { color: var(--accent); }
   background: none;
   border: 0;
   border-radius: 0;
+  /* The transport's own token, so the four glyphs of this row are drawn
+     at one size. At the inherited 13px this one came out a third smaller
+     than the arrows beside it. */
+  font-size: var(--fs-lg);
   color: var(--accent-dim);
 }
 /* Its own hover would be a second wash inside the group's. */

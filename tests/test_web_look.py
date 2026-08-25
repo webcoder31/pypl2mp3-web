@@ -1703,9 +1703,25 @@ async def test_the_volume_lights_as_one_and_the_speaker_has_no_frame(
     )
 
     # The group needs room for the wash to be a shape rather than a line
-    # traced round its contents.
+    # traced round its contents — and more on the right than the left,
+    # because the track ends in a hard edge and the speaker in the white
+    # space its own glyph carries.
     group = re.search(r"\n#volume \{([^}]*)\}", css).group(1)
-    assert re.search(r"padding: 0 var\(--space-\d\)", group), group
+    sides = re.search(
+        r"padding: 0 var\(--space-(\d)\) 0 var\(--space-(\d)\)", group
+    )
+    assert sides, group
+    assert int(sides.group(1)) > int(sides.group(2)), (
+        f"the wash sits tight against the track's edge: {group}"
+    )
+
+    # And the speaker is drawn at the same size as the arrows beside it.
+    # Left to inherit, it came out a third smaller than they are.
+    assert "font-size: var(--fs-lg)" in icon, icon
+    transport = re.search(r"\n#transport button \{([^}]*)\}", css).group(1)
+    assert "font-size: var(--fs-lg)" in transport, (
+        f"the row's glyphs no longer share one size: {transport}"
+    )
 
 
 async def test_the_level_lands_on_a_notch(tmp_path):
