@@ -625,7 +625,91 @@ Mesuré au navigateur, geste par geste : clics à 60/62/63 % → 60, 60, 65 ;
 70 ; glissé à zéro puis clic → 5 ; niveau inchangé au changement de
 morceau et relu au rechargement, un zéro stocké restant un zéro.
 
-## Méthode — trois échecs de procédure, et ce qui les a arrêtés
+### Ce que Shazam disait déjà et qu'on jetait — `9e3536f`
+
+Une reconnaissance réelle sur un morceau du dépôt, dévidée en structure,
+a montré qu'on ne lisait **trois champs** de la réponse : le titre, le
+sous-titre et une URL de pochette. Sont désormais gardés l'album, le
+label, l'année et le genre.
+
+Dans les trames ID3 **standard** — `TALB`, `TPUB`, `TDRC`, `TCON` — et non
+dans des `TXXX` maison : tout lecteur et toute bibliothèque savent déjà
+les lire, c'est à ça qu'elles servent. Appliqués au même seuil que
+l'artiste et le titre, et sans copie « rejetée » à la façon de
+`shazam_artist` : personne ne juge un nom d'album contre un titre de
+vidéo YouTube, donc une copie refusée serait quatre trames sans lecteur.
+
+Deux pièges que la mesure a levés :
+
+- **Shazam envoie des espaces insécables** dans les noms d'album —
+  `X:\xa0The Godless Void`. Elles survivaient jusqu'à la trame puis
+  jusqu'à toute recherche qui attend une espace. Normalisées comme le
+  sont déjà l'artiste et le titre.
+- **Le champ s'appelle `publisher`, pas `label`.** J'ai d'abord cru à une
+  collision dans `SongModel` et je me suis trompé — `self.label` y
+  appartient à `ProgressBarInterface`. Mais le nom reste juste pour la
+  vraie raison : `SongSummary.label` est la ligne « artiste - titre » que
+  trois gabarits lisent, et la collision aurait atterri **là**, où rien du
+  côté modèle n'aurait paru anormal.
+
+Les rangées de `sections[0].metadata` sont lues **par leur `title`** et
+chacune est optionnelle : c'est de la copie d'affichage, ordonnée comme
+Shazam l'entend, pas une interface.
+
+Vérifié sur un vrai MP3 : les quatre trames écrites, relues à l'ouverture
+suivante, effacées par `reset_state`, **et le fichier n'a pas grossi d'un
+octet** — le padding ID3 a absorbé, comme pour les crêtes du waveform.
+
+### La ligne à deux faces — `503fb06` à `d5dc369`
+
+Deux lignes sous le titre, c'était une de trop. Il n'en reste qu'une : la
+playlist toujours, la sortie Shazam quand il y en a une, dix secondes
+chacune. La durée du morceau est partie avec la seconde ligne — la rangée
+de la liste et le lecteur la portent déjà.
+
+**Split-flap, comme un tableau d'aéroport.** Chaque caractère a sa fente,
+qui bascule depuis son propre bord haut avec 18 ms de décalage sur la
+précédente. Deux traits fidèles au mécanisme réel : une fente qui affiche
+déjà le bon caractère **ne tourne pas**, et la face la plus courte est
+complétée d'espaces pour que les fentes ne bougent jamais.
+
+**Le caractère arrive dans l'accent et refroidit** vers le gris de la
+ligne en 0,6 s, contre 0,09 s pour la bascule. C'est l'écart qui rend le
+changement lisible après coup. Difficulté : `color` étant transitionnée,
+mettre l'accent l'aurait *animée vers* le vert et la frappe serait
+arrivée après la fermeture du volet — d'où le retrait de `color` de
+`transition-property` le temps que la classe est posée. Pas
+`transition: none`, qui aurait emporté la bascule avec elle.
+
+Transitions et non keyframes, encore : la règle `prefers-reduced-motion`
+neutralise les durées et une animation serait passée à côté.
+
+Trois choses que la mesure a imposées et qui ne se voyaient pas sur le
+papier :
+
+- Les espaces de remplissage sont **réels**, donc tout ce qui partageait
+  la ligne *après* le tableau flottait à 473 px sur la droite. Le compteur
+  de l'établi et l'avertissement « unsaved edits » sont passés **avant**,
+  et un test l'exige.
+- Le point médian de l'établi devenait orphelin quand le compteur est
+  vide. Il appartient maintenant au compteur
+  (`#workbench-position:not(:empty)::after`), pas au gabarit.
+- Une bascule en vol doit savoir qu'elle est **périmée**, sinon un morceau
+  changé en pleine rotation finit d'épeler le précédent.
+
+Mesuré : bascule à 3349 puis 8348 ms — l'intervalle exact ; mi-bascule le
+texte lit `"Kingdom of Wes - What I listen now"`, les deux faces
+entrelacées ; au changement de morceau l'horloge repart (swap à 8532 ms →
+bascule 5002 ms plus tard) ; et **aucune horloge** pour un morceau sans
+seconde face. Le refroidissement relevé fente par fente :
+`rgb(70, 201, 177)` posé d'un coup, puis jusqu'à `rgb(102, 113, 111)` en
+~540 ms.
+
+`fadeMillis` est devenu `transitionMillis` au passage : il sert au fondu
+de la pochette *et* au point de bascule des fentes, et « fade » était
+devenu faux.
+
+## Méthode — trois échecs de procédure, et ce que les contre-épreuves ont appris
 
 Le document dit ailleurs qu'aucune page n'avait jamais été rendue par un
 navigateur. Trois autres angles morts ont été trouvés depuis, tous par
@@ -649,7 +733,22 @@ fois pendant une contre-épreuve, pour restaurer un fichier modifié
 exprès. Les contre-épreuves passent maintenant par une copie hors de
 git.
 
-Les contre-épreuves, elles, ont payé : elles ont attrapé cinq tests
+Les contre-épreuves, elles, ont payé : elles ont attrapé sept tests
 creux, dont un `outline:\s*[^;n]` qui reconnaissait `outline: none` à
-travers l'espace et comptait donc chaque suppression comme un anneau, et
-un `".t" in selector` qui attrapait aussi `.track`.
+travers l'espace et comptait donc chaque suppression comme un anneau, un
+`".t" in selector` qui attrapait aussi `.track`, et une regex cherchant la
+fin du groupe `#volume` qui ne matchait rien du tout à cause des `</div>`
+imbriqués.
+
+Elles ont aussi montré deux fois qu'une **contre-épreuve peut mentir** :
+un `sed` dont le motif ne s'applique pas laisse le test passer et fait
+croire à une assertion solide. Les deux fois, l'édition refaite
+proprement a bien fait tomber le test. Une contre-épreuve doit donc
+vérifier qu'elle a modifié quelque chose.
+
+Dernier piège du même genre, et le plus instructif : une assertion qui
+**comptait** les gardes d'ère du tableau (`== 2`) est tombée le jour où
+une troisième étape différée a été ajoutée — en ne prouvant rien sur cette
+troisième étape. Elle compte maintenant les gardes contre le nombre
+d'attentes, ce qui est l'invariant réel : toute étape différée vérifie
+qu'elle est encore attendue.
