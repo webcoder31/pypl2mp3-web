@@ -80,6 +80,20 @@
      player's own background: 2.4:1 here, 3.1:1 there, against 1.7 and
      2.1 when the glyph shared the frame's value. */
   --accent-dim: rgba(10, 143, 124, 0.65);
+
+  /* The volume track's two greens. Roles rather than values, because the
+     answer differs by palette: on a light screen it borrows the
+     timeline's pair — the crest's green and the reflection's 55 % of it —
+     which sit softer than the accent, and the accent beside a picture
+     drawn in that softer green was the louder of the two for no reason.
+     On a dark screen the accent is already the picture's own colour
+     family and there is nothing to reconcile.
+
+     color-mix rather than the channels written out: 55 % is the same
+     figure the reflection uses, and a copy of #3fb5a1 here would drift
+     the day --wave-played moves. */
+  --level: var(--wave-played);
+  --level-rest: color-mix(in srgb, var(--wave-played) 55%, transparent);
   /* Its own variable rather than an alpha on the accent: over a light
      background low alpha lightens, over a dark one it darkens, so one
      opacity cannot mean "lighter" in both themes.
@@ -187,6 +201,9 @@
   --accent-soft: rgba(70, 201, 177, 0.15);
   --accent-line: rgba(70, 201, 177, 0.35);
   --accent-dim: rgba(70, 201, 177, 0.5);
+
+  --level: var(--accent);
+  --level-rest: var(--accent-line);
   --wave-played: #97bbb3;
   --junk: #e0a24a;
   --junk-soft: rgba(224, 162, 74, 0.14);
@@ -1252,10 +1269,10 @@ tbody tr.playing td.num { color: var(--accent); }
   flex: 0 0 auto;
 }
 #volume-track .track { position: absolute; left: 0; right: 0; height: 3px;
-                       background: var(--accent-line); }
+                       background: var(--level-rest); }
 #volume-track .fill { position: absolute; left: 0; height: 3px;
-                      background: var(--accent); }
-#volume.is-muted .fill { background: var(--accent-line); }
+                      background: var(--level); }
+#volume.is-muted .fill { background: var(--level-rest); }
 
 /* The two ways of drawing the same position never show together: the
    plain bar is the fallback, and the waveform replaces it outright

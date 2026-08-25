@@ -1724,6 +1724,56 @@ async def test_the_volume_lights_as_one_and_the_speaker_has_no_frame(
     )
 
 
+async def test_the_level_borrows_the_timeline_greens_on_a_light_screen(
+    tmp_path,
+):
+    """The track sits a hand's width from the picture, so on a light
+    screen it takes the picture's pair: the crest's green and the 55 % of
+    it the reflection uses. Those sit softer than the accent, and an
+    accent-bright track beside a picture drawn in the softer green was
+    the louder of the two for no reason.
+
+    On a dark screen the accent is already the picture's own colour
+    family and there is nothing to reconcile, so the two palettes answer
+    differently — which is what makes these roles rather than values.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    def palette(selector):
+        start = css.index(selector + " {")
+        return css[start:css.index("\n}", start)]
+
+    light = palette(':root, :root[data-theme="light"]')
+    dark = palette(':root[data-theme="dark"]')
+
+    assert "--level: var(--wave-played);" in light, (
+        "the level no longer borrows the picture's green"
+    )
+    # The same 55 % the reflection uses, mixed rather than written out: a
+    # copy of the channels would drift the day --wave-played moves.
+    assert (
+        "--level-rest: color-mix(in srgb, var(--wave-played) 55%, transparent);"
+        in light
+    ), light
+    assert "#3fb5a1" not in re.search(
+        r"--level-rest: ([^;]+);", light
+    ).group(1), "the green is copied instead of referred to"
+
+    # Both roles answered on the other side, and answered differently.
+    assert "--level: var(--accent);" in dark, dark
+    assert "--level-rest: var(--accent-line);" in dark, dark
+
+    # And the track draws from the roles, not from either palette's
+    # values, so this is settled in one place.
+    for part, role in (("track", "--level-rest"), ("fill", "--level")):
+        rule = re.search(
+            r"#volume-track \." + part + r" \{([^}]*)\}", css
+        ).group(1)
+        assert f"background: var({role})" in rule, rule
+
+
 async def test_the_level_lands_on_a_notch(tmp_path):
     """#seek maps a click straight onto the duration, because there a
     pixel means a moment you asked for. A level has no value to land on
