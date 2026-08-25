@@ -1192,20 +1192,37 @@ tbody tr.playing td.num { color: var(--accent); }
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  padding: 0 var(--space-2);
+  border-radius: 2px;
+  transition: background 0.12s ease;
 }
+/* One unit, so it lights as one. The speaker and the track are two
+   halves of the same act — how loud, and whether at all — and framing
+   them separately said they were two controls that happened to be
+   adjacent. Reaching for either lights both.
+   
+   No border with it: a frame appearing on hover moves the row, and the
+   wash alone already says the pointer is somewhere that answers. */
+#volume:hover { background: var(--hover); }
+
+/* The icon and nothing else. It is still a button — the click mutes, and
+   a screen reader has to be told that — but a frame around it made a
+   third bordered box in a row that already has three, for the smallest
+   gesture of the four. */
 #volume-mute {
-  /* Narrower than a transport button — it is one gesture, not a
-     destination — and framed like the pair so the row keeps one
-     vocabulary. */
-  width: 1.9rem;
+  width: 1.15em;
   height: 2rem;
   padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-color: var(--accent-line);
+  background: none;
+  border: 0;
+  border-radius: 0;
   color: var(--accent-dim);
 }
+/* Its own hover would be a second wash inside the group's. */
+#volume-mute:hover { background: none; }
 /* The level is the state worth showing, so the speaker lights only when
    there is nothing to show: muted is the one condition a fill cannot
    say, because a fill at zero and a fill hidden look alike. */

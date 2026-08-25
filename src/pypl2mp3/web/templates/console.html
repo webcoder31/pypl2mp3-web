@@ -162,11 +162,14 @@
            one of the shapes in a browser no stylesheet can reach. Same
            role, same attributes, same keyboard.
 
-           The speaker is the mute switch, not a label. Its icon is two
-           paths so muting can swap the waves for a cross without
-           reaching for a second glyph — and an inline icon rather than
-           an emoji because 🔊 carries its own colour in every browser
-           that has it, which is the one thing this row cannot use. #}
+           The speaker is the mute switch, not a label — a button
+           element, because the click has to reach a keyboard and a
+           screen reader, but with none of a button's frame: the icon
+           alone. Its icon is two paths so muting can swap the waves for
+           a cross without reaching for a second glyph — and an inline
+           icon rather than an emoji because 🔊 carries its own colour in
+           every browser that has it, which is the one thing this row
+           cannot use. #}
         <div id="volume">
           <button type="button" id="volume-mute" aria-pressed="false"
                   title="Mute" aria-label="Mute">

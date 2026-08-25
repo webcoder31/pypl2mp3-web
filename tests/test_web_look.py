@@ -1660,6 +1660,54 @@ async def test_the_volume_never_takes_from_the_timeline(tmp_path):
         assert attribute in slider, f"{attribute} missing: {slider}"
 
 
+async def test_the_volume_lights_as_one_and_the_speaker_has_no_frame(
+    tmp_path,
+):
+    """The speaker and the track are two halves of one act — how loud,
+    and whether at all — so reaching for either lights both. Framed
+    separately they read as two controls that happened to be adjacent.
+
+    And the speaker keeps a button's behaviour without a button's frame:
+    the click has to reach a keyboard and a screen reader, but a box
+    around it made a third bordered thing in a row that already has
+    three, for the smallest gesture of the four.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        page = (await client.get("/")).text
+        css = (await client.get("/static/console.css")).text
+
+    # Still a button, still says what it does.
+    speaker = re.search(r'<button[^>]*id="volume-mute"([^>]*)>', page).group(1)
+    assert 'aria-pressed="false"' in speaker, speaker
+    assert "aria-label" in speaker, speaker
+
+    icon = re.search(r"\n#volume-mute \{([^}]*)\}", css).group(1)
+    assert "border: 0" in icon, f"the speaker is still boxed: {icon}"
+    assert "background: none" in icon, icon
+
+    # The wash is on the group, so either half triggers it.
+    lit = re.search(r"\n#volume:hover \{([^}]*)\}", css)
+    assert lit, "hovering the volume says nothing"
+    assert "background: var(--hover)" in lit.group(1), lit.group(1)
+    # A frame appearing on hover moves the row, and the wash alone
+    # already says the pointer is somewhere that answers.
+    assert "border" not in lit.group(1), (
+        f"a border arrives with the wash: {lit.group(1)}"
+    )
+
+    # And the icon must not wash inside the group's wash.
+    inner = re.search(r"\n#volume-mute:hover \{([^}]*)\}", css)
+    assert inner and "background: none" in inner.group(1), (
+        "a second wash sits inside the first"
+    )
+
+    # The group needs room for the wash to be a shape rather than a line
+    # traced round its contents.
+    group = re.search(r"\n#volume \{([^}]*)\}", css).group(1)
+    assert re.search(r"padding: 0 var\(--space-\d\)", group), group
+
+
 async def test_the_level_lands_on_a_notch(tmp_path):
     """#seek maps a click straight onto the duration, because there a
     pixel means a moment you asked for. A level has no value to land on
