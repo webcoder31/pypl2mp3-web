@@ -175,3 +175,49 @@ def test_the_four_fields_survive_a_round_trip_through_a_real_file(tmp_path):
     again.reset_state()
     left = MP3(song_file).tags
     assert not any(left.get(f) for f in ("TALB", "TPUB", "TDRC", "TCON"))
+
+
+def test_frames_this_program_never_set_are_left_alone(tmp_path):
+    """Before these four fields existed, update_id3_tags never mentioned
+    TALB, TPUB, TDRC or TCON, so whatever a downloaded file carried
+    survived every save untouched. Now that they are written they can
+    also be deleted, which is a way to lose data that did not exist
+    before — nine songs in one 944-song library carry a full set of
+    release frames that never came from Shazam.
+
+    They are read on the first open and written back on the next save.
+    """
+
+    from mutagen.id3 import ID3, TALB, TPUB, TDRC, TCON, TPE1, TXXX
+    from mutagen.mp3 import MP3
+
+    frame = b"\xff\xfb\x90\xc0" + b"\x00" * 413
+    folder = tmp_path / "Owner - Alpha [PL0000000000000000000000000000001]"
+    folder.mkdir(parents=True)
+    song_file = folder / "AKHENATON - Mon texte [7aUWJQBekwY].mp3"
+    song_file.write_bytes(frame * 8)
+
+    # Tagged by something else entirely, the way a download can arrive.
+    tags = ID3()
+    tags.add(TPE1(encoding=3, text="AKHENATON"))
+    tags.add(TALB(encoding=3, text="Je suis en vie"))
+    tags.add(TPUB(encoding=3, text="Universal Music Division"))
+    tags.add(TDRC(encoding=3, text="2014"))
+    tags.add(TCON(encoding=3, text="Hip-Hop/Rap"))
+    tags.add(TXXX(encoding=3, desc="YouTube ID", text="7aUWJQBekwY"))
+    tags.save(song_file, v1=0, v2_version=3)
+
+    song = SongModel(song_file)
+    assert song.album == "Je suis en vie"
+    assert song.publisher == "Universal Music Division"
+    assert song.year == "2014"
+    assert song.genre == "Hip-Hop/Rap"
+
+    # An ordinary save, mentioning none of them.
+    song.update_state(title="Mon texte")
+
+    kept = MP3(song_file).tags
+    assert str(kept["TALB"].text[0]) == "Je suis en vie"
+    assert str(kept["TPUB"].text[0]) == "Universal Music Division"
+    assert str(kept["TDRC"].text[0]) == "2014"
+    assert str(kept["TCON"].text[0]) == "Hip-Hop/Rap"
