@@ -165,3 +165,28 @@ def test_the_threshold_starts_where_the_rest_of_the_tool_starts(script):
     title — but not silently different from what the console does."""
 
     assert script.MATCH_THRESHOLD == 50
+
+
+def test_a_refusal_is_asked_again_before_being_given_up_on(script):
+    """Shazam answers a request it does not like with something that is
+    not JSON. A dry run over twenty songs came back with two of those —
+    over eight hundred that would be eighty songs needing a second pass
+    for no reason but timing.
+
+    The back-off is the model's own: wait longer, ask once more, and
+    leave anything still failing for a later run. Nothing is lost either
+    way, because a song that failed is simply still a candidate.
+    """
+
+    assert script.RETRY_SECONDS == 35
+    assert script.RETRY_SECONDS > script.THROTTLE_SECONDS, (
+        "asking again as soon as the first attempt was refused"
+    )
+
+    import inspect
+
+    source = inspect.getsource(script.recognise)
+    assert source.count("_ask(") == 2, (
+        f"a refusal is not asked again: {source}"
+    )
+    assert "THROTTLE_SECONDS" in source and "RETRY_SECONDS" in source, source

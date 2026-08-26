@@ -56,6 +56,12 @@ from pypl2mp3.libs.song import SongModel  # noqa: E402
 # should point at it instead.
 THROTTLE_SECONDS = 15
 
+# And the same back-off. Shazam refuses often enough to matter: a dry run
+# over twenty songs came back with two FailedDecodeJson, which over eight
+# hundred would be eighty songs needing a second pass. The model answers a
+# refusal by waiting longer and asking once more, and so does this.
+RETRY_SECONDS = 35
+
 # What the CLI defaults to, and what the console's own Shazam button uses.
 # Raisable from the command line, because the cost of being wrong is not
 # the same here: a wrong artist or title is visible in the listing and in
@@ -150,26 +156,35 @@ def candidates(repository: Path, playlist: str = "") -> list:
     return found
 
 
-async def recognise(shazam: Shazam, path: Path, last_request: list) -> dict:
-    """One throttled recognition.
-
-    The wait is held around the call, not before it: measuring the gap and
-    then sleeping lets two callers both decide they may go. There is only
-    one caller here, but the model makes the same point and the shape is
-    cheap to keep.
-    """
+async def _ask(shazam: Shazam, path: Path, last_request: list, gap: int):
+    """One request, no sooner than `gap` seconds after the last."""
 
     waited = time.time() - last_request[0]
 
-    if waited < THROTTLE_SECONDS:
-        await asyncio.sleep(THROTTLE_SECONDS - waited)
+    if waited < gap:
+        await asyncio.sleep(gap - waited)
 
     try:
-        answer = await shazam.recognize_song(str(path))
+        return await shazam.recognize_song(str(path))
     finally:
         last_request[0] = time.time()
 
-    return answer
+
+async def recognise(shazam: Shazam, path: Path, last_request: list) -> dict:
+    """One throttled recognition, retried once on a refusal.
+
+    Shazam answers a request it does not like with something that is not
+    JSON, which surfaces as FailedDecodeJson. It is not about the file:
+    the same song asked again a moment later usually answers. The model
+    waits thirty-five seconds and asks once more; anything still failing
+    after that is left for a later run, which costs nothing because the
+    song is simply still a candidate.
+    """
+
+    try:
+        return await _ask(shazam, path, last_request, THROTTLE_SECONDS)
+    except Exception:
+        return await _ask(shazam, path, last_request, RETRY_SECONDS)
 
 
 async def run(args) -> Tally:
