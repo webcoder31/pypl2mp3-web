@@ -156,25 +156,6 @@ mesuré est chiffré, ce qui est un choix est motivé.
 Seul cas qui justifierait un `WebInteraction` : le port `InteractionPort`
 existe, la console ne s'en sert pas.
 
-### 2. Sauvegarder sans toucher la pochette efface son URL
-
-Constaté en cherchant par quel chemin retaguer un morceau à la main.
-`apply_fix` passe `cover_art_url or None` à `update_state`, où `None`
-signifie « effacer » : laisser le champ COVER vide dans le formulaire
-**supprime la trame `TXXX:Cover art URL`**. Vérifié sur une copie —
-l'image embarquée survit (88 585 octets avant et après), l'URL non.
-
-Le champ promet pourtant « leave empty to keep the current one », et
-c'est l'image que l'utilisateur voit : la promesse est tenue à l'écran et
-rompue dans le fichier. Rien ne casse aujourd'hui — l'URL ne sert qu'à
-retélécharger la pochette — mais un morceau sauvegardé deux fois perd le
-moyen de la retrouver.
-
-Non corrigé : le distinguo entre « effacer » et « ne pas y toucher »
-existe déjà dans `update_state` (`None` contre `False`), donc le correctif
-tient en un mot. Il n'a pas été demandé et il touche le chemin de
-sauvegarde de tout le monde.
-
 ## Choix laissés ouverts
 
 Ni dettes ni tâches : des décisions prises, susceptibles d'être reprises,
@@ -801,6 +782,31 @@ Un des treize a été tranché à la main : *The Power* de Snap!, que Shazam
 attribuait à Chill Rob G. Ce n'était pas un faux positif — le fichier
 porte la version de la bande originale de *The Fisher King*, et il a été
 retagué d'après la référence Apple, renommage compris.
+
+### Sauvegarder sans toucher la pochette effaçait son URL — `7bdaa21`
+
+Trouvé en cherchant par quel chemin retaguer un morceau à la main, pas en
+relisant le code. `apply_fix` passait `cover_art_url or None` à
+`update_state`, où `None` veut dire « effacer » : laisser le champ COVER
+vide dans le formulaire **supprimait la trame `TXXX:Cover art URL`**.
+
+Ce qui le rendait invisible : l'image embarquée est une autre trame et
+survivait. Mesuré sur une copie, 88 585 octets avant et après. Le panneau
+avait donc l'air juste pendant que le fichier perdait le seul endroit où
+était noté d'où venait cette image — un morceau sauvegardé deux fois ne
+pouvait plus la retélécharger. Et le champ promet « leave empty to keep
+the current one » : la promesse était tenue à l'écran et rompue sur le
+disque.
+
+`update_state` distinguait déjà « effacer » de « ne pas y toucher »,
+`None` contre `False` ; l'appel passait simplement le mauvais des deux.
+Le correctif est ce mot-là.
+
+La pochette est l'exception, pas la règle : un artiste ou un titre vide
+veut bien dire vide, puisqu'un morceau sans ni l'un ni l'autre est
+exactement ce qu'est un junk. Deux tests tiennent les deux moitiés du
+distinguo, et la contre-épreuve les vérifie dans les deux sens — remettre
+`None` sur la pochette, ou mettre `False` sur les noms.
 
 ## Méthode — trois échecs de procédure, et ce que les contre-épreuves ont appris
 
