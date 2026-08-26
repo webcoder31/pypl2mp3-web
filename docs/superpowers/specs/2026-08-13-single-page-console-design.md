@@ -156,6 +156,25 @@ mesuré est chiffré, ce qui est un choix est motivé.
 Seul cas qui justifierait un `WebInteraction` : le port `InteractionPort`
 existe, la console ne s'en sert pas.
 
+### 2. Sauvegarder sans toucher la pochette efface son URL
+
+Constaté en cherchant par quel chemin retaguer un morceau à la main.
+`apply_fix` passe `cover_art_url or None` à `update_state`, où `None`
+signifie « effacer » : laisser le champ COVER vide dans le formulaire
+**supprime la trame `TXXX:Cover art URL`**. Vérifié sur une copie —
+l'image embarquée survit (88 585 octets avant et après), l'URL non.
+
+Le champ promet pourtant « leave empty to keep the current one », et
+c'est l'image que l'utilisateur voit : la promesse est tenue à l'écran et
+rompue dans le fichier. Rien ne casse aujourd'hui — l'URL ne sert qu'à
+retélécharger la pochette — mais un morceau sauvegardé deux fois perd le
+moyen de la retrouver.
+
+Non corrigé : le distinguo entre « effacer » et « ne pas y toucher »
+existe déjà dans `update_state` (`None` contre `False`), donc le correctif
+tient en un mot. Il n'a pas été demandé et il touche le chemin de
+sauvegarde de tout le monde.
+
 ## Choix laissés ouverts
 
 Ni dettes ni tâches : des décisions prises, susceptibles d'être reprises,
@@ -708,6 +727,80 @@ seconde face. Le refroidissement relevé fente par fente :
 `fadeMillis` est devenu `transitionMillis` au passage : il sert au fondu
 de la pochette *et* au point de bascule des fentes, et « fade » était
 devenu faux.
+
+### Le rattrapage des 804 — `a9164eb`, `13bed8c`
+
+Un script hors du paquet, `scripts/backfill_shazam_data.py` : c'est une
+opération qu'on fait une fois, pas une fonctionnalité. Il comble deux
+manques historiques d'un seul appel par morceau — les données de sortie,
+jamais lues avant qu'elles n'existent dans le modèle, et les trames de
+provenance `Shazam *`, arrivées dans le CLI le **4 mai 2025**.
+
+**Ce qu'il ne fait pas est le cœur du sujet.** Il n'appelle pas
+`shazam_song()`, qui réapplique tout le match : sur un bon score cette
+méthode réécrit artiste, titre, pochette et renomme le fichier. Passée
+sur huit cents morceaux corrigés à la main depuis, elle aurait défait ce
+travail en silence. Le script pose la même question et n'écrit que ce qui
+manque.
+
+Le calcul de correspondance a donc été **extrait du modèle** en
+`SongModel.match_score`, pour qu'il n'existe pas deux réponses à la même
+question. Vérifié équivalent à l'ancien calcul inline sur **500
+comparaisons, 0 écart**, avec de vraies paires du dépôt croisées entre
+elles — la suite verte ne prouvait rien, elle l'était déjà avant.
+
+**Le filtre d'entrée n'est pas la provenance.** C'est l'erreur qui a rendu
+mon premier compte faux d'un facteur sept : l'absence de
+`TXXX:Shazam artist` ne dit pas qu'un morceau n'a jamais été reconnu, elle
+dit qu'il a été importé avant mai 2025. Ce qui subsiste, c'est l'URL de
+pochette : Shazam sert son visuel depuis le CDN d'Apple, et une vignette
+`i.ytimg.com` signifie qu'il n'a jamais matché. 800 morceaux portaient une
+pochette `mzstatic.com`.
+
+**Le réessai s'est révélé décisif.** Un essai à blanc sur vingt morceaux a
+rendu deux `FailedDecodeJson` — des refus de Shazam, pas des problèmes de
+fichier. Le modèle répond à un refus en attendant 35 s et en redemandant
+une fois ; le script ne le faisait pas. Sur la passe complète, le rythme
+observé (21,4 s contre un plancher de 15) implique **environ 120
+réessais**, soit près d'un morceau sur cinq — et la colonne des échecs est
+restée à **zéro pendant cinq heures**. Sans lui, 15 % de la bibliothèque
+aurait demandé une seconde passe.
+
+Résultat de la passe, seuil à 75 %, 4 h 47 :
+
+| | |
+|---|---|
+| remplis | 791 |
+| écartés par le seuil | 13 |
+| sans réponse | 0 |
+| échecs | 0 |
+
+Vérifié indépendamment du journal sur les 944 fichiers : **aucun
+illisible**, les 944 pochettes embarquées intactes, les 533 trames de
+crêtes intactes. `TALB` est passé de 9 à 771, la provenance de 130 à 823.
+
+Deux écarts qui ne sont pas des défauts. **29 morceaux confirmés à 100 %
+n'ont reçu aucun nom d'album**, parce que Shazam n'en fournit pas — pas de
+rangée « Album » dans sa réponse, ce qui est le cas des singles non
+rattachés, des remixes et des live. D'où `TCON` à 797 contre `TALB` à 771 :
+le champ absent n'est pas perdu, il est inconnu.
+
+Et les **13 écartés forment une catégorie, pas un bruit** : remixes,
+teasers, albums complets. Dans les trois cas l'audio n'appartient pas à la
+sortie que le fichier revendique, Shazam le reconnaît à juste titre comme
+autre chose, et écrire cet album serait faux. Deux cas nommaient même le
+bon artiste et un autre morceau — un teaser de mind.in.a.box, un album
+entier de Jean Leloup.
+
+Le seuil de 75 a été choisi sur la distribution mesurée, très nette :
+sur les 791 remplis, **plus de 770 à 100 %**. Il a évité deux écritures
+fausses que le défaut de 50 aurait laissé passer, dont une à exactement
+50 % — la comparaison étant `score < seuil`, un 50 pile est accepté à 50.
+
+Un des treize a été tranché à la main : *The Power* de Snap!, que Shazam
+attribuait à Chill Rob G. Ce n'était pas un faux positif — le fichier
+porte la version de la bande originale de *The Fisher King*, et il a été
+retagué d'après la référence Apple, renommage compris.
 
 ## Méthode — trois échecs de procédure, et ce que les contre-épreuves ont appris
 
