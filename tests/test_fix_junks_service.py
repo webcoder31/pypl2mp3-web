@@ -126,6 +126,52 @@ async def test_the_user_can_override_what_shazam_proposed(tmp_path):
     assert ID3(written).getall("TPE1")[0].text[0] == "MY ARTIST"
 
 
+async def test_an_empty_cover_field_leaves_the_stored_url_alone(tmp_path):
+    """The field says "leave empty to keep the current one", and leaving
+    it empty used to delete the URL.
+
+    It was invisible: the embedded picture is a separate frame and
+    survived, so the panel looked right while the file had lost the only
+    record of where the picture came from. A song saved twice could no
+    longer fetch its own cover.
+
+    `update_state` already distinguishes "clear this" from "do not touch
+    it" — None against False — and this passed the wrong one.
+    """
+
+    path = _make_junk(tmp_path)
+
+    frames = ID3(path)
+    frames.add(TXXX(encoding=3, desc="YouTube ID", text="aaaaaaaaaaa"))
+    frames.add(TXXX(encoding=3, desc="Cover art URL",
+                    text="https://example.invalid/art.jpg"))
+    frames.save(path)
+
+    result = await apply_fix(tmp_path, "aaaaaaaaaaa", "THE PHARCYDE",
+                             "Passin Me By", cover_art_url="")
+
+    written = ID3(tmp_path / PLAYLIST / result.filename)
+    kept = written.getall("TXXX:Cover art URL")
+
+    assert kept, "saving without touching the cover deleted its URL"
+    assert kept[0].text[0] == "https://example.invalid/art.jpg"
+
+
+async def test_an_empty_name_still_means_empty(tmp_path):
+    """The cover is the exception, not the rule. A song with no artist and
+    no title is what junk *is*, so clearing those has to stay possible —
+    the same "or None" that was wrong for the cover is right here."""
+
+    _make_junk(tmp_path)
+    await apply_fix(tmp_path, "aaaaaaaaaaa", "THE PHARCYDE", "Passin Me By")
+
+    result = await apply_fix(tmp_path, "aaaaaaaaaaa", "", "")
+
+    written = ID3(tmp_path / PLAYLIST / result.filename)
+    assert not written.getall("TPE1"), "the artist could not be cleared"
+    assert not written.getall("TIT2"), "the title could not be cleared"
+
+
 async def test_an_unknown_song_raises_rather_than_touching_anything(tmp_path):
     spared = _make_junk(tmp_path)
 

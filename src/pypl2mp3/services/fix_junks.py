@@ -110,6 +110,15 @@ async def apply_fix(
     The values are taken as given: the caller has already decided, whether
     by accepting Shazam's proposal or by overriding it.
 
+    An empty artist or title means empty — a song with neither is what
+    junk is, and clearing them is a thing somebody may well want. An
+    empty cover does not: the field it comes from says "leave empty to
+    keep the current one", and it used to be passed as None, which
+    `update_state` reads as "clear". The embedded image survived that, so
+    nothing looked wrong on screen while the file quietly lost the URL it
+    would need to fetch the picture again. `False` is `update_state`'s own
+    word for "do not touch".
+
     The song stops being junk: `fix_filename` keeps the current junk
     state unless told otherwise, so `mark_as_junk=False` is what actually
     drops the suffix. The CLI does the same after a successful fix.
@@ -128,7 +137,7 @@ async def apply_fix(
     song.update_state(
         artist=artist or None,
         title=title or None,
-        cover_art_url=cover_art_url or None,
+        cover_art_url=cover_art_url or False,
     )
 
     if cover_art_url:
