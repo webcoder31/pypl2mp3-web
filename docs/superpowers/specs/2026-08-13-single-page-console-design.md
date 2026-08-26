@@ -793,10 +793,26 @@ vide dans le formulaire **supprimait la trame `TXXX:Cover art URL`**.
 Ce qui le rendait invisible : l'image embarquée est une autre trame et
 survivait. Mesuré sur une copie, 88 585 octets avant et après. Le panneau
 avait donc l'air juste pendant que le fichier perdait le seul endroit où
-était noté d'où venait cette image — un morceau sauvegardé deux fois ne
-pouvait plus la retélécharger. Et le champ promet « leave empty to keep
-the current one » : la promesse était tenue à l'écran et rompue sur le
-disque.
+était noté d'où venait cette image. Et le champ promet « leave empty to
+keep the current one » : la promesse était tenue à l'écran et rompue sur
+le disque.
+
+**Les conséquences étaient modestes, et une première version de cette
+entrée les a exagérées.** L'URL ne s'affiche nulle part — le champ n'est
+pas pré-rempli — donc rien ne changeait à l'écran. Le seul effet
+fonctionnel : `update_cover_art` ne retélécharge pas une pochette dont
+l'URL demandée égale celle déjà notée, et sans la note cette optimisation
+perd la mémoire. Quelques dizaines de kilo-octets retéléchargés pour
+rien, pas une image perdue.
+
+J'ai soupçonné bien pire, à tort. `update_cover_art` commence par « si
+pas d'URL, supprime la pochette », ce qui laissait craindre qu'un fichier
+amputé de son URL perde son image au prochain passage. Les sept appelants
+vérifiés un par un : tous positionnent une URL non vide juste avant, ou se
+gardent par `if cover_art_url:`. **Aucun chemin ne pouvait atteindre cette
+branche à cause du bug.** Ce qui était vraiment perdu, c'est la
+provenance — la même catégorie que ce que le rattrapage venait de réparer
+pour les champs Shazam, et la raison de corriger malgré la faible gêne.
 
 `update_state` distinguait déjà « effacer » de « ne pas y toucher »,
 `None` contre `False` ; l'appel passait simplement le mauvais des deux.
