@@ -19,6 +19,13 @@ from pypl2mp3.libs.song import SongModel
 DEFAULT_MATCH_THRESHOLD = 45
 
 
+# The order the sentence names them in, which is the order the panel
+# shows them in. Dictionary order would follow whatever was written last.
+_BY_HAND_ORDER = (
+    "artist", "title", "cover", "album", "year", "genre", "publisher",
+)
+
+
 @dataclass(frozen=True)
 class SongSummary:
     """What a listing needs about one song, without reopening the file."""
@@ -42,6 +49,10 @@ class SongSummary:
     # takes it, Shazam overwrites it, and on 652 songs the two differ.
     origin_author: str = ""
     origin_title: str = ""
+    # The fields somebody typed, as opposed to the ones a pass proposed.
+    # A tuple and not a set: the sentence built from it has to come out
+    # the same way twice.
+    set_by_hand: tuple[str, ...] = ()
     # And whether asking YouTube about it is still worth a click. Eleven
     # videos have gone; the link to them answers 404 without saying so.
     video_gone: bool = False
@@ -87,6 +98,36 @@ class SongSummary:
         return " · ".join(
             part for part in (self.album, self.year, self.genre,
                               self.publisher) if part
+        )
+
+    @property
+    def by_hand(self) -> str:
+        """What was typed rather than found, as a sentence, or nothing.
+
+        The warning that was missing in front of Ask Shazam. A match
+        overwrites artist, title and cover without asking, and a value
+        somebody typed is the one thing in the file that asking again
+        cannot bring back — which is exactly what the backfill had to
+        work around by refusing to call `shazam_song` at all.
+
+        A sentence rather than a mark on each field: three marks say the
+        same thing three times and read as decoration, and the reader has
+        to work out what they mean. One line says it once, in words, at
+        the moment it matters.
+        """
+
+        if not self.set_by_hand:
+            return ""
+
+        names = list(self.set_by_hand)
+        listed = (
+            names[0] if len(names) == 1
+            else ", ".join(names[:-1]) + f" and {names[-1]}"
+        )
+
+        return (
+            f"{listed} set by hand — Ask Shazam would replace "
+            f"{'it' if len(names) == 1 else 'them'}"
         )
 
     @property
@@ -200,6 +241,10 @@ def summarize(song: SongModel) -> SongSummary:
         publisher=song.publisher or "",
         year=song.year or "",
         genre=song.genre or "",
+        set_by_hand=tuple(
+            name for name in _BY_HAND_ORDER
+            if song.decided_by.get(name) == "user"
+        ),
         origin_author=song.youtube_origin.get("author") or "",
         origin_title=song.youtube_origin.get("title") or "",
         video_gone=bool(song.youtube_origin.get("gone")),

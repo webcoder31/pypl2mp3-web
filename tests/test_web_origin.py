@@ -216,3 +216,186 @@ class TestTheBoardIsBounded:
 
         assert "…" in cut, cut
         assert "width - 1" in cut, "the ellipsis has to fit inside the room"
+
+
+class TestWhatWasTypedRatherThanFound:
+    """The warning that was missing in front of Ask Shazam.
+
+    A match overwrites artist, title and cover without asking, and a
+    value somebody typed is the one thing in the file that asking again
+    cannot bring back — which is why the backfill had to work around it
+    by refusing to call `shazam_song` at all.
+    """
+
+    def test_the_model_reads_who_decided_each_value(self, tmp_path):
+        path = _song(tmp_path)
+
+        SongModel(path).update_state(
+            artist="Typed Artist", title="Typed Title", by="user"
+        )
+
+        assert SongModel(path).decided_by["title"] == "user"
+        assert SongModel(path).decided_by["artist"] == "user"
+
+    def test_a_save_claims_the_values_it_actually_writes(self, tmp_path):
+        """The setter describes the act, and the act is what got written.
+
+        A field nothing had ever claimed becomes the user's: they looked
+        at what the panel had guessed from the filename and pressed Save,
+        which is an assertion. A field that already carried an entry and
+        did not change keeps it — the rule that an unchanged value holds
+        on to the moment it was decided outranks this, and it should. It
+        is the difference between "I typed this" and "I did not object to
+        it", and only the first is worth warning about."""
+
+        path = _song(tmp_path)
+
+        # Nothing has ever claimed either field here.
+        SongModel(path).update_state(title="Typed", by="user")
+
+        assert SongModel(path).decided_by["artist"] == "user"
+
+    def test_leaving_a_claimed_value_alone_does_not_claim_it(self, tmp_path):
+        """Found on the real library: saving a song without changing
+        anything left every setter where it was. Shazam decided those
+        values and the user merely did not object — marking them would
+        make the warning fire on songs nobody has corrected, which is
+        every song there is."""
+
+        path = _song(tmp_path)
+
+        song = SongModel(path)
+        song.update_state(artist="Found", title="Found", by="shazam")
+        # The form, resubmitted unchanged.
+        song.update_state(artist="Found", title="Found", by="user")
+
+        assert SongModel(path).decided_by["artist"] == "shazam"
+        assert summarize(SongModel(path)).by_hand == ""
+
+    def test_it_survives_a_save(self, tmp_path):
+        """`update_state` re-calls the constructor, which does not read
+        the file again. Anything read once has to be carried."""
+
+        path = _song(tmp_path)
+
+        song = SongModel(path)
+        song.update_state(artist="Typed", by="user")
+        song.update_state(title="Also Typed", by="user")
+
+        assert song.decided_by["artist"] == "user"
+
+    def test_only_what_was_typed_is_named(self, tmp_path):
+        """A field Shazam decided is not the user's, and saying it is
+        would make the warning meaningless — every song would carry it."""
+
+        path = _song(tmp_path)
+
+        song = SongModel(path)
+        song.update_state(album="Found By Shazam", by="shazam")
+        song.update_state(title="Typed", artist="Typed", by="user")
+
+        summary = summarize(SongModel(path))
+
+        assert SongModel(path).decided_by["album"] == "shazam"
+        assert "album" not in summary.set_by_hand
+        assert set(summary.set_by_hand) == {"artist", "title"}
+
+    def test_the_order_is_the_panel_order_not_the_writing_order(
+        self, tmp_path
+    ):
+        """A sentence that reorders itself between two saves reads as a
+        different sentence. The document remembers when each field was
+        written, and that is not the order the eye reads them in."""
+
+        path = _song(tmp_path)
+
+        song = SongModel(path)
+        # Deliberately backwards: cover, then title, then artist.
+        song.update_state(cover_art_url="https://img/one.jpg", by="user")
+        song.update_state(title="Typed", by="user")
+        song.update_state(artist="Typed", by="user")
+
+        summary = summarize(SongModel(path))
+
+        assert summary.set_by_hand == ("artist", "title", "cover")
+
+    def test_one_field_is_named_in_the_singular(self):
+        summary = SongSummary(
+            path=Path("x.mp3"), youtube_id="a", artist="A", title="T",
+            playlist=PLAYLIST, duration="00:03:00", is_junk=False,
+            set_by_hand=("title",),
+        )
+
+        assert summary.by_hand == (
+            "title set by hand — Ask Shazam would replace it"
+        )
+
+    def test_several_are_listed_in_the_order_the_panel_shows_them(self):
+        """Not in the order they happened to be written: a sentence that
+        reorders itself between two saves reads as a different sentence."""
+
+        summary = SongSummary(
+            path=Path("x.mp3"), youtube_id="a", artist="A", title="T",
+            playlist=PLAYLIST, duration="00:03:00", is_junk=False,
+            set_by_hand=("artist", "title", "cover"),
+        )
+
+        assert summary.by_hand == (
+            "artist, title and cover set by hand — "
+            "Ask Shazam would replace them"
+        )
+
+    def test_nothing_typed_is_no_line_at_all(self):
+        """Which is every song in the library today: on 5 918 fields,
+        4 392 are `legacy` and 1 526 `shazam`, and none is `user`. The
+        line fills in with use, not before."""
+
+        summary = SongSummary(
+            path=Path("x.mp3"), youtube_id="a", artist="A", title="T",
+            playlist=PLAYLIST, duration="00:03:00", is_junk=False,
+        )
+
+        assert summary.by_hand == ""
+
+    async def test_the_panel_shows_it_only_where_there_is_one(self, tmp_path):
+        """Asked of the rendered page: a template test would pass on
+        markup the reader never receives."""
+
+        _song(tmp_path, vid="aaaaaaaaaaa")
+        _song(tmp_path, vid="bbbbbbbbbbb")
+
+        typed = tmp_path / PLAYLIST / "IAMX - Kiss aaaaaaaaaaa [aaaaaaaaaaa].mp3"
+        SongModel(typed).update_state(title="Typed By Hand", by="user")
+
+        async with _client(create_app(tmp_path)) as client:
+            marked = (await client.get(
+                "/fragments/inspector/aaaaaaaaaaa", headers=HX)).text
+            plain = (await client.get(
+                "/fragments/inspector/bbbbbbbbbbb", headers=HX)).text
+
+        assert "set by hand" in marked
+        assert "Ask Shazam would replace" in marked
+        assert "set by hand" not in plain
+        # The element itself, not only its words: an empty paragraph
+        # rendered unconditionally passes a test that only looks for the
+        # sentence, and leaves a blank line of margin above the fields.
+        assert 'class="by-hand"' in marked
+        assert 'class="by-hand"' not in plain
+
+    async def test_junking_takes_the_line_away_with_the_values(self, tmp_path):
+        """`reset_state` clears the document, so a junked song is no
+        longer carrying anything anybody typed — and saying it still is
+        would be the panel lying about what is at stake."""
+
+        _song(tmp_path, vid="aaaaaaaaaaa")
+        path = tmp_path / PLAYLIST / "IAMX - Kiss aaaaaaaaaaa [aaaaaaaaaaa].mp3"
+
+        song = SongModel(path)
+        song.update_state(title="Typed By Hand", by="user")
+        song.reset_state()
+
+        async with _client(create_app(tmp_path)) as client:
+            markup = (await client.get(
+                "/fragments/inspector/aaaaaaaaaaa", headers=HX)).text
+
+        assert "set by hand" not in markup

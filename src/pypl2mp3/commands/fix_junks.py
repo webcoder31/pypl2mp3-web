@@ -321,10 +321,18 @@ class JunkSongTagger:
             if save_tags_input == "yes":
 
                 # Update song MP3 tags with user input
+                #
+                # `by="user"`, exactly as the web form does: this is the
+                # same act through a different door, and the document
+                # should not be able to tell them apart. Without it the
+                # terminal wrote `legacy` — "nobody knows" — over values
+                # somebody had just typed, and the console had no way to
+                # warn that asking Shazam would take them away.
                 song.update_state(
                     artist = artist_input,
                     title = title_input,
-                    cover_art_url = cover_art_url_input
+                    cover_art_url = cover_art_url_input,
+                    by = "user"
                 )
 
                 try:
@@ -404,10 +412,14 @@ class JunkSongTagger:
                 f"Failed to retrieve YouTube metadata"
             ) from exc
 
+        # What YouTube says, marked as such. Not `legacy`, which means
+        # the setter is unknown, and not `user`, which would make a later
+        # pass refuse to improve on a video title nobody chose.
         song.update_state(
             artist=metadata.author,
             title=metadata.title,
-            cover_art_url=metadata.thumbnail_url
+            cover_art_url=metadata.thumbnail_url,
+            by="import"
         )
 
         try:

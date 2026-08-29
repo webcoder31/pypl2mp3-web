@@ -96,6 +96,17 @@
     <form hx-post="/songs/{{ song.youtube_id }}/fix"
           hx-target="#inspector"
           hx-swap="innerHTML">
+      {# The warning that was missing in front of Ask Shazam. A match
+         overwrites these fields without asking, and a value somebody
+         typed is the one thing in the file that asking again cannot
+         bring back.
+
+         Above the fields and under the button, because it is about
+         both: what is at stake is what the inputs hold, and what would
+         take it away is one click up. #}
+      {% if song.by_hand %}
+        <p class="by-hand">{{ song.by_hand }}</p>
+      {% endif %}
       {# Labels beside the fields, not above them: three stacked pairs
          cost twice the height for a form that already competes with the
          listing underneath it. #}

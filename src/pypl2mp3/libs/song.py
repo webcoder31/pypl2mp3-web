@@ -1207,6 +1207,19 @@ class SongModel:
             self.stored_cover_art_url = \
                 self._told["embedded"].get("cover_url") or None
 
+        # Who decided each value. The document is the only place this
+        # exists — a frame holds a string and says nothing about where it
+        # came from — and it is what tells a value somebody typed from
+        # one an automated pass proposed.
+        self.decided_by = getattr(self, "decided_by", None) or {}
+
+        if not self.is_already_initialized and self._told:
+            self.decided_by = {
+                name: entry["by"]
+                for name, entry in self._told["fields"].items()
+                if entry.get("value")
+            }
+
         # Where the file came from: the video's own channel and title,
         # or the record that the video is gone. Held whole rather than
         # split into attributes — it is evidence, read and never edited,
@@ -1390,8 +1403,22 @@ class SongModel:
 
         document = self._document()
 
-        if document is not None:
-            metadata.attach(self.mp3.tags, document)
+        if document is None:
+            return
+
+        metadata.attach(self.mp3.tags, document)
+
+        # And the object stops lying about itself. `decided_by` is read
+        # once, at a real initialization, and `update_state` re-calls the
+        # constructor without reading the file again — so without this a
+        # song still holds the provenance it had before its own save. The
+        # panel is refetched after a save and never noticed; the model
+        # would have.
+        self.decided_by = {
+            name: entry["by"]
+            for name, entry in document["fields"].items()
+            if entry.get("value")
+        }
 
 
     def _read(self) -> dict:

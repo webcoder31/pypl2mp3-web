@@ -991,6 +991,19 @@ tbody tr.playing td.num { color: var(--accent); }
 /* Only while the panel is refusing to follow the player, and saying so
    where it says everything else about this song. */
 .held { display: none; color: var(--junk); }
+/* What was typed rather than found. Muted, not amber: nothing is wrong
+   here and nothing is about to be — it is a fact about the fields below,
+   and it only becomes a warning if you were reaching for Ask Shazam. An
+   alarm colour on a line that is true most of the time stops being read.
+
+   --text-2 and not --text-3, which is where a quiet line would normally
+   sit. Measured in the browser: --text-3 gives 3.13:1 against the light
+   panel and 3.73:1 against the dark one, both under the 4.5:1 that
+   twelve-pixel text needs to be legible. A warning nobody can read
+   before a destructive click is worse than no warning, because the panel
+   looks like it warned. --text-2 gives 6.21:1 and 6.27:1. */
+.by-hand { margin: 0.7rem 0 0; font-size: var(--fs-sm);
+           color: var(--text-2); }
 #inspector.holding-edits .held { display: inline; }
 /* Gone when the panel already describes what you are hearing: an offer
    to play the song that is playing is noise, and its absence is what
