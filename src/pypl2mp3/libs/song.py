@@ -1267,14 +1267,39 @@ class SongModel:
             self.should_be_renamed = True
 
         # Check if MP3 file has a cover art
-        try:
-            self.has_cover_art = \
-                self.mp3.tags["APIC:Cover art"].type == 3
-        except:
-            self.has_cover_art = False
+        self.has_cover_art = self._has_front_cover()
 
         # Mark song object as initialized
         self.is_already_initialized = True
+
+
+    def _has_front_cover(self) -> bool:
+        """Whether the file carries a front cover picture.
+
+        Asked of the picture's own type, not of the label somebody chose
+        for it. An APIC frame holds both: `type` is a number the ID3
+        specification defines — 3 is the front cover — while `desc` is
+        free text invented by whoever wrote the frame. This program calls
+        it "Cover art"; a version of it that predates the repository
+        called it "Stored cover art"; other taggers use the empty string
+        or something else again.
+
+        Mutagen indexes frames by that label, so `tags["APIC:Cover art"]`
+        asks for the picture *called* "Cover art" and raises when it is
+        called anything else. 105 songs in one 944-song library were
+        therefore counted as having no cover at all — and `list-junks`
+        reports a song with no cover as needing attention, so they were
+        all flagged while carrying a perfectly good picture.
+
+        No guard for a file with no tags at all: `__init__` creates the
+        receptacle before it ever asks this, and a file that already
+        carries a YouTube id already has one. A check here looked prudent
+        and could not be reached, which is a check no test can hold.
+        """
+
+        return any(
+            picture.type == 3 for picture in self.mp3.tags.getall("APIC")
+        )
 
 
     def update_id3_tags(self) -> None:
@@ -1445,8 +1470,7 @@ class SongModel:
 
         # Check if cover art must be updated or deleted
         try:
-            self.has_cover_art = \
-                self.mp3.tags["APIC:Cover art"].type == 3
+            self.has_cover_art = self._has_front_cover()
 
             if not self.cover_art_url:
 
