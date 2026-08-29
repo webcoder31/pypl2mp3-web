@@ -75,6 +75,37 @@ class TestShape:
         with pytest.raises(MetadataError):
             metadata.field(metadata.blank("a"), "titel")
 
+    def test_a_value_of_unknown_origin_says_so(self):
+        """The old frames record no provenance. A pass that believed a
+        recovered value came from Shazam would feel free to overwrite an
+        edit somebody made by hand, so "unknown" has to be sayable."""
+
+        assert "legacy" in metadata.SETTERS
+
+        document = metadata.set_field(
+            metadata.blank("a"), "title", "Kiss", "legacy", at=None
+        )
+
+        assert document["fields"]["title"] == {
+            "value": "Kiss", "by": "legacy", "at": None,
+        }
+
+    def test_a_moment_can_be_unknown_without_the_key_going_missing(self):
+        """Nothing in the old frames says when a value was set, and the
+        file's own date has been moved by the peak store and by two repair
+        passes. Writing today's date would make every migrated field look
+        freshly decided — which defeats the one comparison the document is
+        for, field older than the last answer."""
+
+        given = metadata.set_field(metadata.blank("a"), "title", "K", "user")
+        unknown = metadata.set_field(
+            metadata.blank("a"), "title", "K", "legacy", at=None
+        )
+
+        assert given["fields"]["title"]["at"] is not None
+        assert unknown["fields"]["title"]["at"] is None
+        assert "at" in unknown["fields"]["title"]
+
     def test_an_unknown_setter_is_refused(self):
         with pytest.raises(MetadataError):
             metadata.set_field(metadata.blank("a"), "title", "x", "robot")

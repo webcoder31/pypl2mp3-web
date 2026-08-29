@@ -56,10 +56,22 @@ VERSION = 1
 FIELDS = ("artist", "title", "album", "year", "genre", "publisher", "cover")
 
 # Who may have set a field. "import" is the tool acting on YouTube's
-# answer, which is not the same as the user having chosen it.
-SETTERS = ("user", "shazam", "import")
+# answer, which is not the same as the user having chosen it; "legacy"
+# means the value was recovered from the old frames and its origin cannot
+# be established. Guessing would be worse than saying so: a pass that
+# believed a legacy value was "shazam" would feel free to overwrite an
+# edit somebody made by hand.
+SETTERS = ("user", "shazam", "import", "legacy")
 
 SOURCES = ("youtube", "shazam")
+
+# Tells "no timestamp given, use the clock" apart from "the timestamp is
+# not knowable". The second is not a hypothetical: nothing in the old
+# frames records when a value was set, and the file's own date has been
+# moved by the peak store and by two repair passes. Writing today's date
+# there would make every migrated field look freshly decided, which is
+# precisely the comparison the document exists to make possible.
+UNSET = object()
 
 
 class MetadataError(Exception):
@@ -208,9 +220,13 @@ def set_field(
     name: str,
     value: str,
     by: str,
-    at: str | None = None,
+    at: str | None = UNSET,
 ) -> dict:
     """A document with that field set, leaving the given one untouched.
+
+    `at=None` means the moment is not knowable, which is different from
+    not having been given one. Everything migrated from the old frames is
+    in that case.
 
     Returns a new document rather than mutating: the shadow phase holds
     one document read from the file beside another rebuilt from the old
@@ -227,14 +243,14 @@ def set_field(
     updated["fields"][name] = {
         "value": value,
         "by": by,
-        "at": at or now(),
+        "at": now() if at is UNSET else at,
     }
 
     return updated
 
 
 def set_source(
-    document: dict, name: str, answer: dict, at: str | None = None
+    document: dict, name: str, answer: dict, at: str | None = UNSET
 ) -> dict:
     """A document recording what one upstream answered.
 
@@ -248,13 +264,15 @@ def set_source(
         raise MetadataError(f"unknown source {name!r}, expected one of {SOURCES}")
 
     updated = copy.deepcopy(document)
-    updated["sources"][name] = dict(answer, at=at or now())
+    updated["sources"][name] = dict(
+        answer, at=now() if at is UNSET else at
+    )
 
     return updated
 
 
 def set_embedded_cover(
-    document: dict, digest: str, at: str | None = None
+    document: dict, digest: str, at: str | None = UNSET
 ) -> dict:
     """A document recording which picture the file now carries.
 
@@ -265,7 +283,9 @@ def set_embedded_cover(
     """
 
     updated = copy.deepcopy(document)
-    updated["embedded"] = {"cover_sha256": digest, "at": at or now()}
+    updated["embedded"] = {
+        "cover_sha256": digest, "at": now() if at is UNSET else at
+    }
 
     return updated
 
