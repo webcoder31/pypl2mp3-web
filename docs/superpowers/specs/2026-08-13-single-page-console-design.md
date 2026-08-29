@@ -888,6 +888,7 @@ Après passage, vérifié indépendamment du script : **0 `TRCK`, 944
 `TXXX:YouTube ID`, 944 pochettes, 0 fichier illisible, 944/944 dont le
 modèle lit l'id.**
 
+<<<<<<< HEAD
 ## En cours — la branche `metadata-document`
 
 Pas une dette traitée : un chantier ouvert, sur une branche à part, dont
@@ -938,7 +939,8 @@ un lecteur doit pouvoir le trouver quelle que soit sa version. Lire une
 version inconnue lève une exception plutôt que de deviner.
 
 **`libs/legacy.py`** — lit les trois générations de trames et en fait un
-document. Il n'écrit rien : construire et ranger sont deux actes
+document, ISRC compris depuis `TSRC` : seul Shazam en fournit, donc un
+fichier qui en porte un porte celui de Shazam. Il n'écrit rien : construire et ranger sont deux actes
 séparés, pour qu'une passe de comparaison puisse les tenir côte à côte
 sans toucher un fichier.
 
@@ -969,16 +971,106 @@ bibliothèque et pas seulement en test.
 
 L'application, qui ignore tout du document, répond comme avant.
 
+### L'origine YouTube, récupérée avant de la perdre — `6d34c75`
+
+Le manque le plus grave de l'inventaire, et le seul qui **se dégradait**.
+L'import prend quatre choses à la vidéo — id, chaîne, titre, vignette —
+et en confie trois aux champs que Shazam écrase ensuite, sans copie. Sur
+944 morceaux, 715 portaient le nom donné par Shazam et l'original n'était
+plus dans le fichier.
+
+Deux constats ont renversé le calendrier prévu. D'abord le coût :
+l'endpoint **oEmbed** de YouTube répond en 0,12 s, sans clé, sans verrou
+et sans bibliothèque, et rend `title` et `author_name` — c'est-à-dire
+exactement `video.title` et `video.author`. Les 944 morceaux prennent
+deux minutes, pas cinq heures. Ensuite l'urgence : un échantillon de 60
+a trouvé deux vidéos déjà supprimées. Un ISRC ne s'évapore pas, une
+vidéo supprimée si — cette passe-là ne pouvait pas attendre la passe
+globale.
+
+**Résultat : 933 origines récupérées, 11 disparues** — 6× 404, 4× 403,
+1× 401. Le réel (1,2 %) est plus doux que mon estimation (3,3 %), ce que
+je note parce que j'avais avancé le chiffre.
+
+**652 des 933 diffèrent de ce que le fichier affiche.** C'est la mesure
+directe de ce que Shazam avait effacé. Les 281 autres coïncident : ce
+sont les morceaux jamais reconnus, dont les noms venaient déjà de
+YouTube.
+
+Le bloc a **trois états**, et le troisième est sa raison d'être :
+
+    {}                                     jamais demandé
+    {"at": …, "author": …, "title": …}     demandé, répondu
+    {"at": …, "gone": true, "http": 404}   demandé, la vidéo n'y est plus
+
+Sans lui, chaque passe future réinterroge les mêmes vidéos mortes et
+échoue pareil, sans distinguer « pas encore fait » de « impossible ». Le
+code HTTP est gardé parce qu'ils ne disent pas la même chose : un 404 est
+une suppression, un 401 une vidéo passée en privé, un 403 un blocage
+régional — les deux derniers peuvent se rouvrir, d'où `--retry-gone`.
+
+Quatre règles portent le reste. Un échec réseau n'est **pas** une
+disparition : seuls 400, 401, 403, 404 et 410 sont enregistrés, un 500
+ne laisse rien et le morceau reste candidat. Le suffixe « - Topic » des
+chaînes automatiques de YouTube est conservé tel quel, parce que ce bloc
+est une preuve et que le rogner serait trancher au mauvais endroit. Rien
+n'est écrit dans les trames — aucune trame standard ne porte ça, et
+inventer des `TXXX` est l'arrangement que cette branche quitte. Et la
+reprise ne tient à aucun fichier d'état : ce que le document porte *est*
+le registre de ce qui a été fait, ce qu'une seconde passe a confirmé —
+944 « already known », zéro requête.
+
+Un exemple qui éclaire rétrospectivement le rattrapage : l'*Ave Maria*
+écarté à 68 % vient d'une chaîne nommée `ELITEXardas00`, sous le titre
+« Franz Schubert - Ave Maria (Instrumental) ». Le fichier annonce André
+Rieu ; l'origine ne le dit nulle part. Shazam y entendait autre chose,
+et pour cause.
+
 ### Ce qui reste
 
-Faire écrire le document par le modèle lui-même, c'est là que commence la
-vraie bascule et qu'il faudra décider ce que `main` fait des trames. Deux
-choses manquent encore et se verront à ce moment : **l'ISRC**, que Shazam
-renvoie à chaque réponse et que rien ne garde (0 trame `TSRC` sur 944)
-alors que c'est le seul identifiant qui distingue un enregistrement d'un
-autre — exactement l'ambiguïté des treize morceaux écartés par le
-rattrapage ; et le bloc `sources.youtube`, vide partout, qui ne se
-remplira que pour les imports à venir.
+Faire écrire le document par le modèle lui-même — c'est là que commence
+la vraie bascule, et qu'il faudra décider ce que `main` fait des trames.
+
+L'inventaire des données, lui, n'est toujours pas clos, et c'est ce qui
+retient la passe Shazam globale. Restent ignorés de la réponse : `key` et
+`url` (la fiche Shazam), `albumadamid` et `artists[].adamid` (les
+identifiants Apple, clé d'entrée d'iTunes — celle qui a servi à retaguer
+*The Power*), `images.joecolor` (la palette extraite de la pochette).
+Côté YouTube, oEmbed ne rend que la chaîne et le titre ; `publish_date`,
+`length`, `description` et `keywords` demanderaient une requête plus
+lourde et n'ont pas été jugés nécessaires.
+=======
+### Le code d'enregistrement, jeté à chaque réponse — `9fba802`, `05f0bfc`
+
+Shazam renvoie un ISRC sur chaque réponse. Rien ne le lisait : **zéro
+trame `TSRC` sur 944 fichiers**, alors qu'ID3 a la trame standard et que
+tout lecteur sait la lire.
+
+Ce n'est pas un identifiant de plus. Un ISRC désigne **un
+enregistrement**, pas une chanson ni un disque : deux prises de la même
+pièce ont deux codes. C'est donc la seule donnée qui sépare un remaster,
+un live ou un remix de l'original — exactement l'ambiguïté qui a laissé
+treize morceaux inconfirmables lors du rattrapage, et exactement le cas
+de *The Power* de Snap! contre celle de Chill Rob G.
+
+Il rejoint album, label, année et genre : extrait de `track.isrc`, lu à
+l'ouverture, écrit dans `TSRC`, effacé par `reset_state`. Le critère du
+rattrapage s'élargit en conséquence — un morceau complet par ailleurs
+mais sans code redevient candidat, ce qui est le cas des 944.
+
+La passe n'a pas été relancée. Chacune coûte cinq heures et huit cents
+requêtes ; en lancer une pour l'ISRC puis une autre pour ce qui manquera
+encore serait payer deux fois. Un essai réel sur trois morceaux a servi
+de vérification : comparés à la sauvegarde de leurs balises, la **seule**
+différence est l'ajout de `TSRC` — artiste, titre, album, label, année,
+genre et pochette identiques à l'octet près.
+
+Deux fausses alertes lors de cette vérification, levées en consultant la
+sauvegarde plutôt qu'en supposant : un `TPE1` surprenant qui était déjà
+là, et une recherche par nom de fichier qui échouait parce que macOS
+stocke les noms en **NFD** — `E` suivi d'un accent combinant — quand le
+littéral était en NFC.
+>>>>>>> main
 
 ## Méthode — trois échecs de procédure, et ce que les contre-épreuves ont appris
 
