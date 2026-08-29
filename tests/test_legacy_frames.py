@@ -9,7 +9,7 @@ point rather than a shortcoming.
 from pathlib import Path
 
 import pytest
-from mutagen.id3 import ID3, APIC, TALB, TCON, TIT2, TPE1, TPUB, TXXX
+from mutagen.id3 import ID3, APIC, TALB, TCON, TIT2, TPE1, TPUB, TSRC, TXXX
 from mutagen.mp3 import MP3
 
 from pypl2mp3.libs import legacy
@@ -33,8 +33,8 @@ def _song(repo: Path, *, vid="aaaaaaaaaaa", junk=False, picture=None,
     tags = ID3()
     tags.add(TXXX(encoding=3, desc="YouTube ID", text=vid))
     for frame, value in text.items():
-        tags.add({"TPE1": TPE1, "TIT2": TIT2, "TALB": TALB,
-                  "TCON": TCON, "TPUB": TPUB}[frame](encoding=3, text=value))
+        tags.add({"TPE1": TPE1, "TIT2": TIT2, "TALB": TALB, "TCON": TCON,
+                  "TPUB": TPUB, "TSRC": TSRC}[frame](encoding=3, text=value))
     for desc, value in customs:
         tags.add(TXXX(encoding=3, desc=desc, text=value))
     if picture is not None:
@@ -71,6 +71,33 @@ class TestReadingEveryGeneration:
         answer = legacy.shazam_answer(legacy.read_frames(path))
 
         assert answer == {"artist": "IAMX", "title": "Kiss", "score": 91}
+
+    def test_the_recording_code_comes_from_the_standard_frame(
+        self, tmp_path
+    ):
+        """It never had a custom frame of its own: it goes into TSRC,
+        which anything can read. Only Shazam ever supplies one here, so a
+        file carrying a code carries Shazam's."""
+
+        path = _song(tmp_path, TSRC="GBDHC1907207", customs=[
+            ("Shazam artist", "IAMX"), ("Shazam match level", "91"),
+        ])
+
+        answer = legacy.shazam_answer(legacy.read_frames(path))
+
+        assert answer["isrc"] == "GBDHC1907207"
+
+    def test_a_file_with_no_recording_code_says_nothing_about_one(
+        self, tmp_path
+    ):
+        """No file in the 944-song library had one when this was written:
+        Shazam returned it on every answer and it was thrown away. The
+        key has to be absent rather than empty, or every migrated
+        document would claim a code it does not have."""
+
+        path = _song(tmp_path, customs=[("Shazam artist", "IAMX")])
+
+        assert "isrc" not in legacy.shazam_answer(legacy.read_frames(path))
 
     def test_the_current_name_wins_when_both_are_there(self, tmp_path):
         path = _song(tmp_path, customs=[

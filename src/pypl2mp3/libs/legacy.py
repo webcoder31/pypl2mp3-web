@@ -17,6 +17,9 @@ Two things can be established rather than guessed, and they are:
   * a value that matches what Shazam proposed, on a song whose score
     cleared the threshold, was set by Shazam — that is what the threshold
     means;
+  * the recording code, which only Shazam ever supplies and which goes
+    into TSRC, a standard frame — nothing had to be invented to store it,
+    and nothing else in this library ever wrote one;
   * the digest of the picture the file carries, which is not an inference
     at all. It is the one fact the old arrangement never recorded and the
     one that makes "is this already the picture being asked for?"
@@ -65,6 +68,10 @@ _SHAZAM_FRAMES = {
     "cover": ("Shazam cover art URL", "Shazam matching cover art URL"),
     "score": ("Shazam match level", "Shazam matching rate"),
 }
+
+# The recording code, which never had a custom frame of its own: it goes
+# straight into TSRC, the standard one, so it is read from there.
+_ISRC_FRAME = "TSRC"
 
 
 def _text(tags, frame: str) -> str:
@@ -136,6 +143,10 @@ def read_frames(song_path: Path) -> dict:
         name: _custom(tags, *names)
         for name, names in _SHAZAM_FRAMES.items()
     }
+    # Only Shazam ever supplies one, so a file that carries a recording
+    # code carries Shazam's — even though the frame is a standard one and
+    # anything could in principle have written it.
+    shazam["isrc"] = _text(tags, _ISRC_FRAME)
 
     return {
         "id": song_id(song_path, tags),
@@ -172,6 +183,9 @@ def shazam_answer(frames: dict) -> dict:
 
     if raw["cover"]:
         answer["cover"] = raw["cover"]
+
+    if raw["isrc"]:
+        answer["isrc"] = raw["isrc"]
 
     if raw["score"]:
         try:
