@@ -888,7 +888,37 @@ Après passage, vérifié indépendamment du script : **0 `TRCK`, 944
 `TXXX:YouTube ID`, 944 pochettes, 0 fichier illisible, 944/944 dont le
 modèle lit l'id.**
 
-<<<<<<< HEAD
+### Le code d'enregistrement, jeté à chaque réponse — `9fba802`, `05f0bfc`
+
+Shazam renvoie un ISRC sur chaque réponse. Rien ne le lisait : **zéro
+trame `TSRC` sur 944 fichiers**, alors qu'ID3 a la trame standard et que
+tout lecteur sait la lire.
+
+Ce n'est pas un identifiant de plus. Un ISRC désigne **un
+enregistrement**, pas une chanson ni un disque : deux prises de la même
+pièce ont deux codes. C'est donc la seule donnée qui sépare un remaster,
+un live ou un remix de l'original — exactement l'ambiguïté qui a laissé
+treize morceaux inconfirmables lors du rattrapage, et exactement le cas
+de *The Power* de Snap! contre celle de Chill Rob G.
+
+Il rejoint album, label, année et genre : extrait de `track.isrc`, lu à
+l'ouverture, écrit dans `TSRC`, effacé par `reset_state`. Le critère du
+rattrapage s'élargit en conséquence — un morceau complet par ailleurs
+mais sans code redevient candidat, ce qui est le cas des 944.
+
+La passe n'a pas été relancée. Chacune coûte cinq heures et huit cents
+requêtes ; en lancer une pour l'ISRC puis une autre pour ce qui manquera
+encore serait payer deux fois. Un essai réel sur trois morceaux a servi
+de vérification : comparés à la sauvegarde de leurs balises, la **seule**
+différence est l'ajout de `TSRC` — artiste, titre, album, label, année,
+genre et pochette identiques à l'octet près.
+
+Deux fausses alertes lors de cette vérification, levées en consultant la
+sauvegarde plutôt qu'en supposant : un `TPE1` surprenant qui était déjà
+là, et une recherche par nom de fichier qui échouait parce que macOS
+stocke les noms en **NFD** — `E` suivi d'un accent combinant — quand le
+littéral était en NFC.
+
 ## En cours — la branche `metadata-document`
 
 Pas une dette traitée : un chantier ouvert, sur une branche à part, dont
@@ -1039,38 +1069,6 @@ identifiants Apple, clé d'entrée d'iTunes — celle qui a servi à retaguer
 Côté YouTube, oEmbed ne rend que la chaîne et le titre ; `publish_date`,
 `length`, `description` et `keywords` demanderaient une requête plus
 lourde et n'ont pas été jugés nécessaires.
-=======
-### Le code d'enregistrement, jeté à chaque réponse — `9fba802`, `05f0bfc`
-
-Shazam renvoie un ISRC sur chaque réponse. Rien ne le lisait : **zéro
-trame `TSRC` sur 944 fichiers**, alors qu'ID3 a la trame standard et que
-tout lecteur sait la lire.
-
-Ce n'est pas un identifiant de plus. Un ISRC désigne **un
-enregistrement**, pas une chanson ni un disque : deux prises de la même
-pièce ont deux codes. C'est donc la seule donnée qui sépare un remaster,
-un live ou un remix de l'original — exactement l'ambiguïté qui a laissé
-treize morceaux inconfirmables lors du rattrapage, et exactement le cas
-de *The Power* de Snap! contre celle de Chill Rob G.
-
-Il rejoint album, label, année et genre : extrait de `track.isrc`, lu à
-l'ouverture, écrit dans `TSRC`, effacé par `reset_state`. Le critère du
-rattrapage s'élargit en conséquence — un morceau complet par ailleurs
-mais sans code redevient candidat, ce qui est le cas des 944.
-
-La passe n'a pas été relancée. Chacune coûte cinq heures et huit cents
-requêtes ; en lancer une pour l'ISRC puis une autre pour ce qui manquera
-encore serait payer deux fois. Un essai réel sur trois morceaux a servi
-de vérification : comparés à la sauvegarde de leurs balises, la **seule**
-différence est l'ajout de `TSRC` — artiste, titre, album, label, année,
-genre et pochette identiques à l'octet près.
-
-Deux fausses alertes lors de cette vérification, levées en consultant la
-sauvegarde plutôt qu'en supposant : un `TPE1` surprenant qui était déjà
-là, et une recherche par nom de fichier qui échouait parce que macOS
-stocke les noms en **NFD** — `E` suivi d'un accent combinant — quand le
-littéral était en NFC.
->>>>>>> main
 
 ## Méthode — trois échecs de procédure, et ce que les contre-épreuves ont appris
 
