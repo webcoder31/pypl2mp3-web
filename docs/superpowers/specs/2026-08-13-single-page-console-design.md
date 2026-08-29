@@ -888,6 +888,98 @@ Après passage, vérifié indépendamment du script : **0 `TRCK`, 944
 `TXXX:YouTube ID`, 944 pochettes, 0 fichier illisible, 944/944 dont le
 modèle lit l'id.**
 
+## En cours — la branche `metadata-document`
+
+Pas une dette traitée : un chantier ouvert, sur une branche à part, dont
+`main` ignore l'existence. L'écart avec `main` est de **quatre fichiers
+ajoutés, zéro modifié**.
+
+### Pourquoi
+
+Quatre défauts de stockage en une seule journée, et chacun est le
+représentant d'une *classe* de défaut :
+
+| ce qui a cassé | la règle absente |
+|---|---|
+| 105 fichiers vus sans pochette | identifier une trame par son sens, pas par son étiquette libre |
+| une trame perdue sur 943 fichiers | ne supprimer que ce qu'on possède |
+| trois générations de noms cohabitantes | versionner et migrer |
+| l'id vidéo dans `TRCK` sur 659 fichiers | une donnée privée dans une trame privée |
+| demandé et obtenu dans une même URL | une décision n'est pas une preuve |
+
+Et un cinquième, celui-là **en cours** au moment où on l'a constaté : à
+chaque import, `author` et `title` de YouTube sont écrasés par la
+première correspondance Shazam qui franchit le seuil, sans copie. Sur 944
+morceaux, **715** portent le nom donné par Shazam et l'original est
+perdu. Ce n'est pas une dette qui attend, c'est une perte qui se produit,
+et qu'aucune migration ultérieure ne réparera — la vidéo aura peut-être
+disparu.
+
+### Ce qui est fait — `6775f27`, `3def1b8`, `055b1b3`
+
+**`libs/metadata.py`** — un document JSON par morceau, dans une trame
+`PRIV`. Trois blocs pour trois questions : `fields` (ce que le fichier
+affirme, chaque valeur portant qui l'a décidée et quand), `sources` (ce
+que chaque fournisseur a répondu, gardé verbatim et jamais écrasé),
+`embedded` (ce que le fichier contient réellement — l'empreinte de
+l'image, pas l'URL).
+
+Le choix de la trame n'est pas cosmétique : `song.py` efface `TPE1`,
+`TIT2`, les quatre trames de sortie, toutes les `TXXX` et toutes les
+`APIC`, **jamais de `PRIV`** ; et `store_peaks`, qui en efface pourtant,
+remet celles qu'il ne possède pas. Vérifié sur un vrai fichier avant
+d'écrire une ligne : le document survit à `update_state`, à
+`store_peaks`, et à une seconde sauvegarde.
+
+La version est **dans** le document et non dans le propriétaire, à
+l'inverse des crêtes (`#peaks-1`) — et c'est délibéré : un cache dont le
+format change se jette et se recalcule, un registre doit se migrer, donc
+un lecteur doit pouvoir le trouver quelle que soit sa version. Lire une
+version inconnue lève une exception plutôt que de deviner.
+
+**`libs/legacy.py`** — lit les trois générations de trames et en fait un
+document. Il n'écrit rien : construire et ranger sont deux actes
+séparés, pour qu'une passe de comparaison puisse les tenir côte à côte
+sans toucher un fichier.
+
+Sa colonne la plus intéressante est celle qu'il ne remplit pas. Une seule
+attribution est certaine — la valeur égale ce que Shazam a proposé *et*
+le score a franchi le seuil. Tout le reste est marqué `legacy`, y compris
+les valeurs venues manifestement de YouTube : « manifestement » n'est pas
+un enregistrement, et une correction faite à la main y est
+indiscernable de l'original. Sur 944 morceaux : **753 artistes et 773
+titres attribués à Shazam, tout le reste `legacy`**, horodatages nuls
+partout — la date du fichier a été déplacée par les crêtes et par deux
+passes de réparation, l'écrire serait un mensonge.
+
+**`scripts/build_metadata_documents.py`** — construit, compare, et
+n'écrit que sur `--write`. Sa règle de fusion tient en trois cas : un
+champ marqué `user` n'est jamais écrasé (une reconstruction ne peut
+produire que `shazam` ou `legacy`) ; une valeur inchangée garde l'entrée
+qui connaît son instant ; tout le reste suit les trames, qui restent la
+source de vérité tant que l'application les écrit.
+
+### Où on en est
+
+Les 944 documents sont écrits. Médiane **907 octets**, 0,8 Mo pour toute
+la bibliothèque contre 58,6 Mo de balises. Relus intégralement : 944/944,
+aucun illisible, pochettes et crêtes intactes. Seconde passe : **944
+« matches the frames », 0 écrit** — l'idempotence tient sur la vraie
+bibliothèque et pas seulement en test.
+
+L'application, qui ignore tout du document, répond comme avant.
+
+### Ce qui reste
+
+Faire écrire le document par le modèle lui-même, c'est là que commence la
+vraie bascule et qu'il faudra décider ce que `main` fait des trames. Deux
+choses manquent encore et se verront à ce moment : **l'ISRC**, que Shazam
+renvoie à chaque réponse et que rien ne garde (0 trame `TSRC` sur 944)
+alors que c'est le seul identifiant qui distingue un enregistrement d'un
+autre — exactement l'ambiguïté des treize morceaux écartés par le
+rattrapage ; et le bloc `sources.youtube`, vide partout, qui ne se
+remplira que pour les imports à venir.
+
 ## Méthode — trois échecs de procédure, et ce que les contre-épreuves ont appris
 
 Le document dit ailleurs qu'aucune page n'avait jamais été rendue par un
