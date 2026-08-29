@@ -17,7 +17,7 @@ from pypl2mp3.libs.song import SongModel
 from pypl2mp3.services.list_songs import SongSummary
 
 
-def _shazam_answer(rows, genre=None):
+def _shazam_answer(rows, genre=None, isrc=None):
     """A track shaped the way the real payload is shaped."""
 
     track = {
@@ -25,6 +25,8 @@ def _shazam_answer(rows, genre=None):
         "subtitle": "...And You Will Know Us By the Trail of Dead",
         "sections": [{"type": "SONG", "metadata": rows}],
     }
+    if isrc is not None:
+        track["isrc"] = isrc
     if genre is not None:
         track["genres"] = {"primary": genre}
     return track
@@ -48,6 +50,35 @@ def test_reads_the_four_fields_from_a_real_shaped_answer():
         "year": "2019",
         "genre": "Rock",
     }
+
+
+def test_the_recording_code_is_kept():
+    """ISRC identifies the *recording* — not the song, not the release.
+    Two takes of the same piece have two codes, which is what separates a
+    remaster, a live version or a remix from the original.
+
+    That is exactly the ambiguity that left thirteen songs unconfirmed
+    during the backfill: Shazam named a different recording of the same
+    piece and nothing in the file could say which one it held. Shazam
+    returns it on every answer and it was thrown away — no file in a
+    944-song library carried one.
+    """
+
+    track = _shazam_answer(
+        [{"title": "Album", "text": "X"}], isrc="GBDHC1907207"
+    )
+
+    assert SongModel._release_data(track)["isrc"] == "GBDHC1907207"
+
+
+def test_a_missing_recording_code_is_absent_rather_than_empty():
+    """Splatted into update_state, where a present-but-empty key would
+    clear whatever the file already held."""
+
+    assert "isrc" not in SongModel._release_data(_shazam_answer([]))
+    assert "isrc" not in SongModel._release_data(
+        _shazam_answer([], isrc="   ")
+    )
 
 
 def test_reads_the_rows_by_name_and_not_by_position():
@@ -157,7 +188,8 @@ def test_the_four_fields_survive_a_round_trip_through_a_real_file(tmp_path):
     )
 
     song.update_state(
-        album="Madonna", publisher="Sire", year="1983", genre="Pop"
+        album="Madonna", publisher="Sire", year="1983", genre="Pop",
+        isrc="USRC17607839",
     )
 
     frames = MP3(song_file).tags
@@ -165,16 +197,19 @@ def test_the_four_fields_survive_a_round_trip_through_a_real_file(tmp_path):
     assert str(frames["TPUB"].text[0]) == "Sire"
     assert str(frames["TDRC"].text[0]) == "1983"
     assert str(frames["TCON"].text[0]) == "Pop"
+    # The standard frame, so anything else reading the file finds it too.
+    assert str(frames["TSRC"].text[0]) == "USRC17607839"
 
     again = SongModel(song_file)
-    assert (again.album, again.publisher, again.year, again.genre) == (
-        "Madonna", "Sire", "1983", "Pop"
-    )
+    assert (again.album, again.publisher, again.year, again.genre,
+            again.isrc) == ("Madonna", "Sire", "1983", "Pop", "USRC17607839")
 
     # And they go when the song is reset, like everything else it holds.
     again.reset_state()
     left = MP3(song_file).tags
-    assert not any(left.get(f) for f in ("TALB", "TPUB", "TDRC", "TCON"))
+    assert not any(
+        left.get(f) for f in ("TALB", "TPUB", "TDRC", "TCON", "TSRC")
+    )
 
 
 def test_frames_this_program_never_set_are_left_alone(tmp_path):
