@@ -278,6 +278,14 @@ réellement peinte dans les deux thèmes.
 Reste vrai : un test Python ne mesure pas du texte rendu. Ce qui est
 vérifié au navigateur est dit comme tel dans les messages de commit.
 
+Et cela s'est reproduit exactement, bien plus tard et sur autre chose :
+le débordement du tableau à volets (`76d6220`) était là depuis que la
+seconde face existe, avec 573 tests verts au-dessus. Aucun ne pouvait le
+voir — il fallait qu'un moteur mette une police à chasse fixe dans une
+largeur donnée pour que 1118 px contre 469 px existent comme fait. Le
+défaut n'a pas été trouvé en le cherchant, mais en mesurant la place que
+prendrait autre chose.
+
 ### La passe « look » — de `bda2004` à `6c96584`
 
 Livrée. Elle a produit, dans l'ordre : les contrôles dessinés au lieu
@@ -1236,6 +1244,46 @@ pas retirée, il la porte encore.
 **Onze contre-épreuves, quatre passées à tort.** Elles sont racontées
 plus bas, avec le reste de ce que la méthode a coûté.
 
+### Ce que la console lit — `76d6220`
+
+Le premier usage du document à l'écran, et il porte sur les deux seules
+choses qui étaient utilisables tout de suite : l'origine et les vidéos
+mortes. Le reste — le lien vers la fiche Shazam, les identifiants, la
+palette — n'existe encore nulle part, faute de reconnaissance nouvelle
+depuis `f94eca7` ; c'est du crédit sur la passe globale, pas de la
+donnée.
+
+**L'origine, en troisième face du tableau à volets.** Le titre et la
+chaîne de la vidéo, préfixés `from`. Le préfixe n'est pas décoratif : le
+tableau n'étiquette aucune de ses faces, et les deux autres sont jointes
+par des points médians — « Chill Masters · SYNAPSON - Djon Maya Maï » se
+lit exactement comme un label et un album. Cinq caractères achètent la
+distinction. Une face vide ne prend pas son tour, donc un morceau sans
+origine récupérée garde deux faces, et un morceau qui n'en a qu'une ne
+tourne pas du tout.
+
+**Les onze vidéos disparues, marquées.** Le lien passait 404 en silence ;
+il est maintenant ambre — le même que les junks, parce qu'il dit la même
+chose — avec un signe et une infobulle. **Il reste un lien** : trois des
+onze répondent 401 ou 403, c'est-à-dire une vidéo passée en privé et des
+blocages régionaux, et ceux-là peuvent rouvrir. Le supprimer enlèverait
+le seul moyen de le savoir.
+
+**Le tableau débordait déjà, et il a fallu le borner d'abord.** Rien ne
+limitait une face : la ligne de sortie atteint 144 caractères sur le plus
+long morceau, contre un panneau qui en tient une soixantaine. Rendu dans
+un navigateur et mesuré : **1118 px de tableau dans 469 px de ligne**, le
+texte passait sous la colonne de droite et la page portait une barre de
+défilement horizontale. Les deux nombres sont maintenant lus au moment du
+rendu — la police est à chasse fixe mais sa taille est en `em`, donc un
+caractère ne fait que la largeur qu'il fait dans ce panneau-là — et la
+face est coupée à ce qui tient, avec des points de suspension à la place
+du reste : **474 px dans 480 px**, plus de défilement.
+
+C'est la mesure qui a décidé l'ordre des travaux. Ajouter la troisième
+face sur un tableau non borné aurait étendu le défaut de la centaine de
+morceaux à longue ligne de sortie aux **933** qui ont une origine.
+
 ### Ce qui reste
 
 **Retirer les sept `TXXX` devenues redondantes** — les quatre de Shazam,
@@ -1244,12 +1292,16 @@ encore écrites, volontairement, parce qu'elles sont le chemin de retour.
 C'est **le seul geste irréversible** de toute l'opération, et il n'y a
 aucune raison de le presser.
 
-**Ce que la console lit.** Le document porte trois choses qu'aucune trame
-ne portera jamais : l'origine YouTube, la provenance de chaque valeur, et
-les identifiants Shazam. C'est la réponse laissée en suspens à la question
-de l'UI — quatre champs de plus dans le formulaire de l'inspecteur
-seraient redondants avec la ligne sous le titre ; ces trois-là ne le sont
-pas.
+**La provenance à l'écran**, seul des trois usages à ne pas être livré.
+Pas quatre champs de plus dans le formulaire — ils seraient redondants
+avec la ligne sous le titre — mais une phrase au-dessus, quand il y a
+lieu : *« artiste et titre saisis à la main »*. Son utilité est précise,
+c'est l'avertissement qui manque avant de cliquer *Ask Shazam* sur un
+morceau corrigé soi-même, puisque la reconnaissance écrase. Elle ne
+s'afficherait jamais aujourd'hui : sur 5 918 champs, **4 392 sont
+`legacy` et 1 526 `shazam`, aucun `user`** — `by="user"` ne s'écrit que
+lorsque l'établi sauvegarde, et aucune sauvegarde n'a eu lieu depuis. Ça
+se remplira à l'usage, pas avant.
 
 **La passe Shazam globale**, qui n'attend plus rien : l'inventaire des
 données est clos, et elle écrira désormais dans le monde d'après. Côté
@@ -1281,12 +1333,20 @@ fois pendant une contre-épreuve, pour restaurer un fichier modifié
 exprès. Les contre-épreuves passent maintenant par une copie hors de
 git.
 
-Les contre-épreuves, elles, ont payé : elles ont attrapé huit tests
+Les contre-épreuves, elles, ont payé : elles ont attrapé neuf tests
 creux, dont un `outline:\s*[^;n]` qui reconnaissait `outline: none` à
 travers l'espace et comptait donc chaque suppression comme un anneau, un
 `".t" in selector` qui attrapait aussi `.track`, et une regex cherchant la
 fin du groupe `#volume` qui ne matchait rien du tout à cause des `</div>`
 imbriqués.
+
+Le neuvième cherchait `song.video_gone` dans la source du gabarit pour
+vérifier qu'un lien mort est marqué. La chaîne y est deux fois — une pour
+la classe, une pour le signe d'avertissement — donc désactiver la classe
+laissait le test vert. Réécrit sur la page rendue, avec les deux cas
+côte à côte : vidéo morte et vidéo vivante, la classe présente dans l'une
+et absente dans l'autre. Lire le gabarit, c'est vérifier ce qu'on a
+écrit ; lire la page, c'est vérifier ce que le lecteur reçoit.
 
 Le huitième est d'une espèce à part, parce que rien dans son texte
 n'était faux. Il vérifiait qu'une pochette inchangée garde l'instant où
