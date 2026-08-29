@@ -110,9 +110,20 @@ respecter.
 
 ## Popups
 
-Une seule : la confirmation d'import (téléchargement long, action
-lourde), déjà présente en `hx-confirm`. Junkiser est réversible et n'en
-mérite pas.
+Une seule, et **ce n'est plus celle qui était prévue ici**. La règle
+posée à l'ouverture — confirmer l'import, ne pas confirmer le junkisage —
+s'est inversée à l'usage, dans les deux sens :
+
+L'import n'en a plus. Le volet le dit à l'endroit où le dialogue se
+trouvait : ce qui est arrivé reste, et relancer est un clic. Un dialogue
+n'y gardait rien.
+
+Junkiser en a une, sur la ligne comme dans l'inspecteur. Le raisonnement
+d'origine — « c'est réversible » — était faux : `junkize_song` appelle
+`reset_state`, qui efface artiste, titre, pochette, données de sortie et
+provenance. Shazam peut les retrouver, mais une correction faite à la
+main est perdue. Le libellé du dialogue le dit sans détour : *« This
+cannot be undone. »*
 
 ## Ce qui disparaît
 
@@ -890,9 +901,9 @@ modèle lit l'id.**
 
 ### Le code d'enregistrement, jeté à chaque réponse — `9fba802`, `05f0bfc`
 
-Shazam renvoie un ISRC sur chaque réponse. Rien ne le lisait : **zéro
-trame `TSRC` sur 944 fichiers**, alors qu'ID3 a la trame standard et que
-tout lecteur sait la lire.
+Shazam renvoie un ISRC sur chaque réponse. Rien ne le lisait : avant
+cette correction, **aucun des 944 fichiers ne portait de trame `TSRC`**,
+alors qu'ID3 a la trame standard et que tout lecteur sait la lire.
 
 Ce n'est pas un identifiant de plus. Un ISRC désigne **un
 enregistrement**, pas une chanson ni un disque : deux prises de la même
@@ -904,7 +915,8 @@ de *The Power* de Snap! contre celle de Chill Rob G.
 Il rejoint album, label, année et genre : extrait de `track.isrc`, lu à
 l'ouverture, écrit dans `TSRC`, effacé par `reset_state`. Le critère du
 rattrapage s'élargit en conséquence — un morceau complet par ailleurs
-mais sans code redevient candidat, ce qui est le cas des 944.
+mais sans code redevient candidat, ce qui était le cas des 944 avant
+l'essai décrit ci-dessous, et l'est de 942 depuis.
 
 La passe n'a pas été relancée. Chacune coûte cinq heures et huit cents
 requêtes ; en lancer une pour l'ISRC puis une autre pour ce qui manquera
@@ -993,8 +1005,9 @@ source de vérité tant que l'application les écrit.
 
 ### Où on en est
 
-Les 944 documents sont écrits. Médiane **907 octets**, 0,8 Mo pour toute
-la bibliothèque contre 58,6 Mo de balises. Relus intégralement : 944/944,
+Les 944 documents sont écrits. Médiane **907 octets** à ce stade — 1056
+depuis que le bloc `youtube` s'y ajoute — soit 0,9 Mo pour toute la
+bibliothèque contre 58,6 Mo de balises. Relus intégralement : 944/944,
 aucun illisible, pochettes et crêtes intactes. Seconde passe : **944
 « matches the frames », 0 écrit** — l'idempotence tient sur la vraie
 bibliothèque et pas seulement en test.
