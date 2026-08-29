@@ -11,7 +11,7 @@ import importlib.util
 from pathlib import Path
 
 import pytest
-from mutagen.id3 import ID3, TALB, TPE1, TIT2, TXXX
+from mutagen.id3 import ID3, TALB, TPE1, TIT2, TSRC, TXXX
 from mutagen.mp3 import MP3
 
 _FRAME = b"\xff\xfb\x90\xc0" + b"\x00" * 413
@@ -33,7 +33,7 @@ def script():
 
 
 def _song(repo: Path, name: str, *, cover=None, album=False,
-          provenance=False, junk=False):
+          provenance=False, isrc=False, junk=False):
     folder = repo / PLAYLIST
     folder.mkdir(parents=True, exist_ok=True)
     suffix = " (JUNK)" if junk else ""
@@ -51,6 +51,8 @@ def _song(repo: Path, name: str, *, cover=None, album=False,
         tags.add(TALB(encoding=3, text="Kingdom of Welcome Addiction"))
     if provenance:
         tags.add(TXXX(encoding=3, desc="Shazam artist", text="IAMX"))
+    if isrc:
+        tags.add(TSRC(encoding=3, text="GBDHC1907207"))
 
     tags.save(path, v1=0, v2_version=3)
     return path
@@ -76,23 +78,41 @@ def test_a_shazam_cover_is_what_identifies_the_oldest_songs(script, tmp_path):
     assert script.was_identified(MP3(tagged).tags)
 
 
-def test_the_two_gaps_are_reported_apart(script, tmp_path):
-    """A song can be missing the release data, the provenance, or both.
-    Reporting them apart is what lets the run say which half of the
-    library it is repairing."""
+def test_the_gaps_are_reported_apart(script, tmp_path):
+    """A song can be missing the release data, the provenance, the
+    recording code, or any combination. Reporting them apart is what lets
+    the run say which part of the library it is repairing."""
 
-    neither = _song(tmp_path, "A - One", cover=SHAZAM_COVER,
-                    album=True, provenance=True)
+    whole = _song(tmp_path, "A - One", cover=SHAZAM_COVER,
+                  album=True, provenance=True, isrc=True)
     release_only = _song(tmp_path, "A - Two", cover=SHAZAM_COVER,
-                         provenance=True)
+                         provenance=True, isrc=True)
     provenance_only = _song(tmp_path, "A - Three", cover=SHAZAM_COVER,
-                            album=True)
-    both = _song(tmp_path, "A - Four", cover=SHAZAM_COVER)
+                            album=True, isrc=True)
+    isrc_only = _song(tmp_path, "A - Four", cover=SHAZAM_COVER,
+                      album=True, provenance=True)
+    nothing = _song(tmp_path, "A - Five", cover=SHAZAM_COVER)
 
-    assert script.what_is_missing(MP3(neither).tags) == set()
+    assert script.what_is_missing(MP3(whole).tags) == set()
     assert script.what_is_missing(MP3(release_only).tags) == {"release"}
     assert script.what_is_missing(MP3(provenance_only).tags) == {"provenance"}
-    assert script.what_is_missing(MP3(both).tags) == {"release", "provenance"}
+    assert script.what_is_missing(MP3(isrc_only).tags) == {"isrc"}
+    assert script.what_is_missing(MP3(nothing).tags) == {
+        "release", "provenance", "isrc",
+    }
+
+
+def test_a_song_complete_but_for_its_recording_code_is_a_candidate(
+    script, tmp_path
+):
+    """Every song in the library is in that state: Shazam returned an
+    ISRC on every answer and nothing ever read it. Without this the
+    backfill would report nothing to do."""
+
+    _song(tmp_path, "A - Rattrapee", cover=SHAZAM_COVER,
+          album=True, provenance=True)
+
+    assert len(script.candidates(tmp_path)) == 1
 
 
 def test_nothing_missing_is_not_worth_fifteen_seconds(script, tmp_path):
@@ -100,7 +120,7 @@ def test_nothing_missing_is_not_worth_fifteen_seconds(script, tmp_path):
     already done fall out of the list on the next pass."""
 
     _song(tmp_path, "A - Done", cover=SHAZAM_COVER, album=True,
-          provenance=True)
+          provenance=True, isrc=True)
 
     assert script.candidates(tmp_path) == []
 
