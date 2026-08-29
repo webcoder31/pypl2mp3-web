@@ -824,6 +824,70 @@ exactement ce qu'est un junk. Deux tests tiennent les deux moitiés du
 distinguo, et la contre-épreuve les vérifie dans les deux sens — remettre
 `None` sur la pochette, ou mettre `False` sur les noms.
 
+### La pochette ne se mettait jamais à jour — `d4f23f2`, `a5c52d1`, `fa71f4e`
+
+Signalé comme « l'image affichée ne change pas quand on modifie son URL ».
+La reproduction a montré **deux** défauts, dont le second beaucoup plus
+grave que le symptôme.
+
+**Le navigateur resservait son cache.** `/songs/<id>/cover` est une
+adresse immuable et la réponse ne porte ni `ETag`, ni `Last-Modified`, ni
+`Cache-Control`. La date du fichier est désormais dans l'adresse
+(`?v=…`). Elle bouge aussi lors d'écritures sans rapport — une balise,
+les crêtes — et la pochette est alors refetchée pour rien : quelques
+dizaines de kilo-octets en local contre une image périmée.
+
+**Mais la pochette n'était jamais retéléchargée non plus.** `apply_fix`
+appelait `update_state` d'abord, ce qui écrit la nouvelle URL dans le
+fichier ; puis `update_cover_art` décidait de télécharger **en comparant
+l'URL demandée à celle du fichier**, que `update_state` venait d'y
+écrire. Toujours égales. Mesuré : **trois sauvegardes, trois URL
+différentes, trois URL mises à jour, zéro téléchargement.**
+
+La pochette est maintenant récupérée **avant** l'écriture des noms, ce
+qui rend l'opération tout ou rien : une pochette introuvable laisse le
+morceau intact, là où l'ancien ordre laissait un fichier annonçant une
+image qu'il n'avait jamais reçue.
+
+**Deux défauts de fond trouvés en cherchant l'origine.**
+
+`has_cover_art` lisait `tags["APIC:Cover art"]` — l'image *appelée* ainsi.
+Une trame APIC porte pourtant deux choses : un `type` normalisé (3 = face
+avant) et une `desc` en texte libre inventée par qui l'écrit. Le
+programme lisait le surnom. **105 fichiers** portant `Stored cover art`,
+posé par une version antérieure au dépôt, étaient donc comptés comme
+dépourvus de pochette — et `list-junks` signale un morceau sans pochette.
+La recherche porte désormais sur le type : **105 → 0**, sans toucher un
+seul fichier.
+
+Et le record d'origine a été rétabli. L'ancien CLI gardait **deux** URL —
+celle demandée et celle d'où venait l'image embarquée — et comparait
+contre la seconde. Le refactor a continué de l'écrire mais s'est mis à
+comparer contre la première. Pire, `update_id3_tags` efface toutes les
+`TXXX` avant de réécrire celles qu'il connaît, et celle-là n'en était
+pas : **un fichier sur 944 la portait encore**. Rétablie aux trois
+endroits — lecture, comparaison, réécriture — et mesurée : cinq
+sauvegardes, deux téléchargements, exactement ceux où l'URL changeait.
+
+### L'id YouTube logé dans le numéro de piste — `2459840`
+
+Relevé en dressant la topographie des balises. **659 fichiers** portaient
+leur id vidéo dans `TRCK`, la trame que l'ID3 définit comme le numéro de
+piste — posé par une version antérieure au dépôt, jamais relu depuis :
+`TRCK` n'apparaît dans aucun commit des deux dépôts. Inerte du point de
+vue de l'outil, mais pas du point de vue des lecteurs : tout logiciel
+affichant un numéro de piste montrait `QxdSAAWRs3E`.
+
+La règle de suppression est étroite, et c'est le point : une `TRCK` n'est
+retirée que si sa valeur **est exactement l'id du morceau**. Pas « onze
+caractères », pas « ressemble à un id ». Aucun des 944 ne portait de vrai
+numéro de piste, mais un script qui les aurait détruits aurait été faux
+même en ne détruisant rien ici.
+
+Après passage, vérifié indépendamment du script : **0 `TRCK`, 944
+`TXXX:YouTube ID`, 944 pochettes, 0 fichier illisible, 944/944 dont le
+modèle lit l'id.**
+
 ## Méthode — trois échecs de procédure, et ce que les contre-épreuves ont appris
 
 Le document dit ailleurs qu'aucune page n'avait jamais été rendue par un
