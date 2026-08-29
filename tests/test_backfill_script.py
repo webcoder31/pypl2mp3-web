@@ -210,3 +210,126 @@ def test_a_refusal_is_asked_again_before_being_given_up_on(script):
         f"a refusal is not asked again: {source}"
     )
     assert "THROTTLE_SECONDS" in source and "RETRY_SECONDS" in source, source
+
+
+# ---------------------------------------------------------------------
+# What the pass actually writes.
+#
+# The tests above ask the helpers which songs are worth a request. These
+# drive the loop itself with a stubbed Shazam, because two things the
+# pass has to write were found missing by reading it rather than by
+# running it, and reading it is how they came to be missing.
+# ---------------------------------------------------------------------
+
+_ANSWER = {
+    "track": {
+        "title": "Kiss",
+        "subtitle": "IAMX",
+        "key": "470682427",
+        "url": "https://www.shazam.com/track/470682427/kiss",
+        "albumadamid": "1485457072",
+        "artists": [{"adamid": "110799"}],
+        "images": {
+            "coverart": "https://is1-ssl.mzstatic.com/kiss.jpg",
+            "joecolor": "b:5e5d71p:f7e4df",
+        },
+        "isrc": "GBDHC1907207",
+        "genres": {"primary": "Alternative"},
+        "sections": [{"metadata": [
+            {"title": "Album", "text": "Kingdom of Welcome Addiction"},
+            {"title": "Label", "text": "61 Seconds"},
+            {"title": "Released", "text": "2009"},
+        ]}],
+    }
+}
+
+
+class _Args:
+    def __init__(self, repository):
+        self.repository = str(repository)
+        self.playlist = ""
+        self.limit = 0
+        self.min_score = 50
+        self.dry_run = False
+
+
+async def _pass(script, tmp_path, monkeypatch, answer=_ANSWER):
+    """One run of the loop, with the network and the throttle removed."""
+
+    monkeypatch.setattr(
+        script, "recognise",
+        lambda _shazam, _path, _last: _resolved(answer),
+    )
+    monkeypatch.setattr(script, "Shazam", lambda: object())
+
+    return await script.run(_Args(tmp_path))
+
+
+async def _resolved(value):
+    return value
+
+
+async def test_the_pass_records_the_handles_no_frame_can_hold(
+    script, tmp_path, monkeypatch
+):
+    """They exist only in the document and only a recognition produces
+    them. The pass reaches for `recognize_song` directly, on purpose — so
+    it has to collect them itself, and it did not: five hours of requests
+    would have left the Shazam page, the Apple identifiers and the
+    palette at zero across the whole library.
+    """
+
+    from pypl2mp3.libs import metadata
+
+    path = _song(tmp_path, "IAMX - Kiss", cover="https://is1-ssl.mzstatic.com/x.jpg")
+
+    await _pass(script, tmp_path, monkeypatch)
+
+    stored = metadata.read(next(tmp_path.rglob("*.mp3")))["sources"]["shazam"]
+
+    assert stored["key"] == "470682427"
+    assert stored["apple_album"] == "1485457072"
+    assert stored["apple_artists"] == ["110799"]
+    assert stored["colors"] == "b:5e5d71p:f7e4df"
+    assert stored["url"].endswith("/kiss")
+
+
+async def test_the_pass_says_who_decided_the_release(
+    script, tmp_path, monkeypatch
+):
+    """Shazam decided the album, the year, the genre and the label.
+    Written without saying so they were marked `legacy` — the document's
+    word for "nobody knows" — over the four values whose origin is the
+    least uncertain thing in the file."""
+
+    _song(tmp_path, "IAMX - Kiss", cover="https://is1-ssl.mzstatic.com/x.jpg")
+
+    await _pass(script, tmp_path, monkeypatch)
+
+    from pypl2mp3.libs.song import SongModel
+
+    decided = SongModel(next(tmp_path.rglob("*.mp3"))).decided_by
+
+    for field in ("album", "year", "genre", "publisher"):
+        assert decided[field] == "shazam", f"{field} is {decided.get(field)!r}"
+
+
+async def test_the_pass_leaves_the_name_alone(
+    script, tmp_path, monkeypatch
+):
+    """The whole reason it does not call `shazam_song`. Saying who
+    decided the release must not turn into claiming the name too."""
+
+    _song(tmp_path, "IAMX - Kiss", cover="https://is1-ssl.mzstatic.com/x.jpg")
+
+    from pypl2mp3.libs.song import SongModel
+
+    before = SongModel(next(tmp_path.rglob("*.mp3")))
+    before.update_state(artist="Typed By Hand", by="user")
+
+    await _pass(script, tmp_path, monkeypatch)
+
+    after = SongModel(next(tmp_path.rglob("*.mp3")))
+
+    assert after.artist == "Typed By Hand"
+    assert after.decided_by["artist"] == "user"

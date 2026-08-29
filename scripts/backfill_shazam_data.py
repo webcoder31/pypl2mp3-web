@@ -16,6 +16,10 @@ Three gaps, all historical, all filled by one recognition per song:
     separates a remaster, a live take or a remix from the original — the
     ambiguity that left thirteen songs unconfirmable last time.
 
+It writes what the answer holds and what the answer *is*: the release
+data into the standard frames, and the identifiers, page and palette into
+the document, where nothing else can carry them.
+
 What this does NOT do is call `shazam_song`. That method reapplies the
 whole match: on a good score it rewrites the artist, the title and the
 cover art, and renames the file. Run over hundreds of songs that may have
@@ -280,7 +284,25 @@ async def run(args) -> Tally:
 
         if not args.dry_run:
             try:
-                song.update_state(**written)
+                # The handles the answer carries — the Shazam page, the
+                # Apple identifiers, the cover's palette. No frame can
+                # hold them, so they exist only in the document, and only
+                # a recognition produces them. `shazam_song` collects
+                # them; this script deliberately does not go through it,
+                # which is why it has to collect them itself.
+                #
+                # Set before the save, because that is where `_document`
+                # reads them — and their presence is what tells a fresh
+                # answer from an ordinary save that must not drop what an
+                # earlier answer left.
+                song._shazam_extras = SongModel._shazam_identity(track)
+
+                # Shazam decided the album, the year, the genre and the
+                # label. Without saying so they were written as `legacy`,
+                # the document's word for "nobody knows" — over the four
+                # values whose origin is the least uncertain thing in the
+                # file.
+                song.update_state(by="shazam", **written)
             except Exception as error:
                 tally.failed.append((path.name, f"{type(error).__name__}"))
                 print(f"       write failed: {error}")
