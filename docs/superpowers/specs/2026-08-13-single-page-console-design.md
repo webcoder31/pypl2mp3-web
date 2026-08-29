@@ -34,15 +34,24 @@ la précédente.
 
 ## Structure
 
+Prévue en trois colonnes avec le lecteur en pied de page, elle n'a pas
+tenu : la passe « look » a mis l'inspecteur au-dessus de la liste et la
+nav de côté, pour donner à la liste toute la largeur de la colonne
+principale. Le schéma ci-dessous est celui qui est en place.
+
 ```
-┌──────────────────────────────────────────────────────┐
+┌────────────────────────────────────┬─────────────────┐
 │ en-tête : recherche · compteurs · ruban des jobs     │  #header
-├───────────┬──────────────────────┬───────────────────┤
-│ playlists │ liste des morceaux   │ inspecteur        │
-│  #nav     │  #list               │  #inspector       │
-├───────────┴──────────────────────┴───────────────────┤
-│ lecteur : ⏮ ▶ ⏭  titre  ────●──── temps    #player   │
-└──────────────────────────────────────────────────────┘
+├────────────────────────────────────┼─────────────────┤
+│ inspecteur                #inspector│ playlists       │
+├────────────────────────────────────┤  #nav           │
+│ ⏮ ▶ ⏭  ▂▃▅▂▃▁▂  0:47   🔊▬▬▭ #player│                 │
+├────────────────────────────────────┤                 │
+│ PLAYLIST │ IMPORTS          onglets │                 │
+├────────────────────────────────────┤                 │
+│ liste des morceaux                  │                 │
+│  #list  —  ou  #imports             │                 │
+└────────────────────────────────────┴─────────────────┘
 ```
 
 ### La règle structurelle non négociable
@@ -68,9 +77,15 @@ survivre à chaque interaction, il ne peut pas être dans le flux échangé.
 
 ## État et rechargement
 
-La sélection courante (playlist, recherche, junk, morceau sélectionné)
-est poussée dans l'URL par `history.replaceState`. Recharger la page
-restitue la vue ; un signet sur « les junks de telle playlist » marche.
+Les filtres — `playlist`, `artist`, `q`, `junk` — sont poussés dans l'URL
+par `history.replaceState`. Recharger la page restitue la vue ; un signet
+sur « les junks de telle playlist » marche.
+
+**Le morceau sélectionné n'y est pas**, contrairement à ce que cette
+section annonçait. La route de la console ne lit aucun identifiant et le
+gabarit rend toujours « Select a song. » ; c'est la page qui choisit le
+premier de la liste à l'arrivée. Mettre le morceau dans l'URL demanderait
+que le serveur sache pré-remplir l'inspecteur, ce qu'il ne fait pas.
 
 La file de lecture est de l'état client. Sémantique habituelle des
 lecteurs : jouer un morceau depuis une vue fait de cette vue la file.
@@ -84,13 +99,29 @@ gabarit d'inspecteur différent — pas une autre page, pas une modale.
 Entrer dans l'établi cale la file de lecture sur la sélection triée :
 le morceau jugé est le morceau entendu.
 
-Touches : `✓` accepter Shazam, `✗` éditer, `⏭` passer, `␣` pause,
-`⇥` vidéo, `⌫` junkiser, `⎋` replier.
+Touches, telles qu'elles ont été faites — la liste prévue ici annonçait
+un jeu de raccourcis dédiés (`✓` accepter, `✗` éditer, `⌫` junkiser) qui
+n'a pas vu le jour :
+
+| touche | effet | portée |
+|---|---|---|
+| `←` `→` | morceau précédent / suivant | partout |
+| `↑` `↓` | volume, par pas de 5 % | partout |
+| `␣` | lecture / pause | partout |
+| `⇥` | ouvrir la vidéo | partout |
+| `⏎` | enregistrer le panneau | établi seulement |
+| `⎋` | replier l'établi | établi seulement |
+
+Accepter la proposition de Shazam et junkiser restent des boutons.
+`⏎` fait office d'« accepter » puisqu'il enregistre ce que le panneau
+montre, mais rien n'est câblé sur `✓` ni sur `⌫`.
 
 ### Préchargement Shazam — et ses deux limites
 
-`SongModel.last_shazam_request_time` est un **attribut de classe**
-(`song.py:527`) : la temporisation de 15 s est globale au processus.
+`SongModel.last_shazam_request_time` est un **attribut de classe** : la
+temporisation de 15 s est globale au processus. (Le numéro de ligne cité
+ici à l'origine avait dérivé de trois lignes — un rappel qu'une
+référence de ce genre vieillit sans prévenir.)
 
 **Conséquence 1 — le préchargement est forcément séquentiel.** Un seul
 worker de fond qui parcourt la file et range les résultats dans un cache
@@ -106,7 +137,7 @@ toutes les deux et tirent en même temps. Aujourd'hui ça n'arrive pas
 parce qu'il n'y a qu'un appelant à la fois ; le worker de préchargement
 en crée un second. Un `asyncio.Lock` autour de l'attente **et** de
 l'appel, sinon le préchargement casse la limite qu'il est censé
-respecter.
+respecter. *Posé depuis, en `ff39232` : `SongModel.shazam_lock()`.*
 
 ## Popups
 
