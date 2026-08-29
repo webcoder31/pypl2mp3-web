@@ -102,7 +102,10 @@ def test_only_the_three_witnessed_fields_are_ever_corrected(script):
     )
 
     assert script.corrections(document) == []
-    assert metadata.field(script.repair(document), "album")["by"] == "legacy"
+
+    # A different rule reaches the album — it is one of the four only
+    # Shazam can write — but not this one, and not on this evidence.
+    assert [n for n, _v, _a in script.corrections(document)] == []
 
 
 def test_an_empty_field_is_not_a_match_for_an_empty_answer(script):
@@ -139,3 +142,148 @@ def test_a_document_already_right_is_not_rewritten(script, tmp_path):
 
     assert script.corrections(document) == []
     assert metadata.write(path, script.repair(document)) is False
+
+
+# ---------------------------------------------------------------------
+# Who decided the fields no answer of Shazam's witnesses.
+#
+# Three rules, each resting on something the code makes true rather than
+# on what the values look like.
+# ---------------------------------------------------------------------
+
+def _with_origin(document, author="Some Channel", title="Some Video"):
+    return metadata.set_source(
+        document, "youtube", {"author": author, "title": title}, at=WHEN
+    )
+
+
+def _blank_legacy(name, value, vid="aaaaaaaaaaa"):
+    return metadata.set_field(metadata.blank(vid), name, value, "legacy", at=None)
+
+
+def test_a_release_field_can_only_be_shazams(script):
+    """Exactly two places write those four — the accepted-match branch of
+    `shazam_song` and the backfill. The import does not touch them, and
+    neither the workbench form nor the terminal prompt offers them, so
+    there is no door a person could have come through.
+
+    Marking them as somebody's would put the panel's warning on nearly
+    every song in the library, which is the same as removing it."""
+
+    for name, value in (("album", "Alive"), ("year", "2018"),
+                        ("genre", "Alternative"), ("publisher", "61 Seconds")):
+        document = _with_origin(_blank_legacy(name, value))
+        got = script.inferences(document, is_junk=False)
+
+        assert got == [(name, value, None, "shazam")], name
+
+
+def test_a_name_the_video_had_is_the_imports(script):
+    """The import writes `video.author` and `video.title` unparsed, and
+    oEmbed returns those same two strings — so this is an exact match and
+    not a resemblance."""
+
+    document = _with_origin(_blank_legacy("artist", "Some Channel"))
+
+    assert script.inferences(document, is_junk=False) == [
+        ("artist", "Some Channel", None, "import")
+    ]
+
+
+def test_a_name_the_video_never_had_is_somebodys(script):
+    """`Pixies` against a channel called `Subbacultcha`, `U2` against
+    `Joshua Miller`. Nothing else could have put them there: it is not
+    the video's, and the repair above already claimed everything that
+    matched Shazam's answer."""
+
+    document = _with_origin(_blank_legacy("artist", "Pixies"),
+                            author="Subbacultcha")
+
+    assert script.inferences(document, is_junk=False) == [
+        ("artist", "Pixies", None, "user")
+    ]
+
+
+def test_a_junk_song_is_never_said_to_be_somebodys(script):
+    """Its values were not typed. `reset_state` clears the frames, the
+    constructor then derives artist and title from the filename and
+    writes them straight back — so a junk song carries names nobody
+    chose, and a warning there would be about nothing."""
+
+    document = _with_origin(_blank_legacy("artist", "Pixies"),
+                            author="Subbacultcha")
+
+    assert script.inferences(document, is_junk=True) == []
+
+
+def test_a_junk_song_still_gets_what_is_certain(script):
+    """The exclusion is about the inference from absence, not about the
+    song. What only Shazam can have written is Shazam's on a junk song
+    too."""
+
+    document = _with_origin(_blank_legacy("album", "Alive"))
+
+    assert script.inferences(document, is_junk=True) == [
+        ("album", "Alive", None, "shazam")
+    ]
+
+
+def test_this_videos_own_thumbnail_is_the_imports(script):
+    """The id is in the path, so this is not "looks like YouTube" but
+    "is the thumbnail of this very video"."""
+
+    url = "https://i.ytimg.com/vi/aaaaaaaaaaa/hq720.jpg"
+    document = _with_origin(_blank_legacy("cover", url))
+
+    assert script.inferences(document, is_junk=False) == [
+        ("cover", url, None, "import")
+    ]
+
+
+def test_another_videos_thumbnail_is_not(script):
+    """A thumbnail carrying a different id did not come from importing
+    this song, and guessing which door it came through would be
+    guessing."""
+
+    url = "https://i.ytimg.com/vi/zzzzzzzzzzz/hq720.jpg"
+    document = _with_origin(_blank_legacy("cover", url))
+
+    assert script.inferences(document, is_junk=False) == []
+
+
+def test_artwork_apple_serves_is_shazams(script):
+    """All 169 of the covers left over sit on that host. Nobody pasted a
+    hundred and sixty-nine Apple URLs by hand; they are answers whose
+    exact URL has since moved — a different crop, or a later reply."""
+
+    url = "https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/x/400x400cc.jpg"
+    document = _with_origin(_blank_legacy("cover", url))
+
+    assert script.inferences(document, is_junk=False) == [
+        ("cover", url, None, "shazam")
+    ]
+
+
+def test_a_video_whose_name_was_never_recovered_decides_nothing(script):
+    """Eleven videos went before the pass that would have recorded what
+    they were called. There is nothing to compare against, so the field
+    keeps the honest answer."""
+
+    document = metadata.set_source(
+        _blank_legacy("artist", "Pixies"), "youtube",
+        {"gone": True, "http": 404}, at=WHEN,
+    )
+
+    assert script.inferences(document, is_junk=False) == []
+
+
+def test_what_is_already_attributed_is_left_alone(script):
+    """Both halves: a person's decision outranks every inference here,
+    and a field already marked is not re-derived."""
+
+    for by in ("user", "shazam", "import"):
+        document = _with_origin(
+            metadata.set_field(metadata.blank("a"), "album", "Alive", by, at=WHEN)
+        )
+
+        assert script.inferences(document, is_junk=False) == [], by
