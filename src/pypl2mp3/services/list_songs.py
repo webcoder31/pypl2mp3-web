@@ -39,6 +39,34 @@ class SongSummary:
     genre: str = ""
 
     @property
+    def cover_version(self) -> int:
+        """A number that changes whenever the file does.
+
+        The cover lives at /songs/<id>/cover, an address that never
+        changes, and the response carries no validator of any kind — so a
+        browser that has seen it once keeps showing it. Saving a new cover
+        URL replaced the picture on disk and left the old one on screen,
+        which read as the save having failed.
+
+        The file's own timestamp is the cheapest thing that moves. It also
+        moves when something unrelated is written — a tag edit, the
+        waveform peaks — and the cover is then fetched again for nothing.
+        That is a few tens of kilobytes over a loopback connection, which
+        is a smaller price than a stale picture.
+
+        A property and not a field: the listing builds one summary per
+        song and nine hundred stat() calls would be paid by every page,
+        while only the two panels that draw a cover ever read this.
+        """
+
+        try:
+            return int(self.path.stat().st_mtime)
+        except OSError:
+            # The file went while the page was being built. The panel is
+            # about to 404 anyway; it should not do it from here.
+            return 0
+
+    @property
     def release(self) -> str:
         """The release data as one line, or nothing at all.
 

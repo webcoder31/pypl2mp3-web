@@ -6,7 +6,12 @@
 <div id="inspector-body" class="workbench"
      data-song-id="{{ song.youtube_id }}">
   <div class="workbench-cover">
-    <img src="/songs/{{ song.youtube_id }}/cover" alt="" class="cover"
+    {# ?v= the file's timestamp: the address is otherwise the same
+       forever, the response carries no validator, and a browser
+       that has seen the picture once keeps showing it. Saving a new
+       cover left the old one on screen. #}
+    <img src="/songs/{{ song.youtube_id }}/cover?v={{ song.cover_version }}"
+         alt="" class="cover"
          onerror="this.style.display='none'">
   </div>
 

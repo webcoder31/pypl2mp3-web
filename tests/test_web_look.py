@@ -1660,6 +1660,63 @@ async def test_the_board_holds_each_face_and_stops_when_there_is_one(tmp_path):
     )
 
 
+async def test_the_cover_address_changes_when_the_picture_does(tmp_path):
+    """/songs/<id>/cover never changes and the response carries no
+    validator — no ETag, no Last-Modified, no Cache-Control. A browser
+    that has seen the picture once keeps showing it, so saving a new cover
+    replaced it on disk and left the old one on screen. It read as the
+    save having failed.
+
+    The file's own timestamp is appended to the address. It also moves
+    when something unrelated is written — a tag edit, the waveform peaks —
+    and the picture is then fetched again for nothing. A few tens of
+    kilobytes over loopback is a smaller price than a stale picture.
+    """
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        page = (await client.get("/")).text
+
+    for name in ("_inspector.html", "_workbench.html"):
+        markup = (Path("src/pypl2mp3/web/templates") / name).read_text()
+        assert "/cover?v={{ song.cover_version }}" in markup, (
+            f"{name} asks for the cover at an address that never changes"
+        )
+
+    # And the number really moves with the file.
+    from pypl2mp3.libs.song import SongModel
+    from pypl2mp3.services.list_songs import summarize
+
+    song_file = next(tmp_path.rglob("*.mp3"))
+    before = summarize(SongModel(song_file)).cover_version
+
+    import os
+
+    later = song_file.stat().st_mtime + 5
+    os.utime(song_file, (later, later))
+    after = summarize(SongModel(song_file)).cover_version
+
+    assert before != after, "the address would not change when the file does"
+
+    # A song whose file went while the page was being built asks for
+    # version 0 rather than raising: the panel is about to 404 anyway and
+    # should not do it from here.
+    from pypl2mp3.services.list_songs import SongSummary
+
+    vanished = SongSummary(
+        path=tmp_path / "gone.mp3",
+        youtube_id="aaaaaaaaaaa",
+        artist="IAMX",
+        title="Kiss",
+        playlist="Owner - Alpha [PL000]",
+        duration="00:03:03",
+        is_junk=False,
+    )
+
+    assert vanished.cover_version == 0
+
+
 async def test_the_cover_dissolves_between_songs(tmp_path):
     """The panel is replaced wholesale on every song, so the outgoing
     picture leaves with it and a transition has nothing to hold on to.

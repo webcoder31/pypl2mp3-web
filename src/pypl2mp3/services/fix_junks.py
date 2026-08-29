@@ -119,29 +119,46 @@ async def apply_fix(
     would need to fetch the picture again. `False` is `update_state`'s own
     word for "do not touch".
 
+    The cover is fetched *before* the names are written, and that order
+    is the whole of it. `update_cover_art` decides whether to download by
+    comparing the URL it has been given against the one recorded in the
+    file — and `update_state` writes the new URL into the file, so asked
+    afterwards the two were always equal and the picture was never
+    fetched. Three saves with three different URLs produced three
+    updated URLs and zero downloads.
+
+    Setting the attribute rather than going through `update_state` is
+    what leaves the recorded URL alone long enough for that question to
+    mean something.
+
+    The order has a second effect, and it is an improvement: a cover that
+    cannot be downloaded now leaves the song entirely untouched. It used
+    to write the names and the new URL first, so a failed fetch left the
+    file claiming a picture it had never got.
+
     The song stops being junk: `fix_filename` keeps the current junk
     state unless told otherwise, so `mark_as_junk=False` is what actually
     drops the suffix. The CLI does the same after a successful fix.
 
     Raises:
         SongNotFound: if no song carries that id.
-        Exception: if the cover art cannot be fetched. The tags are
-            already written at that point — reporting success would be
-            wrong, and reporting total failure would be wrong too, so the
-            caller sees the exception and can re-read the song's state.
+        Exception: if the cover art cannot be fetched. Nothing has been
+            written at that point, so the caller can report the failure
+            and the song is as it was.
     """
 
     song_file = find_song_file(repository_path, youtube_id)
     song = SongModel(song_file)
+
+    if cover_art_url:
+        song.cover_art_url = cover_art_url
+        await song.update_cover_art()
 
     song.update_state(
         artist=artist or None,
         title=title or None,
         cover_art_url=cover_art_url or False,
     )
-
-    if cover_art_url:
-        await song.update_cover_art()
 
     song.fix_filename(mark_as_junk=False)
 

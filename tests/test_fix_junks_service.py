@@ -172,6 +172,100 @@ async def test_an_empty_name_still_means_empty(tmp_path):
     assert not written.getall("TIT2"), "the title could not be cleared"
 
 
+def _catch_downloads(monkeypatch, fail: bool = False):
+    """Stand in for the cover download, and count it.
+
+    A one-pixel JPEG is enough: nothing here looks at the picture, only
+    at whether it was fetched at all.
+    """
+
+    import urllib.request
+
+    calls = []
+    jpeg = bytes.fromhex(
+        "ffd8ffe000104a46494600010100000100010000ffdb004300"
+        + "ff" * 64
+        + "ffd9"
+    )
+
+    def fetch(url, filename, hook=None):
+        calls.append(url)
+        if fail:
+            raise OSError("no route to host")
+        Path(filename).write_bytes(jpeg)
+        return filename, None
+
+    monkeypatch.setattr(urllib.request, "urlretrieve", fetch)
+    return calls
+
+
+async def test_a_new_cover_url_actually_fetches_the_picture(
+    tmp_path, monkeypatch
+):
+    """It did not, and nothing said so. `update_cover_art` decides whether
+    to download by comparing the URL it was given against the one recorded
+    in the file — and `update_state` had already written the new URL
+    there, so the two were always equal.
+
+    Three saves with three different URLs produced three updated URLs and
+    zero downloads: the file kept claiming a picture it no longer had, and
+    the panel kept showing the old one.
+    """
+
+    _make_junk(tmp_path)
+    calls = _catch_downloads(monkeypatch)
+
+    await apply_fix(tmp_path, "aaaaaaaaaaa", "A", "B",
+                    cover_art_url="https://example.invalid/first.jpg")
+    assert calls == ["https://example.invalid/first.jpg"]
+
+    await apply_fix(tmp_path, "aaaaaaaaaaa", "A", "B",
+                    cover_art_url="https://example.invalid/second.jpg")
+    assert calls[-1] == "https://example.invalid/second.jpg", (
+        "a changed cover URL did not fetch anything"
+    )
+    assert len(calls) == 2
+
+
+async def test_the_same_cover_url_twice_fetches_once(
+    tmp_path, monkeypatch
+):
+    """The comparison is worth keeping — it is only the order that was
+    wrong. Asking for the picture already embedded should cost nothing."""
+
+    _make_junk(tmp_path)
+    calls = _catch_downloads(monkeypatch)
+
+    for _ in range(3):
+        await apply_fix(tmp_path, "aaaaaaaaaaa", "A", "B",
+                        cover_art_url="https://example.invalid/same.jpg")
+
+    assert len(calls) == 1, f"the same picture was fetched {len(calls)} times"
+
+
+async def test_a_cover_that_cannot_be_fetched_leaves_the_song_alone(
+    tmp_path, monkeypatch
+):
+    """The names used to be written first, so a failed download left the
+    file carrying a new artist, a new title and a URL for a picture it had
+    never received. Fetching first makes it all-or-nothing."""
+
+    path = _make_junk(tmp_path)
+    _catch_downloads(monkeypatch, fail=True)
+
+    with pytest.raises(Exception):
+        await apply_fix(tmp_path, "aaaaaaaaaaa", "THE PHARCYDE",
+                        "Passin Me By",
+                        cover_art_url="https://example.invalid/gone.jpg")
+
+    assert path.exists(), "the song was renamed on a failed save"
+    frames = ID3(path)
+    assert not frames.getall("TPE1"), "the artist was written anyway"
+    assert not frames.getall("TXXX:Cover art URL"), (
+        "the file claims a picture it never received"
+    )
+
+
 async def test_an_unknown_song_raises_rather_than_touching_anything(tmp_path):
     spared = _make_junk(tmp_path)
 
