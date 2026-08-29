@@ -125,25 +125,85 @@ def read(song_path: Path) -> dict | None:
         MetadataError: if the frame is there but is not a document.
     """
 
-    mp3 = mutagen.mp3.MP3(song_path)
+    try:
+        return of(mutagen.mp3.MP3(song_path).tags)
+    except MetadataError as error:
+        raise type(error)(f"{song_path.name}: {error}") from error
 
-    for frame in mp3.tags.getall("PRIV") if mp3.tags else []:
+
+def payload(document: dict) -> bytes:
+    """The document as it is stored.
+
+    Keys sorted, so the same content always produces the same bytes and
+    an unchanged document can be recognised as unchanged.
+    """
+
+    return json.dumps(
+        document, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+
+
+def attach(tags, document: dict) -> bool:
+    """Put the document into a tag set without saving the file.
+
+    For a caller that is already writing frames and about to save: one
+    write instead of two, and no window in which the frames and the
+    document disagree on disk.
+
+    Returns:
+        bool: whether anything changed. False means the tag set already
+            held this exact document, so a caller saving only because of
+            this can skip it.
+
+    Other applications' private frames survive: `delall` takes a frame
+    type and not an owner, so the survivors are put back by hand — the
+    same discipline `waveform.store_peaks` follows.
+    """
+
+    wanted = payload(document)
+    others = []
+    unchanged = False
+
+    for frame in tags.getall("PRIV"):
+        if frame.owner == OWNER:
+            unchanged = frame.data == wanted
+        else:
+            others.append(frame)
+
+    if unchanged:
+        return False
+
+    tags.delall("PRIV")
+
+    for frame in others:
+        tags.add(frame)
+
+    tags.add(PRIV(owner=OWNER, data=wanted))
+
+    return True
+
+
+def of(tags) -> dict | None:
+    """The document held by a tag set, without reopening the file.
+
+    Raises:
+        UnknownVersion: if it was written by a newer build.
+        MetadataError: if the frame is there but is not a document.
+    """
+
+    for frame in tags.getall("PRIV") if tags else []:
         if frame.owner != OWNER:
             continue
 
         try:
             document = json.loads(frame.data.decode("utf-8"))
         except Exception as error:
-            raise MetadataError(
-                f"unreadable document in {song_path.name}"
-            ) from error
+            raise MetadataError("unreadable document") from error
 
-        version = document.get("v")
-
-        if version != VERSION:
+        if document.get("v") != VERSION:
             raise UnknownVersion(
-                f"{song_path.name} carries a version {version} document; "
-                f"this build reads version {VERSION}"
+                f"version {document.get('v')} document; this build reads "
+                f"version {VERSION}"
             )
 
         return document
@@ -167,33 +227,14 @@ def write(song_path: Path, document: dict) -> bool:
     reason.
     """
 
-    payload = json.dumps(
-        document, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
-
     mp3 = mutagen.mp3.MP3(song_path)
 
     if mp3.tags is None:
         mp3.add_tags()
 
-    others = []
-    unchanged = False
-
-    for frame in mp3.tags.getall("PRIV"):
-        if frame.owner == OWNER:
-            unchanged = frame.data == payload
-        else:
-            others.append(frame)
-
-    if unchanged:
+    if not attach(mp3.tags, document):
         return False
 
-    mp3.tags.delall("PRIV")
-
-    for frame in others:
-        mp3.tags.add(frame)
-
-    mp3.tags.add(PRIV(owner=OWNER, data=payload))
     mp3.save(v1=0, v2_version=3)
 
     return True

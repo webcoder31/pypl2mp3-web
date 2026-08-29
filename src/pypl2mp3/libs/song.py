@@ -39,6 +39,7 @@ from slugify import slugify
 from thefuzz import fuzz
 
 # pypl2mp3 libs
+from pypl2mp3.libs import metadata
 from pypl2mp3.libs.exceptions import AppBaseException
 from pypl2mp3.libs.utils import LabelFormatter
 
@@ -527,6 +528,12 @@ class SongModel:
     shazam_client = Shazam()
 
     # Date of last request to Shazam API (class property)
+    # Who is deciding, for the document's sake. A class attribute so it
+    # is always there however the object was built, and "legacy" by
+    # default because a caller that does not say is a caller whose
+    # authority is unknown — which is exactly what "legacy" means.
+    _setter = "legacy"
+
     last_shazam_request_time = 0
 
     # Guards the timestamp above: the 15s gap is enforced by reading it
@@ -1325,6 +1332,90 @@ class SongModel:
         )
 
 
+    # Which document field each attribute feeds. The names match on
+    # purpose: a mapping that had to be read to be understood would be a
+    # second place to keep in step.
+    _DOCUMENT_FIELDS = (
+        "artist", "title", "album", "year", "genre", "publisher", "cover",
+    )
+
+    def _document(self) -> Optional[dict]:
+        """The document to store beside the frames, or None to leave the
+        one already there alone.
+
+        The frames are still the source of truth. This keeps a faithful
+        copy beside them rather than replacing them, so nothing reads it
+        yet and a mistake here costs a stale shadow, not a broken song.
+
+        None is returned when the file carries a document this build
+        cannot read — a newer version, or a damaged frame. Overwriting it
+        would destroy whatever the newer build knew, and refusing to save
+        the frames would break the application over a shadow. Leaving it
+        untouched does neither.
+        """
+
+        try:
+            document = metadata.of(self.mp3.tags)
+        except metadata.MetadataError:
+            return None
+
+        if document is None:
+            document = metadata.blank(self.youtube_id or "")
+
+        values = {
+            "artist": self.artist,
+            "title": self.title,
+            "album": self.album,
+            "year": self.year,
+            "genre": self.genre,
+            "publisher": self.publisher,
+            "cover": self.cover_art_url,
+        }
+
+        for name in self._DOCUMENT_FIELDS:
+            value = values.get(name)
+
+            if not value:
+                continue
+
+            entry = metadata.field(document, name)
+
+            # An unchanged value keeps the entry that knows when it was
+            # decided and by whom. Rewriting it would replace a real
+            # moment with this one and lose the only thing the document
+            # holds that the frames never did.
+            if entry and entry["value"] == str(value):
+                continue
+
+            document = metadata.set_field(
+                document, name, str(value), self._setter
+            )
+
+        answer = {
+            key: value
+            for key, value in (
+                ("artist", self.shazam_artist),
+                ("title", self.shazam_title),
+                ("cover", self.shazam_cover_art_url),
+                ("isrc", self.isrc),
+            )
+            if value
+        }
+
+        if self.shazam_match_score is not None:
+            answer["score"] = int(self.shazam_match_score)
+
+        # Only when there is something new to say: an empty answer must
+        # not erase what an earlier one recorded.
+        if answer and answer != {
+            key: value for key, value in document["sources"]["shazam"].items()
+            if key != "at"
+        }:
+            document = metadata.set_source(document, "shazam", answer)
+
+        return document
+
+
     def update_id3_tags(self) -> None:
         """
         Update all ID3 tags based on current song state.
@@ -1448,6 +1539,14 @@ class SongModel:
                 desc=u"Shazam cover art URL",
                 text=u"" + str(self.shazam_cover_art_url)
             ))
+
+        # The document, beside the frames and in the same write. Two
+        # saves would leave a window in which the file's frames and its
+        # document disagree, and double the I/O of every edit.
+        document = self._document()
+
+        if document is not None:
+            metadata.attach(self.mp3.tags, document)
 
         # Save tags
         self.mp3.save(v1=0, v2_version=3)
@@ -1745,6 +1844,7 @@ class SongModel:
                             shazam_title=title,
                             shazam_cover_art_url=cover_art_url,
                             shazam_match_score=match_score,
+                            by="shazam",
                             **release
                         )
                     except:
@@ -1756,6 +1856,7 @@ class SongModel:
                             shazam_artist=artist,
                             shazam_title=title,
                             shazam_match_score=match_score,
+                            by="shazam",
                             **release
                         )
                 else:
@@ -1967,7 +2068,8 @@ class SongModel:
         publisher: Union[str, None, bool] = False,
         year: Union[str, None, bool] = False,
         genre: Union[str, None, bool] = False,
-        isrc: Union[str, None, bool] = False
+        isrc: Union[str, None, bool] = False,
+        by: Optional[str] = None
     ) -> None:
         """
         Update song metadata and refresh state.
@@ -2008,6 +2110,12 @@ class SongModel:
                 Defaults to False.
             isrc (Union[str, None, bool], optional): New recording code.
                 Defaults to False.
+            by (Optional[str], optional): who is deciding — "user",
+                "shazam" or "import". Recorded in the document beside
+                each value it changes. Defaults to None, which records
+                "legacy": a caller that does not say is a caller whose
+                authority cannot be assumed, and an automated pass must
+                not treat an unattributed value as its own to overwrite.
 
         Example:
             >>> song.update_state(
@@ -2057,6 +2165,9 @@ class SongModel:
         self.genre = (self.genre, genre)[genre != False]
 
         self.isrc = (self.isrc, isrc)[isrc != False]
+
+        if by:
+            self._setter = by
 
         # Reinitialize song object according to new state
         self.__init__(self.path, self.youtube_id)
