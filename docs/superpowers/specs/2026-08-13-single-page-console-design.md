@@ -1284,6 +1284,48 @@ C'est la mesure qui a décidé l'ordre des travaux. Ajouter la troisième
 face sur un tableau non borné aurait étendu le défaut de la centaine de
 morceaux à longue ligne de sortie aux **933** qui ont une origine.
 
+### Ce qui a été saisi, dit avant le bouton qui l'effacerait — `639f3fa`
+
+*Ask Shazam* écrase artiste, titre et pochette sans demander, et une
+valeur saisie à la main est la seule chose du fichier que redemander ne
+ramène pas — c'est exactement ce que le rattrapage avait dû contourner
+en refusant d'appeler `shazam_song`. Le panneau le dit maintenant, en une
+ligne au-dessus des champs : *« title set by hand — Ask Shazam would
+replace it »*.
+
+**Une phrase, pas une marque par champ.** Trois marques disent la même
+chose trois fois, se lisent comme de la décoration, et laissent le
+lecteur en déduire le sens. Une ligne le dit une fois, en mots, à
+l'endroit où ça compte.
+
+**La ligne ne revendique que ce qu'une sauvegarde a réellement écrit**,
+et cette nuance a été trouvée en l'essayant sur la vraie bibliothèque :
+sauvegarder un morceau sans rien changer y laissait tous les `by` en
+place. C'est le bon comportement, et il découle de la règle posée plus
+haut — une valeur inchangée garde l'entrée qui connaît son instant. Un
+champ que personne n'avait jamais revendiqué devient celui de
+l'utilisateur : il a regardé ce que le panneau avait deviné du nom de
+fichier et a pressé Enregistrer, ce qui est une affirmation. Un champ qui
+portait déjà une entrée et n'a pas bougé la garde. C'est la différence
+entre « j'ai tapé ça » et « je n'ai pas protesté », et seul le premier
+mérite un avertissement — sinon la ligne s'afficherait sur les 944.
+
+**Deux portes sur un seul acte, et le document savait les distinguer.**
+Le `fix-junks -p` du terminal écrivait la saisie en `legacy` — le mot du
+document pour « personne ne sait » — donc un morceau corrigé au terminal
+n'avait aucune marque dans la console. Il passe `by="user"`, et la
+restauration depuis YouTube passe `by="import"` plutôt que de prétendre
+qu'on ignore d'où viennent ces valeurs. Le test qui le tient pilote
+réellement `_prompt_for_metadata` avec une saisie simulée : `commands/`
+n'avait jusque-là aucune couverture.
+
+**Le contraste a décidé la couleur.** `--text-3`, où une ligne discrète
+se serait naturellement rangée, donne **3,13:1 en clair et 3,73:1 en
+sombre** à douze pixels — sous le 4,5:1 qu'il faut. Un avertissement
+illisible est pire qu'aucun avertissement, parce que le panneau a l'air
+d'avoir prévenu. `--text-2` donne 6,21 et 6,27. Mesuré dans le
+navigateur, pas choisi à l'œil.
+
 ### Ce qui reste
 
 **Retirer les sept `TXXX` devenues redondantes** — les quatre de Shazam,
@@ -1292,22 +1334,19 @@ encore écrites, volontairement, parce qu'elles sont le chemin de retour.
 C'est **le seul geste irréversible** de toute l'opération, et il n'y a
 aucune raison de le presser.
 
-**La provenance à l'écran**, seul des trois usages à ne pas être livré.
-Pas quatre champs de plus dans le formulaire — ils seraient redondants
-avec la ligne sous le titre — mais une phrase au-dessus, quand il y a
-lieu : *« artiste et titre saisis à la main »*. Son utilité est précise,
-c'est l'avertissement qui manque avant de cliquer *Ask Shazam* sur un
-morceau corrigé soi-même, puisque la reconnaissance écrase. Elle ne
-s'afficherait jamais aujourd'hui : sur 5 918 champs, **4 392 sont
-`legacy` et 1 526 `shazam`, aucun `user`** — `by="user"` ne s'écrit que
-lorsque l'établi sauvegarde, et aucune sauvegarde n'a eu lieu depuis. Ça
-se remplira à l'usage, pas avant.
+**La passe Shazam globale** est désormais le seul gros morceau : environ
+cinq heures. Elle remplirait le lien vers la fiche Shazam, les
+identifiants Apple et la palette, aujourd'hui à **zéro** sur toute la
+bibliothèque, faute de reconnaissance depuis `f94eca7`. Le nombre de
+candidats mesuré (≈800) date d'avant l'ajout du critère ISRC et demande
+à être repris avant de lancer.
 
-**La passe Shazam globale**, qui n'attend plus rien : l'inventaire des
-données est clos, et elle écrira désormais dans le monde d'après. Côté
-YouTube, oEmbed ne rend que la chaîne et le titre ; `publish_date`,
-`length`, `description` et `keywords` demanderaient une requête plus
-lourde et n'ont pas été jugés nécessaires.
+Côté YouTube en revanche, rien n'attend : oEmbed ne rend que la chaîne et
+le titre, et `publish_date`, `length`, `description` et `keywords`
+demanderaient une requête plus lourde sans être jugés nécessaires.
+
+Rien de tout cela ne se dégrade. L'origine YouTube était le seul manque
+qui empirait avec le temps, et elle est sauvée.
 
 ## Méthode — trois échecs de procédure, et ce que les contre-épreuves ont appris
 
@@ -1333,12 +1372,19 @@ fois pendant une contre-épreuve, pour restaurer un fichier modifié
 exprès. Les contre-épreuves passent maintenant par une copie hors de
 git.
 
-Les contre-épreuves, elles, ont payé : elles ont attrapé neuf tests
+Les contre-épreuves, elles, ont payé : elles ont attrapé dix tests
 creux, dont un `outline:\s*[^;n]` qui reconnaissait `outline: none` à
 travers l'espace et comptait donc chaque suppression comme un anneau, un
 `".t" in selector` qui attrapait aussi `.track`, et une regex cherchant la
 fin du groupe `#volume` qui ne matchait rien du tout à cause des `</div>`
 imbriqués.
+
+Le dixième cherchait la phrase « set by hand » dans la page pour vérifier
+qu'elle ne s'affiche que là où il y a lieu. Rendre le paragraphe sans
+condition le laissait passer : vide, il ne contient pas la phrase. Il
+fallait chercher l'élément et pas ses mots — un paragraphe vide n'a rien
+à dire mais garde sa marge, et la ligne d'espace au-dessus des champs
+n'aurait été expliquée par rien.
 
 Le neuvième cherchait `song.video_gone` dans la source du gabarit pour
 vérifier qu'un lien mort est marqué. La chaîne y est deux fois — une pour
@@ -1368,6 +1414,16 @@ les identifiants, si bien qu'il a fallu prendre l'horodatage pour témoin.
 Une suite peut couvrir toute la logique d'une fonctionnalité et rien de
 son branchement — et la contre-épreuve est le seul procédé qui le montre,
 parce que le test manquant, par définition, ne se relit pas.
+
+**Deux fois, la contre-épreuve n'a pas montré un test manquant mais un
+défaut.** Le loquet du junkisage en était un ; l'autre est que le modèle
+mentait sur lui-même : `decided_by` est lu à l'ouverture et
+`update_state` rappelle le constructeur sans relire le fichier, si bien
+qu'un morceau gardait la provenance qu'il avait *avant sa propre
+sauvegarde*. Le panneau ne l'a jamais vu — il est refetché après chaque
+enregistrement — mais le modèle, lui, l'aurait fait voir à qui l'aurait
+cru. Un test qui interroge l'objet plutôt que le fichier est ce qui le
+distingue.
 
 **Et une fois, ce n'est pas un test qu'elle a corrigé mais un
 commentaire.** J'avais écrit que ne pas relire le fichier lors d'une
