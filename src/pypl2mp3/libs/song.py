@@ -15,6 +15,7 @@ Repository: https://github.com/webcoder31/pypl2mp3
 # Python core modules
 from dataclasses import dataclass
 import datetime
+import hashlib
 from pathlib import Path
 import re
 import tempfile
@@ -39,7 +40,7 @@ from slugify import slugify
 from thefuzz import fuzz
 
 # pypl2mp3 libs
-from pypl2mp3.libs import metadata
+from pypl2mp3.libs import legacy, metadata
 from pypl2mp3.libs.exceptions import AppBaseException
 from pypl2mp3.libs.utils import LabelFormatter
 
@@ -540,6 +541,14 @@ class SongModel:
     # on any save that is not a recognition, and that is the signal the
     # document assembly reads to tell a fresh answer from a plain save.
     _shazam_extras: dict = {}
+
+    # Set by `reset_state` and consumed by `_document`, because the
+    # constructor stands between them: `reset_state` clears the
+    # attributes and re-calls it, and by the time the document is built
+    # there is nothing left to distinguish "junked" from "a song nothing
+    # was ever found out about". The two must not write the same
+    # document — one has a record to erase, the other has none.
+    _reset_wanted: bool = False
 
     last_shazam_request_time = 0
 
@@ -1061,20 +1070,52 @@ class SongModel:
         self.should_be_renamed = False
         self.should_be_shazamed = False
 
-        # YouTube ID is required.
-        # Try to get it from constructor parameters first, 
-        # then from song state, 
-        # then from ID3 tags, 
-        # then from MP3 filename.
-        # If not found, raise an error.
+        # What the file says about itself, read once and asked below.
+        #
+        # The document answers first. A file that has none — arrived from
+        # elsewhere, or written before the document existed — is read
+        # through `legacy`, which turns its frames into the same shape.
+        # Below this line the constructor never asks a frame anything,
+        # which is the point: a frame is found by the free-text label
+        # somebody gave it, and three generations of labels living in the
+        # same library at once is what that cost.
+        #
+        # Only on a real initialization, and that is an economy and not
+        # a safeguard — a counter-experiment removing the guard broke
+        # nothing, because every read below is already behind the same
+        # condition. What it saves is the work: `update_state` re-calls
+        # this constructor on every edit, and for a file with no document
+        # `_read` reopens the MP3 from disk and rehashes its picture.
+        self._told = None if self.is_already_initialized else self._read()
+
+        # Not a metadata read but a probe: has this file ever been
+        # written by us? A document answers yes. Before documents there
+        # was the id frame, and it answers yes for everything written
+        # since 2024. Neither means an untagged file, and the end of this
+        # constructor is where it gets tagged — so this must stay a
+        # question about the file's frames and not about `_told`, which
+        # falls back to the filename and would answer yes for a file that
+        # carries no tags at all.
         try:
-            youtube_id_tag = \
-                self.mp3.tags["TXXX:YouTube ID"].text[0]
+            youtube_id_tag = self.mp3.tags["TXXX:YouTube ID"].text[0]
         except:
             youtube_id_tag = None
 
+        if youtube_id_tag is None and self._told is not None \
+            and metadata.of(self.mp3.tags) is not None:
+
+            youtube_id_tag = self._told["id"] or None
+
+        # YouTube ID is required.
+        # Try to get it from constructor parameters first, 
+        # then from song state, 
+        # then from what the file says, 
+        # then from MP3 filename.
+        # If not found, raise an error.
+
         self.youtube_id = youtube_id \
             or getattr(self, "youtube_id", None) \
+            or (self._told["id"] if self._told else None) \
             or youtube_id_tag
 
         if not self.youtube_id:
@@ -1112,15 +1153,8 @@ class SongModel:
         if not self.is_already_initialized \
             and (not self.artist or not self.title):
 
-            try:
-                self.artist = self.artist or self.mp3.tags["TPE1"].text[0]
-            except:
-                pass
-
-            try:
-                self.title = self.title or self.mp3.tags["TIT2"].text[0]
-            except:
-                pass
+            self.artist = self.artist or self._said("artist")
+            self.title = self.title or self._said("title")
 
             match = re.match(
                 r"^(?P<artist>.*)\s-\s(?P<title>.*)\s\[[^\]]+\]$", 
@@ -1152,11 +1186,7 @@ class SongModel:
             cover_art_url or getattr(self, "cover_art_url", None)
 
         if not self.is_already_initialized and not self.cover_art_url:
-            try:
-                self.cover_art_url = \
-                    self.mp3.tags["TXXX:Cover art URL"].text[0]
-            except:
-                pass
+            self.cover_art_url = self._said("cover")
             
         # And where the picture actually embedded in this file came from,
         # which is not the same question as which one was last asked for.
@@ -1171,12 +1201,11 @@ class SongModel:
         # no cover was ever refetched.
         self.stored_cover_art_url = getattr(self, "stored_cover_art_url", None)
 
-        if not self.is_already_initialized and not self.stored_cover_art_url:
-            try:
-                self.stored_cover_art_url = \
-                    self.mp3.tags["TXXX:Stored cover art URL"].text[0]
-            except:
-                pass
+        if not self.is_already_initialized and not self.stored_cover_art_url \
+            and self._told:
+
+            self.stored_cover_art_url = \
+                self._told["embedded"].get("cover_url") or None
 
         # Retrieve and set Shazam artist.
         # Try to get it from constructor parameters first or from song state.
@@ -1184,11 +1213,7 @@ class SongModel:
         self.shazam_artist = getattr(self, "shazam_artist", None)
 
         if not self.is_already_initialized and not self.shazam_artist:
-            try:
-                self.shazam_artist = \
-                    self.mp3.tags["TXXX:Shazam artist"].text[0]
-            except:
-                pass
+            self.shazam_artist = self._answer().get("artist") or None
             
         # Retrieve and set Shazam title.
         # Try to get it from constructor parameters first or from song state.
@@ -1196,11 +1221,7 @@ class SongModel:
         self.shazam_title = getattr(self, "shazam_title", None)
 
         if not self.is_already_initialized and not self.shazam_title:
-            try:
-                self.shazam_title = \
-                    self.mp3.tags["TXXX:Shazam title"].text[0]
-            except:
-                pass
+            self.shazam_title = self._answer().get("title") or None
             
         # Retrieve and set Shazam cover art URL.
         # Try to get it from constructor parameters first or from song state.
@@ -1208,11 +1229,7 @@ class SongModel:
         self.shazam_cover_art_url = getattr(self, "shazam_cover_art_url", None)
 
         if not self.is_already_initialized and not self.shazam_cover_art_url:
-            try:
-                self.shazam_cover_art_url = \
-                    self.mp3.tags["TXXX:Shazam cover art URL"].text[0]
-            except:
-                pass
+            self.shazam_cover_art_url = self._answer().get("cover") or None
 
         # Retrieve and set the release data Shazam carries alongside the
         # artist and the title: album, publisher, year and genre.
@@ -1223,30 +1240,33 @@ class SongModel:
         # there rather than here, which is worse: nothing on this side
         # would look wrong.
         #
-        # Standard
+        # Written to standard
         # ID3 frames rather than TXXX customs — every player and every
         # library already knows how to read TALB, TPUB, TDRC and TCON,
-        # and this is exactly what they are for.
+        # and this is exactly what they are for. Read from the document
+        # like everything else, since this program is no longer among
+        # those readers.
         #
         # No `shazam_*` twin for these four, unlike the artist and the
         # title: those are kept even when rejected because the workbench
         # offers them for judgement. Nobody judges an album name against
         # a YouTube video title, so a rejected copy would be four frames
         # with no reader.
-        for field, frame in (
-            ("album", "TALB"),
-            ("publisher", "TPUB"),
-            ("year", "TDRC"),
-            ("genre", "TCON"),
-            ("isrc", "TSRC"),
-        ):
+        for field in ("album", "publisher", "year", "genre"):
             setattr(self, field, getattr(self, field, None))
 
             if not self.is_already_initialized and not getattr(self, field):
-                try:
-                    setattr(self, field, str(self.mp3.tags[frame].text[0]))
-                except:
-                    pass
+                setattr(self, field, self._said(field))
+
+        # The recording code is not one of them, and not a field at all.
+        # It is written to `TSRC` because ID3 has a standard frame for it
+        # and every player knows it, but only Shazam ever supplies one —
+        # so in the document it belongs with the rest of that answer, not
+        # among the values the file asserts about itself.
+        self.isrc = getattr(self, "isrc", None)
+
+        if not self.is_already_initialized and not self.isrc:
+            self.isrc = self._answer().get("isrc") or None
 
         # Set Shazam match level.
         # Try to get it from constructor parameters first or from song state.
@@ -1259,11 +1279,10 @@ class SongModel:
             if not self.is_already_initialized \
                 and self.shazam_match_score is None:
 
-                try:
-                    self.shazam_match_score = \
-                        int(self.mp3.tags["TXXX:Shazam match level"].text[0])
-                except:
-                    pass
+                score = self._answer().get("score")
+
+                if score is not None:
+                    self.shazam_match_score = int(score)
             
         # Update MP3 file ID3 tags if required
         # e.g. if song state is modified after initialization (deliberate 
@@ -1334,9 +1353,86 @@ class SongModel:
         and could not be reached, which is a check no test can hold.
         """
 
-        return any(
-            picture.type == 3 for picture in self.mp3.tags.getall("APIC")
+        return self._front_cover() is not None
+
+
+    def _front_cover(self):
+        """The embedded front cover, or None. Found by type, never by
+        label — see `_has_front_cover` for what that cost."""
+
+        return next(
+            (
+                picture for picture in self.mp3.tags.getall("APIC")
+                if picture.type == 3
+            ),
+            None,
         )
+
+
+    def _attach_document(self) -> None:
+        """Put the document on the tags, ready for the save that follows.
+
+        Called before every `mp3.save` in this class and not only before
+        the one in `update_id3_tags`: cover art is written by a save of
+        its own, and a save that left the document behind would leave the
+        file claiming a picture it no longer carries — which is exactly
+        the record the cover check now trusts.
+        """
+
+        document = self._document()
+
+        if document is not None:
+            metadata.attach(self.mp3.tags, document)
+
+
+    def _read(self) -> dict:
+        """The file's own account of itself, in document shape.
+
+        The document if it has one; otherwise the old frames, read
+        through `legacy` and shaped the same way. Never None, so no
+        caller downstream has to guard.
+
+        A document this build cannot read — a newer version, or a damaged
+        frame — is treated as no document at all and the frames answer
+        instead. That is deliberately not the same as `_document()`,
+        which returns None and declines to write: refusing to *write* an
+        unreadable document protects it, refusing to *read* one would
+        only break the song for no gain, since the frames are still
+        there and still true.
+        """
+
+        try:
+            document = metadata.of(self.mp3.tags)
+        except metadata.MetadataError:
+            document = None
+
+        if document is not None:
+            return document
+
+        return legacy.document_from_frames(self.path)
+
+
+    def _said(self, name: str) -> Optional[str]:
+        """What the file says a field is, or None if it says nothing.
+
+        None and not "": the attributes this feeds are tested for truth
+        all over the codebase, but a few are also compared against None,
+        and an empty string is not the same answer as no answer.
+        """
+
+        if self._told is None:
+            return None
+
+        return metadata.value(self._told, name) or None
+
+
+    def _answer(self) -> dict:
+        """What Shazam last said about this song, or {} if never asked."""
+
+        if self._told is None:
+            return {}
+
+        return self._told["sources"]["shazam"]
 
 
     # Which document field each attribute feeds. The names match on
@@ -1368,6 +1464,29 @@ class SongModel:
 
         if document is None:
             document = metadata.blank(self.youtube_id or "")
+
+        if self._reset_wanted:
+            # Junking clears the frames; the document follows, or the
+            # next open reads the old name back out of it and the song is
+            # not junk at all. Nothing below this can do the job: an
+            # empty value is skipped there, deliberately, so that an
+            # ordinary save cannot erase what it merely does not know.
+            #
+            # What survives is what junking never claimed to undo — the
+            # id, and where the file came from. `sources.youtube` holds
+            # the video's own title and channel, irreplaceable once the
+            # video is gone, and is not a conclusion anybody drew about
+            # the song. `embedded` is left to the rule at the end of this
+            # method: it describes what the file carries, and until the
+            # cover is actually removed it still carries it.
+            self._reset_wanted = False
+            origin = document["sources"].get("youtube") or {}
+            document = metadata.blank(document["id"] or self.youtube_id or "")
+
+            if origin:
+                document = metadata.set_source(
+                    document, "youtube", origin, at=origin.get("at")
+                )
 
         values = {
             "artist": self.artist,
@@ -1432,6 +1551,27 @@ class SongModel:
         # not erase what an earlier one recorded.
         if answer and answer != stored:
             document = metadata.set_source(document, "shazam", answer)
+
+        picture = self._front_cover()
+        embedded = {
+            "cover_sha256": (
+                hashlib.sha256(picture.data).hexdigest() if picture else ""
+            ),
+            "cover_url": self.stored_cover_art_url or "",
+        }
+        held = {
+            key: document["embedded"].get(key, "") for key in embedded
+        }
+
+        # The same rule the fields follow: an unchanged record keeps the
+        # instant it was made. Rehashing the same picture on every save
+        # and stamping it anew would replace a real moment with this one,
+        # every time, and the record would never be older than the last
+        # time anything at all was written.
+        if embedded != held:
+            document = metadata.set_embedded_cover(
+                document, embedded["cover_sha256"], embedded["cover_url"]
+            )
 
         return document
 
@@ -1563,10 +1703,7 @@ class SongModel:
         # The document, beside the frames and in the same write. Two
         # saves would leave a window in which the file's frames and its
         # document disagree, and double the I/O of every edit.
-        document = self._document()
-
-        if document is not None:
-            metadata.attach(self.mp3.tags, document)
+        self._attach_document()
 
         # Save tags
         self.mp3.save(v1=0, v2_version=3)
@@ -1634,9 +1771,10 @@ class SongModel:
                 self.mp3.tags.delall("APIC")
                 self.mp3.tags.delall("TXXX:Cover art URL")
                 self.mp3.tags.delall("TXXX:Stored cover art URL")
-                self.mp3.save(v1=0, v2_version=3)
                 self.has_cover_art = False
                 self.stored_cover_art_url = None
+                self._attach_document()
+                self.mp3.save(v1=0, v2_version=3)
 
                 if post_delete_cover_art is not None:
                     await post_delete_cover_art(self)
@@ -1730,7 +1868,8 @@ class SongModel:
                     raise SongModelException(
                         f"Failed to add cover art to MP3 file"
                     ) from exc
-                
+
+                self._attach_document()
                 self.mp3.save(v1=0, v2_version=3)
 
             # Update covert art presence flag
@@ -2273,6 +2412,7 @@ class SongModel:
         self.year = None
         self.genre = None
         self.isrc = None
+        self._reset_wanted = True
 
         # Reinitialize song object according to cleared state
         self.__init__(self.path, self.youtube_id)

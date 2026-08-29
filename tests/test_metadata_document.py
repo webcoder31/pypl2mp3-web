@@ -143,17 +143,41 @@ class TestSeparation:
         assert metadata.value(document, "title") == "Kiss"
         assert document["sources"]["youtube"]["title"] == "IAMX - Kiss (official)"
 
-    def test_what_is_embedded_is_a_digest_and_not_a_url(self):
-        """"Is this already the picture being asked for?" stays
-        answerable without trusting anything outside the file, and after
-        the URL has rotted. Asking it of a URL is what stopped covers
-        from ever being refetched."""
+    def test_the_bytes_are_recorded_by_digest_and_by_where_they_came_from(
+        self
+    ):
+        """Two records, two questions.
+
+        The digest is the fact, and it survives the URL rotting. The URL
+        is what makes the question answerable *before* paying for a
+        download — which is the whole point of asking it.
+
+        Neither replaces the other. Recording only the URL is what the
+        old code effectively did, and it compared that URL against the
+        one being requested, so the answer was always "unchanged" and no
+        cover was ever refetched."""
+
+        document = metadata.set_embedded_cover(
+            metadata.blank("a"), "3f9a", "https://img/kiss.jpg", at=WHEN
+        )
+
+        assert document["embedded"] == {
+            "cover_sha256": "3f9a",
+            "cover_url": "https://img/kiss.jpg",
+            "at": WHEN,
+        }
+
+    def test_the_url_is_optional_because_the_digest_is_the_fact(self):
+        """A picture can be embedded by something that never named a
+        source — an import from another tagger, a file edited by hand.
+        The digest still answers."""
 
         document = metadata.set_embedded_cover(
             metadata.blank("a"), "3f9a", at=WHEN
         )
 
-        assert document["embedded"] == {"cover_sha256": "3f9a", "at": WHEN}
+        assert document["embedded"]["cover_sha256"] == "3f9a"
+        assert document["embedded"]["cover_url"] == ""
 
     def test_an_unknown_source_is_refused(self):
         with pytest.raises(MetadataError):

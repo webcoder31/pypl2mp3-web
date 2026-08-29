@@ -313,19 +313,30 @@ def set_source(
 
 
 def set_embedded_cover(
-    document: dict, digest: str, at: str | None = UNSET
+    document: dict, digest: str, url: str = "", at: str | None = UNSET
 ) -> dict:
     """A document recording which picture the file now carries.
 
-    The digest of the bytes, not the URL they came from. "Is this already
-    the picture being asked for?" is then answerable without trusting
-    anything outside the file, and it stays answerable after the URL has
-    rotted.
+    Two records of one picture, because they answer two questions and
+    only one of them is cheap.
+
+    The digest is the fact: "is this already the picture being asked
+    for?" is answerable from it without trusting anything outside the
+    file, and it stays answerable after the URL has rotted. But it is
+    only answerable once the bytes are in hand — which is to say, after
+    paying for the download the question was meant to avoid.
+
+    The URL is where those bytes came from. It can lie, and one day it
+    will point at something else entirely; that is why it is not the
+    fact. It is kept because comparing it against the URL being asked
+    for is what lets a save skip a download it does not need.
     """
 
     updated = copy.deepcopy(document)
     updated["embedded"] = {
-        "cover_sha256": digest, "at": now() if at is UNSET else at
+        "cover_sha256": digest,
+        "cover_url": url,
+        "at": now() if at is UNSET else at,
     }
 
     return updated

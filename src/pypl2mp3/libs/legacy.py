@@ -263,9 +263,12 @@ def document_from_frames(song_path: Path) -> dict:
     if answer:
         document = metadata.set_source(document, "shazam", answer, at=None)
 
-    if frames["cover"]["sha256"]:
+    if frames["cover"]["sha256"] or frames["cover"]["embedded_from"]:
         document = metadata.set_embedded_cover(
-            document, frames["cover"]["sha256"], at=None
+            document,
+            frames["cover"]["sha256"],
+            frames["cover"]["embedded_from"],
+            at=None,
         )
 
     return document
