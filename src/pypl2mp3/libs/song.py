@@ -1207,6 +1207,15 @@ class SongModel:
             self.stored_cover_art_url = \
                 self._told["embedded"].get("cover_url") or None
 
+        # Where the file came from: the video's own channel and title,
+        # or the record that the video is gone. Held whole rather than
+        # split into attributes — it is evidence, read and never edited,
+        # and the shape it is stored in is the shape it is shown in.
+        self.youtube_origin = getattr(self, "youtube_origin", None) or {}
+
+        if not self.is_already_initialized and self._told:
+            self.youtube_origin = dict(self._told["sources"]["youtube"])
+
         # Retrieve and set Shazam artist.
         # Try to get it from constructor parameters first or from song state.
         # At initialization time, also try to get it from ID3 tags.

@@ -591,8 +591,54 @@
   // previous one.
   let boardEra = 0;
 
+  // The faces this board can show, in the order it shows them. The
+  // playlist is always there; the others only when the file knows them,
+  // and a face with nothing to say does not take a turn.
   function boardFaces(board) {
-    return [board.dataset.playlist || "", board.dataset.release || ""];
+    return [
+      board.dataset.playlist || "",
+      board.dataset.release || "",
+      board.dataset.origin || ""
+    ].filter(function (face) { return face !== ""; });
+  }
+
+  // How many characters the line can hold at the point the board starts.
+  //
+  // Nothing bounds a face: a release line reached 144 characters and a
+  // video title 126, against a panel that holds about sixty. Rendered
+  // whole they ran out under the column beside them and gave the whole
+  // page a horizontal scrollbar — measured at 1118 pixels of board
+  // inside 469 pixels of line.
+  //
+  // Measured rather than assumed. The board is monospace, but its size
+  // comes from an em-relative rule, so a character is only the width it
+  // happens to be in this panel at this font size. The reading is taken
+  // from the board's own left edge, so whatever shares the line before
+  // it — the unsaved-edits notice — is already accounted for.
+  function boardRoom(board) {
+    const line = board.parentElement;
+
+    if (!line) return 80;
+
+    const probe = document.createElement("span");
+    probe.className = "slot";
+    probe.textContent = "0";
+    board.appendChild(probe);
+    const one = probe.getBoundingClientRect().width;
+    probe.remove();
+
+    if (!one) return 80;
+
+    const room = line.getBoundingClientRect().right
+      - board.getBoundingClientRect().left;
+
+    return Math.max(8, Math.floor(room / one));
+  }
+
+  // A face cut to the room there is, with an ellipsis standing where the
+  // rest was. One character of the budget goes to saying so.
+  function fit(face, width) {
+    return face.length <= width ? face : face.slice(0, width - 1) + "…";
   }
 
   function showFace(board, text, turning) {
@@ -604,9 +650,13 @@
     // The shorter face is padded out with spaces, so the board is always
     // the width of its longer face. That is why nothing shares this line
     // after it: see the templates.
-    const width = Math.max(...boardFaces(board).map(function (face) {
-      return face.length;
-    }));
+    const width = Math.min(
+      boardRoom(board),
+      Math.max(...boardFaces(board).map(function (face) {
+        return face.length;
+      }))
+    );
+    text = fit(text, width);
     let slots = Array.from(board.querySelectorAll(".slot"));
 
     if (slots.length !== width) {
@@ -654,13 +704,15 @@
   }
 
   function turnBoards() {
-    document.querySelectorAll(".board[data-release]").forEach(
-      function (board) {
-        const showing = board.dataset.face === "release";
-        board.dataset.face = showing ? "playlist" : "release";
-        showFace(board, boardFaces(board)[showing ? 0 : 1], true);
-      }
-    );
+    document.querySelectorAll(".board").forEach(function (board) {
+      const faces = boardFaces(board);
+
+      if (faces.length < 2) return;
+
+      const next = ((parseInt(board.dataset.face, 10) || 0) + 1) % faces.length;
+      board.dataset.face = String(next);
+      showFace(board, faces[next], true);
+    });
   }
 
   let boardClock = 0;
@@ -672,12 +724,15 @@
     if (boardClock) window.clearInterval(boardClock);
     boardClock = 0;
 
+    let turning = false;
+
     document.querySelectorAll(".board").forEach(function (board) {
-      board.dataset.face = "playlist";
-      showFace(board, boardFaces(board)[0], false);
+      board.dataset.face = "0";
+      showFace(board, boardFaces(board)[0] || "", false);
+      turning = turning || boardFaces(board).length > 1;
     });
 
-    if (document.querySelector(".board[data-release]")) {
+    if (turning) {
       boardClock = window.setInterval(turnBoards, BOARD_HOLD);
     }
   }

@@ -33,6 +33,7 @@
       <span id="workbench-position"></span>
       <span class="board" data-playlist="{{ song.playlist_name }}"
             {%- if song.release %} data-release="{{ song.release }}"{% endif
+            %}{% if song.origin %} data-origin="{{ song.origin }}"{% endif
             %}>{{ song.playlist_name }}</span>
     </p>
     <h2 class="inspector-title">

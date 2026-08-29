@@ -437,6 +437,12 @@ a { color: var(--accent); text-decoration-thickness: 1px;
 #counts { font-variant-numeric: tabular-nums; font-size: var(--fs-sm);
           color: var(--text-3); white-space: nowrap; }
 #counts .junk { color: var(--junk); }
+/* A link that is known to answer 404. The same amber as a junk song,
+   because it says the same kind of thing — this one needs attention, and
+   nothing here is broken. Underlined like every other link: it is still
+   a link, and following it is still how you find out whether the video
+   came back. */
+.gone { color: var(--junk); }
 
 /* ------------------------------------------------------------------
    The main column: what you are looking at, above what else there is

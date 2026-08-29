@@ -1636,11 +1636,14 @@ async def test_the_board_holds_each_face_and_stops_when_there_is_one(tmp_path):
         r"function restartBoards\(\) \{(.*?)\n  \}", js, re.DOTALL
     ).group(1)
     assert "window.clearInterval(boardClock)" in restart, restart
-    # The clock only starts where there is a second face.
-    assert 'document.querySelector(".board[data-release]")' in restart, restart
-    # And every board goes back to the playlist, not to whichever face it
+    # The clock only starts where some board has a second face. Asked of
+    # the faces themselves and not of a `data-release` attribute: a third
+    # face was added, and a selector naming one of them would have left
+    # a song with an origin and no release sitting still.
+    assert "boardFaces(board).length > 1" in restart, restart
+    # And every board goes back to the first face, not to whichever one it
     # happened to be showing.
-    assert 'board.dataset.face = "playlist";' in restart, restart
+    assert 'board.dataset.face = "0";' in restart, restart
 
     # A turn in flight has to know it is stale: a song changed mid-flap
     # would otherwise finish spelling out the one before it. Every step

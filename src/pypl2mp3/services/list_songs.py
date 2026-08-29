@@ -37,6 +37,14 @@ class SongSummary:
     publisher: str = ""
     year: str = ""
     genre: str = ""
+    # Where the file came from, when the document knows. The video's own
+    # title is the only place the original name survives: the import
+    # takes it, Shazam overwrites it, and on 652 songs the two differ.
+    origin_author: str = ""
+    origin_title: str = ""
+    # And whether asking YouTube about it is still worth a click. Eleven
+    # videos have gone; the link to them answers 404 without saying so.
+    video_gone: bool = False
 
     @property
     def cover_version(self) -> int:
@@ -80,6 +88,27 @@ class SongSummary:
             part for part in (self.album, self.year, self.genre,
                               self.publisher) if part
         )
+
+    @property
+    def origin(self) -> str:
+        """The video this file was made from, as one line.
+
+        Channel first, then the video's own title — the same order the
+        eye reads a listing row in. Empty when the origin was never
+        recovered, which is what keeps it off the board: a face with
+        nothing to say should not take a turn.
+
+        Prefixed, unlike `release`, because the board gives its faces no
+        labels and these two would otherwise be told apart by guesswork:
+        both are middot-joined, and "Chill Masters · SYNAPSON - Djon Maya
+        Maï" reads exactly like a label and an album.
+        """
+
+        line = " · ".join(
+            part for part in (self.origin_author, self.origin_title) if part
+        )
+
+        return f"from {line}" if line else ""
 
     @property
     def label(self) -> str:
@@ -171,4 +200,7 @@ def summarize(song: SongModel) -> SongSummary:
         publisher=song.publisher or "",
         year=song.year or "",
         genre=song.genre or "",
+        origin_author=song.youtube_origin.get("author") or "",
+        origin_title=song.youtube_origin.get("title") or "",
+        video_gone=bool(song.youtube_origin.get("gone")),
     )

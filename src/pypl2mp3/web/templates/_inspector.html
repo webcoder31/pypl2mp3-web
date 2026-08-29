@@ -47,6 +47,7 @@
       <span class="held">unsaved edits — the panel is staying here ·</span>
       <span class="board" data-playlist="{{ song.playlist_name }}"
             {%- if song.release %} data-release="{{ song.release }}"{% endif
+            %}{% if song.origin %} data-origin="{{ song.origin }}"{% endif
             %}>{{ song.playlist_name }}</span>
     </p>
 
@@ -79,8 +80,15 @@
           hx-confirm="Clear this song's metadata and mark it as junk? This cannot be undone."
         >Junkize</button>
       {% endif %}
+      {# The link answers 404 for eleven songs and said nothing about it.
+         Kept rather than removed: a video pulled for a regional block or
+         set to private can come back, and the address is still the only
+         way to find out. Marked, so the click is a choice. #}
       <a href="https://youtu.be/{{ song.youtube_id }}" target="_blank"
-         rel="noopener noreferrer">video</a>
+         rel="noopener noreferrer"
+         {%- if song.video_gone %} class="gone"
+         title="This video was gone the last time it was asked for"
+         {%- endif %}>video{% if song.video_gone %} ⚠{% endif %}</a>
     </p>
 
     <div id="shazam" class="job"></div>
