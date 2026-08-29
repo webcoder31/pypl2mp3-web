@@ -1,6 +1,6 @@
 """Fill in what Shazam already answered and older versions did not keep.
 
-Two gaps, both historical, both filled by one recognition per song:
+Three gaps, all historical, all filled by one recognition per song:
 
   * The release data — album, publisher, year, genre — was never read out
     of the answer until it was added to the model. Every song identified
@@ -10,6 +10,11 @@ Two gaps, both historical, both filled by one recognition per song:
     distinct from what the song claims, arrived in the CLI on 2025-05-04.
     Everything imported before then has none of those either, which is
     why their absence is no evidence that a song was never identified.
+  * The recording code. Shazam returns an ISRC on every answer and it was
+    never read: no file in a 944-song library carried one. It identifies
+    the recording rather than the song, which is the one thing that
+    separates a remaster, a live take or a remix from the original — the
+    ambiguity that left thirteen songs unconfirmable last time.
 
 What this does NOT do is call `shazam_song`. That method reapplies the
 whole match: on a good score it rewrites the artist, the title and the
@@ -102,8 +107,9 @@ def what_is_missing(tags) -> set:
     """Which of the two gaps this file has.
 
     Returns the names of the groups worth a request: "release" for the
-    four standard frames, "provenance" for the four TXXX ones. A song
-    missing neither is not worth fifteen seconds.
+    four standard frames, "provenance" for the four TXXX ones, "isrc" for
+    the recording code. A song missing none of them is not worth fifteen
+    seconds.
     """
 
     missing = set()
@@ -113,6 +119,9 @@ def what_is_missing(tags) -> set:
 
     if not tags.get("TXXX:Shazam artist"):
         missing.add("provenance")
+
+    if not tags.get("TSRC"):
+        missing.add("isrc")
 
     return missing
 
@@ -264,6 +273,9 @@ async def run(args) -> Tally:
             written["shazam_cover_art_url"] = cover
 
         summary = release.get("album") or "no album named"
+
+        if release.get("isrc"):
+            summary = f"{summary}  {release['isrc']}"
         print(f"{head}  ✓ {score}%  {summary}")
 
         if not args.dry_run:
