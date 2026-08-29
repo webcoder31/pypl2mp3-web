@@ -260,3 +260,52 @@ class TestTheHandlesShazamCarries:
         assert "apple_album" not in answer, (
             "the album id of a record Shazam no longer claims this is"
         )
+
+
+class TestTheWiring:
+    """That `shazam_song` actually reaches for them.
+
+    Every test above sets `_shazam_extras` by hand, so removing the one
+    line in `shazam_song` that fills it broke nothing — a counter-
+    experiment caught that, and this is the gap it found.
+    """
+
+    def test_a_recognition_puts_the_handles_in_the_document(
+        self, tmp_path, monkeypatch
+    ):
+        path = _song(tmp_path)
+
+        answer = {
+            "track": {
+                "title": "Kiss",
+                "subtitle": "IAMX",
+                "key": 470682427,
+                "url": "https://www.shazam.com/track/470682427/kiss",
+                "albumadamid": 1485457072,
+                "artists": [{"adamid": "110799"}],
+                "images": {"joecolor": "b:5e5d71p:f7e4df"},
+                "sections": [{"metadata": [{"title": "Album", "text": "K"}]}],
+            }
+        }
+
+        class Client:
+            async def recognize_song(self, _path):
+                return answer
+
+        monkeypatch.setattr(SongModel, "shazam_client", Client())
+        monkeypatch.setattr(SongModel, "last_shazam_request_time", 0)
+        monkeypatch.setattr(
+            "pypl2mp3.libs.song.asyncio.sleep",
+            lambda _seconds: asyncio.sleep(0),
+        )
+
+        song = SongModel(path)
+        asyncio.run(song.shazam_song())
+
+        stored = metadata.read(next(tmp_path.rglob("*.mp3")))["sources"]["shazam"]
+
+        assert stored["key"] == "470682427"
+        assert stored["apple_album"] == "1485457072"
+        assert stored["apple_artists"] == ["110799"]
+        assert stored["colors"] == "b:5e5d71p:f7e4df"
+        assert stored["url"].endswith("/kiss")
