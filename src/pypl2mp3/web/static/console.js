@@ -1519,8 +1519,15 @@
   // describing a song is not playing it. The player stays silent until
   // asked, and the panel's own Play this button is what asks.
   //
-  // Only when nothing is showing: a panel already filled by the server —
-  // a reload during playback, a bookmarked song — is not overwritten.
+  // Guarded, though nothing reaches it today: the console route sends
+  // "Select a song." every time, `&song=` in the address included, so the
+  // panel is always empty on arrival. Both cases this once named — a
+  // reload during playback, a bookmarked song — would need a server that
+  // pre-fills the panel, and there is none.
+  //
+  // Kept rather than dropped, because that is a template's behaviour and
+  // not this function's: the day the shell ships a song, this check is
+  // what stops the first row from overwriting it.
   if (!document.querySelector("#inspector [data-song-id]")) {
     const first = rows()[0];
     if (first) inspect(first.dataset.songId);
