@@ -1142,6 +1142,26 @@ class SongModel:
             except:
                 pass
             
+        # And where the picture actually embedded in this file came from,
+        # which is not the same question as which one was last asked for.
+        # `cover_art_url` is a request; this is a record. They differ
+        # exactly when a request was written but never carried out — and
+        # telling them apart is what makes "is this picture already the
+        # one being asked for?" answerable at all.
+        #
+        # The old CLI kept both and compared against this one. The
+        # refactor kept writing it and started comparing against the
+        # request instead, so the comparison always said "unchanged" and
+        # no cover was ever refetched.
+        self.stored_cover_art_url = getattr(self, "stored_cover_art_url", None)
+
+        if not self.is_already_initialized and not self.stored_cover_art_url:
+            try:
+                self.stored_cover_art_url = \
+                    self.mp3.tags["TXXX:Stored cover art URL"].text[0]
+            except:
+                pass
+
         # Retrieve and set Shazam artist.
         # Try to get it from constructor parameters first or from song state.
         # At initialization time, also try to get it from ID3 tags.
@@ -1382,6 +1402,17 @@ class SongModel:
                 text=u"" + self.cover_art_url
             ))
 
+        # Kept across ordinary saves. It was not, and update_id3_tags
+        # wipes every TXXX before rewriting the ones it knows — so the
+        # record written on each download survived exactly until the next
+        # save of anything at all. One file in 944 still had it.
+        if self.stored_cover_art_url:
+            self.mp3.tags.add(TXXX(
+                encoding=3,
+                desc=u"Stored cover art URL",
+                text=u"" + str(self.stored_cover_art_url)
+            ))
+
         # Set custom tag for Shazam match level if required
         if self.shazam_match_score is not None:
             self.mp3.tags.add(TXXX(
@@ -1479,8 +1510,10 @@ class SongModel:
             
                 self.mp3.tags.delall("APIC")
                 self.mp3.tags.delall("TXXX:Cover art URL")
+                self.mp3.tags.delall("TXXX:Stored cover art URL")
                 self.mp3.save(v1=0, v2_version=3)
                 self.has_cover_art = False
+                self.stored_cover_art_url = None
 
                 if post_delete_cover_art is not None:
                     await post_delete_cover_art(self)
@@ -1494,15 +1527,18 @@ class SongModel:
         if self.cover_art_url:
             should_cover_art_be_updated = True
 
-            if self.has_cover_art:
-                try:
-                    stored_cover_art_url = \
-                        self.mp3.tags["TXXX:Cover art URL"].text[0]
-
-                    if self.cover_art_url == stored_cover_art_url:
-                        should_cover_art_be_updated = False
-                except:
-                    should_cover_art_be_updated = True
+            # Against where the embedded picture came from, never against
+            # the URL last requested: `update_state` writes the request
+            # into the file, so asked that way the two are always equal
+            # and nothing is ever fetched.
+            #
+            # Unknown means fetch. Files tagged before this record was
+            # kept have none, so the first cover they are given costs one
+            # download even if it is the picture they already carry —
+            # after which they know, and stop paying it.
+            if self.has_cover_art and self.stored_cover_art_url:
+                if self.cover_art_url == self.stored_cover_art_url:
+                    should_cover_art_be_updated = False
 
         # Update or remove cover art
         if should_cover_art_be_updated :
@@ -1564,6 +1600,9 @@ class SongModel:
                             desc=u"Stored cover art URL",
                             text=u"" + self.cover_art_url
                         ))
+                        # In memory too, or the next ordinary save writes
+                        # the previous record back over this one.
+                        self.stored_cover_art_url = self.cover_art_url
                 except Exception as exc:
                     raise SongModelException(
                         f"Failed to add cover art to MP3 file"
@@ -2029,6 +2068,7 @@ class SongModel:
         self.artist = None 
         self.title = None 
         self.cover_art_url = None  
+        self.stored_cover_art_url = None
         self.shazam_artist = None
         self.shazam_title = None
         self.shazam_cover_art_url = None

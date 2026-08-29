@@ -119,22 +119,17 @@ async def apply_fix(
     would need to fetch the picture again. `False` is `update_state`'s own
     word for "do not touch".
 
-    The cover is fetched *before* the names are written, and that order
-    is the whole of it. `update_cover_art` decides whether to download by
-    comparing the URL it has been given against the one recorded in the
-    file — and `update_state` writes the new URL into the file, so asked
-    afterwards the two were always equal and the picture was never
-    fetched. Three saves with three different URLs produced three
-    updated URLs and zero downloads.
+    The cover is fetched *before* the names are written, and it is
+    all-or-nothing: a cover that cannot be downloaded leaves the song
+    entirely untouched. It used to write the names and the new URL first,
+    so a failed fetch left the file claiming a picture it had never got.
 
-    Setting the attribute rather than going through `update_state` is
-    what leaves the recorded URL alone long enough for that question to
-    mean something.
-
-    The order has a second effect, and it is an improvement: a cover that
-    cannot be downloaded now leaves the song entirely untouched. It used
-    to write the names and the new URL first, so a failed fetch left the
-    file claiming a picture it had never got.
+    The order used to matter for a second reason as well — the download
+    decision was made by comparing the requested URL against the one in
+    the file, which `update_state` had just overwritten with that very
+    request. That is fixed where it belongs now: the model keeps a record
+    of where the embedded picture actually came from, and compares
+    against that.
 
     The song stops being junk: `fix_filename` keeps the current junk
     state unless told otherwise, so `mark_as_junk=False` is what actually

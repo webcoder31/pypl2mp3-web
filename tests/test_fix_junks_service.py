@@ -3,7 +3,7 @@
 from pathlib import Path
 
 import pytest
-from mutagen.id3 import ID3, TXXX
+from mutagen.id3 import ID3, APIC, TXXX
 
 from pypl2mp3.services.fix_junks import (
     FixProposal,
@@ -264,6 +264,98 @@ async def test_a_cover_that_cannot_be_fetched_leaves_the_song_alone(
     assert not frames.getall("TXXX:Cover art URL"), (
         "the file claims a picture it never received"
     )
+
+
+async def test_the_file_records_where_its_picture_came_from(
+    tmp_path, monkeypatch
+):
+    """Two URLs, and they answer different questions. `Cover art URL` is
+    what was last asked for; `Stored cover art URL` is where the picture
+    actually embedded in the file came from.
+
+    They differ exactly when a request was written but never carried out,
+    and telling them apart is what makes "is this already the picture
+    being asked for?" answerable. The old CLI kept both and compared
+    against the record; the refactor kept writing it and started comparing
+    against the request, so the two were always equal and nothing was ever
+    refetched.
+    """
+
+    _make_junk(tmp_path)
+    calls = _catch_downloads(monkeypatch)
+
+    await apply_fix(tmp_path, "aaaaaaaaaaa", "A", "B",
+                    cover_art_url="https://example.invalid/one.jpg")
+
+    frames = ID3(next(tmp_path.rglob("*.mp3")))
+    assert frames.getall("TXXX:Stored cover art URL")[0].text[0] == (
+        "https://example.invalid/one.jpg"
+    )
+    assert len(calls) == 1
+
+
+async def test_the_record_survives_a_save_that_is_not_about_the_cover(
+    tmp_path, monkeypatch
+):
+    """update_id3_tags wipes every TXXX before rewriting the ones it
+    knows, and this was not among them — so the record written on each
+    download lasted exactly until the next save of anything at all. One
+    file in a 944-song library still had it.
+
+    Without it the comparison finds nothing, decides "unknown", and
+    refetches a picture the file already carries.
+    """
+
+    _make_junk(tmp_path)
+    calls = _catch_downloads(monkeypatch)
+
+    await apply_fix(tmp_path, "aaaaaaaaaaa", "A", "B",
+                    cover_art_url="https://example.invalid/one.jpg")
+
+    # A save about the names only.
+    await apply_fix(tmp_path, "aaaaaaaaaaa", "OTHER", "NAME")
+
+    frames = ID3(next(tmp_path.rglob("*.mp3")))
+    assert frames.getall("TXXX:Stored cover art URL"), (
+        "an ordinary save dropped the record"
+    )
+
+    # And the same picture is still not fetched again.
+    await apply_fix(tmp_path, "aaaaaaaaaaa", "A", "B",
+                    cover_art_url="https://example.invalid/one.jpg")
+
+    assert len(calls) == 1, f"the picture was fetched {len(calls)} times"
+
+
+async def test_a_picture_of_unknown_origin_is_fetched_once(
+    tmp_path, monkeypatch
+):
+    """Every file tagged before the record was kept has none. Unknown has
+    to mean fetch — the alternative is trusting a request that may never
+    have been carried out. It costs one download, after which the file
+    knows and stops paying."""
+
+    path = _make_junk(tmp_path)
+
+    # A cover with no record of where it came from, which is what 943
+    # songs in one library look like.
+    frames = ID3(path)
+    frames.add(TXXX(encoding=3, desc="YouTube ID", text="aaaaaaaaaaa"))
+    frames.add(TXXX(encoding=3, desc="Cover art URL",
+                    text="https://example.invalid/one.jpg"))
+    frames.add(APIC(encoding=3, desc="Cover art", mime="image/jpg", type=3,
+                    data=b"\xff\xd8\xff\xe0" + b"\x00" * 32))
+    frames.save(path, v1=0, v2_version=3)
+
+    calls = _catch_downloads(monkeypatch)
+
+    await apply_fix(tmp_path, "aaaaaaaaaaa", "A", "B",
+                    cover_art_url="https://example.invalid/one.jpg")
+    assert len(calls) == 1, "an unknown origin was taken on trust"
+
+    await apply_fix(tmp_path, "aaaaaaaaaaa", "A", "B",
+                    cover_art_url="https://example.invalid/one.jpg")
+    assert len(calls) == 1, "the file did not learn"
 
 
 async def test_an_unknown_song_raises_rather_than_touching_anything(tmp_path):
