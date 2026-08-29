@@ -28,7 +28,9 @@ import urllib.request
 # Third party packages
 from colorama import Fore, Style, init
 from moviepy.editor import AudioFileClip
-from mutagen.id3 import TIT2, TPE1, TXXX, APIC, TALB, TPUB, TDRC, TCON
+from mutagen.id3 import (
+    TIT2, TPE1, TXXX, APIC, TALB, TPUB, TDRC, TCON, TSRC
+)
 import mutagen.mp3
 from proglog import ProgressBarLogger
 from pytubefix import YouTube, request
@@ -1222,6 +1224,7 @@ class SongModel:
             ("publisher", "TPUB"),
             ("year", "TDRC"),
             ("genre", "TCON"),
+            ("isrc", "TSRC"),
         ):
             setattr(self, field, getattr(self, field, None))
 
@@ -1378,6 +1381,7 @@ class SongModel:
             (self.publisher, "TPUB", TPUB),
             (self.year, "TDRC", TDRC),
             (self.genre, "TCON", TCON),
+            (self.isrc, "TSRC", TSRC),
         ):
             if value:
                 self.mp3.tags.add(factory(encoding=3, text=u"" + str(value)))
@@ -1833,7 +1837,7 @@ class SongModel:
     @staticmethod
     def _release_data(track: dict) -> dict:
         """
-        Read album, publisher, year and genre out of a Shazam track.
+        Read album, publisher, year, genre and ISRC out of a Shazam track.
 
         Only the keys that were actually answered are returned, so a
         caller can splat the result into `update_state` and leave every
@@ -1847,8 +1851,8 @@ class SongModel:
         The genre sits on the track itself.
 
         Returns:
-            dict: any of "album", "publisher", "year", "genre" that
-                Shazam gave a non-empty value for.
+            dict: any of "album", "publisher", "year", "genre",
+                "isrc" that Shazam gave a non-empty value for.
         """
 
         wanted = {
@@ -1875,6 +1879,17 @@ class SongModel:
 
         if genre:
             found["genre"] = genre
+
+        # The recording, not the song and not the release. Two takes of
+        # the same piece have two codes, which is the one thing that
+        # separates a remaster, a live version or a remix from the
+        # original — the very ambiguity that made thirteen songs
+        # unconfirmable during the backfill. It sits on the track itself
+        # rather than among the display rows.
+        isrc = tidy(track.get("isrc"))
+
+        if isrc:
+            found["isrc"] = isrc
 
         return found
 
@@ -1951,7 +1966,8 @@ class SongModel:
         album: Union[str, None, bool] = False,
         publisher: Union[str, None, bool] = False,
         year: Union[str, None, bool] = False,
-        genre: Union[str, None, bool] = False
+        genre: Union[str, None, bool] = False,
+        isrc: Union[str, None, bool] = False
     ) -> None:
         """
         Update song metadata and refresh state.
@@ -1989,6 +2005,8 @@ class SongModel:
             year (Union[str, None, bool], optional): New release year.
                 Defaults to False.
             genre (Union[str, None, bool], optional): New genre.
+                Defaults to False.
+            isrc (Union[str, None, bool], optional): New recording code.
                 Defaults to False.
 
         Example:
@@ -2038,6 +2056,8 @@ class SongModel:
 
         self.genre = (self.genre, genre)[genre != False]
 
+        self.isrc = (self.isrc, isrc)[isrc != False]
+
         # Reinitialize song object according to new state
         self.__init__(self.path, self.youtube_id)
 
@@ -2049,7 +2069,7 @@ class SongModel:
         Clears all metadata and ID3 tags except for YouTube ID:
         - Removes artist and title
         - Removes cover art and its URL
-        - Clears album, publisher, year and genre
+        - Clears album, publisher, year, genre and recording code
         - Clears all Shazam-related data (artist, title, match score)
         - Reinitializes song with minimal state
         - Preserves only the YouTube ID tag
@@ -2077,6 +2097,7 @@ class SongModel:
         self.publisher = None
         self.year = None
         self.genre = None
+        self.isrc = None
 
         # Reinitialize song object according to cleared state
         self.__init__(self.path, self.youtube_id)
