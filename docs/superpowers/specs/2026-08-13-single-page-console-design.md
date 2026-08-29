@@ -962,6 +962,225 @@ là, et une recherche par nom de fichier qui échouait parce que macOS
 stocke les noms en **NFD** — `E` suivi d'un accent combinant — quand le
 littéral était en NFC.
 
+## En cours — la branche `metadata-document`
+
+Pas une dette traitée : un chantier ouvert, sur une branche à part, dont
+`main` ignore l'existence. L'écart avec `main` est de **neuf fichiers
+ajoutés et trois modifiés** — il était de quatre ajoutés et zéro modifié
+tant que seuls des scripts écrivaient le document ; c'est le modèle qui
+s'y est mis qui a fait tomber ce zéro.
+
+### Pourquoi
+
+Cinq défauts de stockage en une seule journée, et chacun est le
+représentant d'une *classe* de défaut :
+
+| ce qui a cassé | la règle absente |
+|---|---|
+| 105 fichiers vus sans pochette | identifier une trame par son sens, pas par son étiquette libre |
+| une trame perdue sur 943 fichiers | ne supprimer que ce qu'on possède |
+| trois générations de noms cohabitantes | versionner et migrer |
+| l'id vidéo dans `TRCK` sur 659 fichiers | une donnée privée dans une trame privée |
+| demandé et obtenu dans une même URL | une décision n'est pas une preuve |
+
+Et un sixième, celui-là **en cours** au moment où on l'a constaté : à
+chaque import, `author` et `title` de YouTube sont écrasés par la
+première correspondance Shazam qui franchit le seuil, sans copie. Sur 944
+morceaux, **715** portent le nom donné par Shazam et l'original est
+perdu. Ce n'est pas une dette qui attend, c'est une perte qui se produit,
+et qu'aucune migration ultérieure ne réparera — la vidéo aura peut-être
+disparu.
+
+### Ce qui est fait — `6775f27`, `3def1b8`, `055b1b3`
+
+**`libs/metadata.py`** — un document JSON par morceau, dans une trame
+`PRIV`. Trois blocs pour trois questions : `fields` (ce que le fichier
+affirme, chaque valeur portant qui l'a décidée et quand), `sources` (ce
+que chaque fournisseur a répondu, gardé verbatim et jamais écrasé),
+`embedded` (ce que le fichier contient réellement — l'empreinte de
+l'image, pas l'URL).
+
+Le choix de la trame n'est pas cosmétique : `song.py` efface `TPE1`,
+`TIT2`, les quatre trames de sortie, toutes les `TXXX` et toutes les
+`APIC`, **jamais de `PRIV`** ; et `store_peaks`, qui en efface pourtant,
+remet celles qu'il ne possède pas. Vérifié sur un vrai fichier avant
+d'écrire une ligne : le document survit à `update_state`, à
+`store_peaks`, et à une seconde sauvegarde.
+
+La version est **dans** le document et non dans le propriétaire, à
+l'inverse des crêtes (`#peaks-1`) — et c'est délibéré : un cache dont le
+format change se jette et se recalcule, un registre doit se migrer, donc
+un lecteur doit pouvoir le trouver quelle que soit sa version. Lire une
+version inconnue lève une exception plutôt que de deviner.
+
+**`libs/legacy.py`** — lit les trois générations de trames et en fait un
+document, ISRC compris depuis `TSRC` : seul Shazam en fournit, donc un
+fichier qui en porte un porte celui de Shazam. Il n'écrit rien : construire et ranger sont deux actes
+séparés, pour qu'une passe de comparaison puisse les tenir côte à côte
+sans toucher un fichier.
+
+Sa colonne la plus intéressante est celle qu'il ne remplit pas. Une seule
+attribution est certaine — la valeur égale ce que Shazam a proposé *et*
+le score a franchi le seuil. Tout le reste est marqué `legacy`, y compris
+les valeurs venues manifestement de YouTube : « manifestement » n'est pas
+un enregistrement, et une correction faite à la main y est
+indiscernable de l'original. Sur 944 morceaux : **753 artistes et 773
+titres attribués à Shazam, tout le reste `legacy`**, horodatages nuls
+partout — la date du fichier a été déplacée par les crêtes et par deux
+passes de réparation, l'écrire serait un mensonge.
+
+**`scripts/build_metadata_documents.py`** — construit, compare, et
+n'écrit que sur `--write`. Sa règle de fusion tient en trois cas : un
+champ marqué `user` n'est jamais écrasé (une reconstruction ne peut
+produire que `shazam` ou `legacy`) ; une valeur inchangée garde l'entrée
+qui connaît son instant ; tout le reste suit les trames, qui restent la
+source de vérité tant que l'application les écrit.
+
+### Où on en est
+
+Les 944 documents sont écrits. Médiane **907 octets** à ce stade — 1056
+depuis que le bloc `youtube` s'y ajoute — soit 0,9 Mo pour toute la
+bibliothèque contre 58,6 Mo de balises. Relus intégralement : 944/944,
+aucun illisible, pochettes et crêtes intactes. Seconde passe : **944
+« matches the frames », 0 écrit** — l'idempotence tient sur la vraie
+bibliothèque et pas seulement en test.
+
+À ce stade l'application ignore tout du document et répond comme avant.
+Elle l'écrit depuis `dc1cfae` ; elle ne le lit toujours pas.
+
+### L'origine YouTube, récupérée avant de la perdre — `6d34c75`
+
+Le manque le plus grave de l'inventaire, et le seul qui **se dégradait**.
+L'import prend quatre choses à la vidéo — id, chaîne, titre, vignette —
+et en confie trois aux champs que Shazam écrase ensuite, sans copie. Sur
+944 morceaux, 715 portaient le nom donné par Shazam et l'original n'était
+plus dans le fichier.
+
+Deux constats ont renversé le calendrier prévu. D'abord le coût :
+l'endpoint **oEmbed** de YouTube répond en 0,12 s, sans clé, sans verrou
+et sans bibliothèque, et rend `title` et `author_name` — c'est-à-dire
+exactement `video.title` et `video.author`. Les 944 morceaux prennent
+deux minutes, pas cinq heures. Ensuite l'urgence : un échantillon de 60
+a trouvé deux vidéos déjà supprimées. Un ISRC ne s'évapore pas, une
+vidéo supprimée si — cette passe-là ne pouvait pas attendre la passe
+globale.
+
+**Résultat : 933 origines récupérées, 11 disparues** — 6× 404, 4× 403,
+1× 401. Le réel (1,2 %) est plus doux que mon estimation (3,3 %), ce que
+je note parce que j'avais avancé le chiffre.
+
+**652 des 933 diffèrent de ce que le fichier affiche.** C'est la mesure
+directe de ce que Shazam avait effacé. Les 281 autres coïncident : ce
+sont les morceaux jamais reconnus, dont les noms venaient déjà de
+YouTube.
+
+Le bloc a **trois états**, et le troisième est sa raison d'être :
+
+    {}                                     jamais demandé
+    {"at": …, "author": …, "title": …}     demandé, répondu
+    {"at": …, "gone": true, "http": 404}   demandé, la vidéo n'y est plus
+
+Sans lui, chaque passe future réinterroge les mêmes vidéos mortes et
+échoue pareil, sans distinguer « pas encore fait » de « impossible ». Le
+code HTTP est gardé parce qu'ils ne disent pas la même chose : un 404 est
+une suppression, un 401 une vidéo passée en privé, un 403 un blocage
+régional — les deux derniers peuvent se rouvrir, d'où `--retry-gone`.
+
+Quatre règles portent le reste. Un échec réseau n'est **pas** une
+disparition : seuls 400, 401, 403, 404 et 410 sont enregistrés, un 500
+ne laisse rien et le morceau reste candidat. Le suffixe « - Topic » des
+chaînes automatiques de YouTube est conservé tel quel, parce que ce bloc
+est une preuve et que le rogner serait trancher au mauvais endroit. Rien
+n'est écrit dans les trames — aucune trame standard ne porte ça, et
+inventer des `TXXX` est l'arrangement que cette branche quitte. Et la
+reprise ne tient à aucun fichier d'état : ce que le document porte *est*
+le registre de ce qui a été fait, ce qu'une seconde passe a confirmé —
+944 « already known », zéro requête.
+
+Un exemple qui éclaire rétrospectivement le rattrapage : l'*Ave Maria*
+écarté à 68 % vient d'une chaîne nommée `ELITEXardas00`, sous le titre
+« Franz Schubert - Ave Maria (Instrumental) ». Le fichier annonce André
+Rieu ; l'origine ne le dit nulle part. Shazam y entendait autre chose,
+et pour cause.
+
+### Le modèle écrit son document — `dc1cfae`
+
+Jusqu'ici le document était l'œuvre d'un script : une passe, un instant,
+944 fichiers. À partir d'ici c'est le modèle qui l'écrit, à chaque
+sauvegarde, pour le morceau qu'il a en main. La bascule ne consiste pas
+à faire lire le document — rien ne le lit encore, les trames restent la
+vérité — mais à faire en sorte qu'il ne prenne plus de retard.
+
+**Une seule écriture.** Le document est attaché aux trames avant
+`mp3.save()`, pas après. Deux sauvegardes successives laisseraient une
+fenêtre où les trames et le document se contredisent, et doubleraient
+les entrées/sorties de la moindre correction.
+
+**Une valeur inchangée garde son entrée.** C'est la règle qui porte tout
+le reste. Réécrire `artist` avec la même chaîne remplacerait un vrai
+moment — quand la valeur a été décidée, et par qui — par celui de la
+sauvegarde en cours. Le document perdrait la seule chose que les trames
+n'ont jamais portée, et il la perdrait à chaque passage, sans rien
+signaler.
+
+**Qui décide voyage avec la valeur.** `update_state(..., by=…)` pose
+`_setter`, et les champs modifiés dans la foulée le portent. L'établi
+passe `by="user"`, la reconnaissance `by="shazam"`, l'import
+`by="import"` ; par défaut, `legacy` — l'aveu qu'on ne sait pas, et non
+une affirmation fausse.
+
+**Un document illisible n'est pas écrasé.** `_document()` rend `None`
+quand le fichier porte un document que ce build ne sait pas lire : une
+version plus récente, ou une trame abîmée. Les deux autres conduites
+étaient pires. L'écraser détruirait ce qu'un build plus récent savait —
+exactement le mécanisme qui a produit trois générations de noms de
+trames Shazam coexistant dans la bibliothèque. Refuser la sauvegarde
+casserait l'application pour une ombre que personne ne lit. Ne rien
+faire ne fait ni l'un ni l'autre : les trames passent, le document
+attend un build qui le comprenne.
+
+### Ce que Shazam donne et qu'aucune trame ne pouvait porter — `f94eca7`
+
+Les cinq éléments que la réponse contenait et que l'inventaire listait
+comme ignorés sont désormais dans `sources.shazam` : `key` et `url` (la
+fiche Shazam), `apple_album` et `apple_artists` (les identifiants Apple,
+la clé d'entrée d'iTunes — celle qui a servi à retaguer *The Power*),
+`colors` (la palette extraite de la pochette). Aucun n'a de trame ID3 où
+aller ; c'est précisément ce que le document rend possible.
+
+Deux comportements, et la distinction est le cœur de l'affaire. Une
+**nouvelle reconnaissance** remplace le bloc : ce que la réponse
+précédente nommait porte sur un morceau que celle-ci ne reconnaît
+peut-être pas — vérifié sur un vrai fichier, où `apple_album` disparaît
+bien quand la seconde réponse n'en a pas. Une **sauvegarde ordinaire**
+fusionne : elle n'a aucune réponse à elle, et remplacer le bloc
+laisserait tomber les identifiants et la palette, qui ne vivent que là
+et qu'il faudrait cinq heures de passe pour retrouver.
+
+Une valeur vide n'écrit pas sa clé, et un bloc vide n'efface pas ce
+qu'une réponse antérieure avait consigné.
+
+**Ce que la contre-épreuve a trouvé — `cf8a60e`.** Cinq altérations,
+quatre rouges, une verte : supprimer la ligne de `shazam_song()` qui
+relève les identifiants n'a rien cassé. Les treize tests posaient
+`_shazam_extras` à la main et vérifiaient la mécanique sans jamais
+vérifier le câblage. Le test manquant fait tourner `shazam_song()` sur
+un client factice et lit le document du fichier ; l'altération refaite
+échoue comme elle devait.
+
+### Ce qui reste
+
+La bascule proprement dite : décider ce que `main` fait des trames, et
+ce que la console lit. Le document est maintenant tenu à jour, mais rien
+ne le lit — c'est un gain de sûreté, pas encore un gain de
+fonctionnalité.
+
+L'inventaire des données, en revanche, est clos. La passe Shazam globale
+n'attend plus que cette décision. Côté YouTube, oEmbed ne rend que la
+chaîne et le titre ; `publish_date`, `length`, `description` et
+`keywords` demanderaient une requête plus lourde et n'ont pas été jugés
+nécessaires.
+
 ## Méthode — trois échecs de procédure, et ce que les contre-épreuves ont appris
 
 Le document dit ailleurs qu'aucune page n'avait jamais été rendue par un
@@ -992,6 +1211,14 @@ travers l'espace et comptait donc chaque suppression comme un anneau, un
 `".t" in selector` qui attrapait aussi `.track`, et une regex cherchant la
 fin du groupe `#volume` qui ne matchait rien du tout à cause des `</div>`
 imbriqués.
+
+Et une fois un manque d'un autre genre : pas un test creux, mais un test
+absent. Treize tests vérifiaient la mécanique des identifiants Shazam en
+posant l'attribut à la main ; supprimer la ligne qui le remplit
+réellement n'en a fait tomber aucun. Une suite peut couvrir toute la
+logique d'une fonctionnalité et rien de son branchement — et la
+contre-épreuve est le seul procédé qui le montre, parce que le test
+manquant, par définition, ne se relit pas.
 
 Elles ont aussi montré deux fois qu'une **contre-épreuve peut mentir** :
 un `sed` dont le motif ne s'applique pas laisse le test passer et fait

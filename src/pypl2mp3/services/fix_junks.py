@@ -149,10 +149,13 @@ async def apply_fix(
         song.cover_art_url = cover_art_url
         await song.update_cover_art()
 
+    # The form is the user speaking. What is written here outranks any
+    # later automated pass, and the document is where that is recorded.
     song.update_state(
         artist=artist or None,
         title=title or None,
         cover_art_url=cover_art_url or False,
+        by="user",
     )
 
     song.fix_filename(mark_as_junk=False)
