@@ -534,6 +534,13 @@ class SongModel:
     # authority is unknown — which is exactly what "legacy" means.
     _setter = "legacy"
 
+    # What the last recognition said beyond the names: identifiers and the
+    # cover's palette. Transient, because these never became ID3 frames —
+    # they go straight into the document, which is what it is for. Empty
+    # on any save that is not a recognition, and that is the signal the
+    # document assembly reads to tell a fresh answer from a plain save.
+    _shazam_extras: dict = {}
+
     last_shazam_request_time = 0
 
     # Guards the timestamp above: the 15s gap is enforced by reading it
@@ -1405,12 +1412,25 @@ class SongModel:
         if self.shazam_match_score is not None:
             answer["score"] = int(self.shazam_match_score)
 
-        # Only when there is something new to say: an empty answer must
-        # not erase what an earlier one recorded.
-        if answer and answer != {
+        stored = {
             key: value for key, value in document["sources"]["shazam"].items()
             if key != "at"
-        }:
+        }
+
+        if self._shazam_extras:
+            # A fresh recognition supersedes: whatever the previous answer
+            # named is about a track this one may not agree with.
+            answer.update(self._shazam_extras)
+        else:
+            # An ordinary save carries no answer of its own. Replacing the
+            # block wholesale would quietly drop the identifiers and the
+            # palette, which live only here and would need a five-hour
+            # pass to fetch again.
+            answer = dict(stored, **answer)
+
+        # Only when there is something new to say: an empty answer must
+        # not erase what an earlier one recorded.
+        if answer and answer != stored:
             document = metadata.set_source(document, "shazam", answer)
 
         return document
@@ -1813,6 +1833,9 @@ class SongModel:
         if "track" in shazam_metadata:
             try:
                 release = self._release_data(shazam_metadata["track"])
+                self._shazam_extras = self._shazam_identity(
+                    shazam_metadata["track"]
+                )
 
                 title = \
                     shazam_metadata["track"]["title"][:1].upper() \
@@ -1933,6 +1956,47 @@ class SongModel:
             )
 
         return int((artist_match_score + title_match_score * 2) / 3)
+
+
+    @staticmethod
+    def _shazam_identity(track: dict) -> dict:
+        """The durable handles a Shazam answer carries, and the palette.
+
+        None of these describe the song. `key` and `url` name the answer
+        itself; `apple_album` and `apple_artists` are the ids the iTunes
+        lookup takes, which turns a later question into one HTTP request
+        instead of a fifteen-second recognition. That is the whole reason
+        to keep them.
+
+        `colors` is Apple's `joecolor`, stored exactly as given —
+        `b:…p:…s:…t:…q:…`, believed to be background, primary, secondary
+        and two text tints. Believed, not decided: this block is evidence,
+        and parsing it here would bake an interpretation into the file
+        that a reader could not undo.
+
+        Returns:
+            dict: only the handles the answer actually carried.
+        """
+
+        images = track.get("images") or {}
+        artists = [
+            str(one.get("adamid")).strip()
+            for one in track.get("artists") or []
+            if one.get("adamid")
+        ]
+
+        found = {
+            "key": str(track.get("key") or "").strip(),
+            "url": str(track.get("url") or "").strip(),
+            "apple_album": str(track.get("albumadamid") or "").strip(),
+            "colors": str(images.get("joecolor") or "").strip(),
+        }
+        answer = {name: value for name, value in found.items() if value}
+
+        if artists:
+            answer["apple_artists"] = artists
+
+        return answer
 
 
     @staticmethod

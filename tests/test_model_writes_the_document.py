@@ -167,3 +167,96 @@ class TestItRefusesToGuess:
         SongModel(path).update_state(title="Kiss")
 
         assert "album" not in metadata.read(path)["fields"]
+
+
+class TestTheHandlesShazamCarries:
+    """Identifiers and a palette that never became ID3 frames.
+
+    None of them describe the song. `key` and `url` name the answer;
+    `apple_album` and `apple_artists` are what the iTunes lookup takes,
+    which turns a later question into one HTTP request instead of a
+    fifteen-second recognition. That is the whole reason to keep them —
+    and the reason the document exists, since inventing five more custom
+    frames is what this branch is leaving behind.
+    """
+
+    def test_they_are_read_out_of_the_answer(self):
+        track = {
+            "key": 470682427,
+            "url": "https://www.shazam.com/track/470682427/x",
+            "albumadamid": 1485457072,
+            "artists": [{"id": "42", "adamid": "110799"}],
+            "images": {"joecolor": "b:5e5d71p:f7e4df"},
+        }
+
+        assert SongModel._shazam_identity(track) == {
+            "key": "470682427",
+            "url": "https://www.shazam.com/track/470682427/x",
+            "apple_album": "1485457072",
+            "apple_artists": ["110799"],
+            "colors": "b:5e5d71p:f7e4df",
+        }
+
+    def test_the_palette_is_stored_exactly_as_given(self):
+        """`b:…p:…s:…t:…q:…` — believed to be background, primary,
+        secondary and two text tints. Believed, not decided: this block is
+        evidence, and parsing it here would bake an interpretation into
+        the file that a reader could not undo."""
+
+        raw = "b:5e5d71p:f7e4dfs:f8c2b3t:d8c9c9q:d9aea6"
+
+        assert SongModel._shazam_identity(
+            {"images": {"joecolor": raw}}
+        )["colors"] == raw
+
+    def test_an_answer_that_carries_none_of_them_says_nothing(self):
+        """Absent rather than empty: a key holding "" would be a handle
+        somebody could try to follow."""
+
+        assert SongModel._shazam_identity({}) == {}
+        assert SongModel._shazam_identity(
+            {"key": "", "images": {"joecolor": "  "}}
+        ) == {}
+
+    def test_an_ordinary_save_does_not_drop_them(self, tmp_path):
+        """They live only in the document. Replacing the block wholesale
+        on every save would quietly lose them, and fetching them again
+        would cost a five-hour pass."""
+
+        path = _song(tmp_path)
+
+        song = SongModel(path)
+        song._shazam_extras = {"key": "470682427", "colors": "b:5e5d71"}
+        song.update_state(shazam_artist="IAMX", shazam_match_score=91,
+                          by="shazam")
+
+        SongModel(path).update_state(title="Edited by hand")
+
+        answer = metadata.read(path)["sources"]["shazam"]
+
+        assert answer["key"] == "470682427"
+        assert answer["colors"] == "b:5e5d71"
+
+    def test_a_new_recognition_supersedes_the_previous_one(self, tmp_path):
+        """Whatever the previous answer named is about a track this one
+        may not agree with. Merging would leave the album id of a record
+        Shazam no longer claims this is."""
+
+        path = _song(tmp_path)
+
+        first = SongModel(path)
+        first._shazam_extras = {"key": "111", "apple_album": "222"}
+        first.update_state(shazam_artist="IAMX", shazam_match_score=91,
+                           by="shazam")
+
+        second = SongModel(path)
+        second._shazam_extras = {"key": "333"}
+        second.update_state(shazam_artist="Someone Else",
+                            shazam_match_score=60, by="shazam")
+
+        answer = metadata.read(path)["sources"]["shazam"]
+
+        assert answer["key"] == "333"
+        assert "apple_album" not in answer, (
+            "the album id of a record Shazam no longer claims this is"
+        )
