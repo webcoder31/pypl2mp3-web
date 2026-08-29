@@ -962,13 +962,21 @@ là, et une recherche par nom de fichier qui échouait parce que macOS
 stocke les noms en **NFD** — `E` suivi d'un accent combinant — quand le
 littéral était en NFC.
 
-## En cours — la branche `metadata-document`
+## En cours — le document par morceau
 
-Pas une dette traitée : un chantier ouvert, sur une branche à part, dont
-`main` ignore l'existence. L'écart avec `main` est de **neuf fichiers
-ajoutés et trois modifiés** — il était de quatre ajoutés et zéro modifié
-tant que seuls des scripts écrivaient le document ; c'est le modèle qui
-s'y est mis qui a fait tomber ce zéro.
+Construit sur la branche `metadata-document`, **fusionné dans `main` en
+`bf34c7c`** : neuf fichiers ajoutés, trois modifiés. La branche avait
+commencé à quatre ajoutés et zéro modifié — tant que seuls des scripts
+écrivaient le document, `main` pouvait l'ignorer entièrement. C'est le
+modèle qui s'y est mis qui a fait tomber ce zéro.
+
+Le merge ne change **que ce qu'une sauvegarde écrit**, pas ce qu'une
+ouverture lit : la bascule de la lecture est un commit à part, donc
+révocable à part. Ce qui l'autorise est une mesure et non un pari — sur
+toute la bibliothèque, le document et les trames disent la même chose
+des sept champs : **944/944, zéro divergence, zéro document manquant,
+zéro illisible**. Seule exception, deux `TSRC` que le document ne porte
+pas encore ; ils se répareront à la prochaine sauvegarde de ces fichiers.
 
 ### Pourquoi
 
