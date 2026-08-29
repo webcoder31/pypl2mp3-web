@@ -1023,9 +1023,9 @@ version inconnue lève une exception plutôt que de deviner.
 
 **`libs/legacy.py`** — lit les trois générations de trames et en fait un
 document, ISRC compris depuis `TSRC` : seul Shazam en fournit, donc un
-fichier qui en porte un porte celui de Shazam. Il n'écrit rien : construire et ranger sont deux actes
-séparés, pour qu'une passe de comparaison puisse les tenir côte à côte
-sans toucher un fichier.
+fichier qui en porte un porte celui de Shazam. Il n'écrit rien :
+construire et ranger sont deux actes séparés, pour qu'une passe de
+comparaison puisse les tenir côte à côte sans toucher un fichier.
 
 Sa colonne la plus intéressante est celle qu'il ne remplit pas. Une seule
 attribution est certaine — la valeur égale ce que Shazam a proposé *et*
@@ -1054,7 +1054,7 @@ aucun illisible, pochettes et crêtes intactes. Seconde passe : **944
 bibliothèque et pas seulement en test.
 
 À ce stade l'application ignore tout du document et répond comme avant.
-Elle l'écrit depuis `dc1cfae` ; elle ne le lit toujours pas.
+Elle l'écrit depuis `dc1cfae`, et le lit depuis `2a5bf73`.
 
 ### L'origine YouTube, récupérée avant de la perdre — `6d34c75`
 
@@ -1115,9 +1115,10 @@ et pour cause.
 
 Jusqu'ici le document était l'œuvre d'un script : une passe, un instant,
 944 fichiers. À partir d'ici c'est le modèle qui l'écrit, à chaque
-sauvegarde, pour le morceau qu'il a en main. La bascule ne consiste pas
-à faire lire le document — rien ne le lit encore, les trames restent la
-vérité — mais à faire en sorte qu'il ne prenne plus de retard.
+sauvegarde, pour le morceau qu'il a en main. Cette étape ne fait pas lire
+le document — à ce stade rien ne le lit, les trames restent la vérité, et
+la lecture ne bascule que deux commits plus loin. Ce qu'elle fait, c'est
+l'empêcher de prendre du retard.
 
 **Une seule écriture.** Le document est attaché aux trames avant
 `mp3.save()`, pas après. Deux sauvegardes successives laisseraient une
@@ -1176,18 +1177,85 @@ vérifier le câblage. Le test manquant fait tourner `shazam_song()` sur
 un client factice et lit le document du fichier ; l'altération refaite
 échoue comme elle devait.
 
+### La bascule de la lecture — `2a5bf73`
+
+Le modèle interroge le document, et les trames seulement à défaut. C'est
+le commit qui change qui l'on croit.
+
+**La mesure d'abord.** Sur les 944 morceaux, le document et les trames
+disent la même chose des sept champs : zéro divergence, zéro document
+manquant, zéro illisible. C'est ce qui autorise la bascule — sans cette
+mesure, elle aurait été un pari. Après bascule : **944 ouverts, zéro
+erreur, zéro fichier réécrit** ; ouvrir ne modifie rien, ce qui est la
+propriété à laquelle on tient le plus ici.
+
+**Ce que la bascule récupère au passage : 135 attributs.** Ce ne sont pas
+des valeurs nouvelles, ce sont des valeurs que le lecteur de trames ne
+voyait plus — 55 artistes Shazam, 55 titres, 18 scores, 5 pochettes,
+rangés sous des noms d'anciennes générations. `legacy` sait les lire, le
+modèle ne savait plus les trouver. La panne que le document devait clore
+était donc encore ouverte, et sur 135 cas ; elle se referme ici. Trois
+vont dans l'autre sens — deux codes d'enregistrement et une origine de
+pochette —, réparés à la prochaine sauvegarde de ces fichiers.
+
+**Une lecture de trame survit**, et ce n'est pas une lecture de
+métadonnée : savoir si le fichier porte la trame d'id est ce qui reconnaît
+un téléchargement pas encore taggé, et c'est ce qui déclenche son
+tagage. Poser la question au document aurait répondu « déjà taggé » pour
+un fichier qui ne porte aucune trame, puisque le repli passe par le nom
+de fichier. La contre-épreuve l'a confirmé : 37 tests tombent quand on
+interroge le document à cet endroit.
+
+**Les trames continuent d'être écrites.** `TPE1`, `TIT2`, `TALB`, `TPUB`,
+`TDRC`, `TCON`, `TSRC`, `APIC` sont la surface d'interopérabilité : tout
+lecteur audio les lit, et les retirer abîmerait la bibliothèque en dehors
+de l'outil. Ce que le programme a cessé de faire, c'est de les croire.
+
+Deux choses que la bascule a rendues porteuses, et qui ne l'étaient pas.
+
+**L'URL est revenue à côté de l'empreinte.** `embedded` ne portait que le
+SHA-256 des octets. C'est le fait, et il survit à la mort de l'URL — mais
+il ne répond qu'une fois les octets en main, c'est-à-dire après avoir payé
+le téléchargement que la question sert justement à éviter. Il fallait les
+deux : l'empreinte parce qu'elle ne ment pas, l'URL parce qu'elle est la
+seule réponse bon marché. Une seule trame `Stored cover art URL` existait
+encore dans toute la bibliothèque, donc la bascule ne perd presque rien :
+un morceau paiera un téléchargement de trop, une fois.
+
+**Junkiser laissait le document debout.** Les trames étaient effacées, le
+document non, donc la réouverture relisait le nom dedans et le morceau
+n'était plus junk du tout. Bug créé par la bascule, trouvé avant de
+livrer, en cherchant précisément ce que la bascule rendait critique.
+`reset_state` le signale maintenant et le document suit. Survivent l'id
+et `sources.youtube` : l'origine est irremplaçable une fois la vidéo
+partie — c'est ce qu'une passe entière a servi à sauver — et ce n'est pas
+une conclusion qu'on a tirée sur le morceau. `embedded` n'est pas traité
+à part : il décrit ce que le fichier porte, et tant que la pochette n'est
+pas retirée, il la porte encore.
+
+**Onze contre-épreuves, quatre passées à tort.** Elles sont racontées
+plus bas, avec le reste de ce que la méthode a coûté.
+
 ### Ce qui reste
 
-La bascule proprement dite : décider ce que `main` fait des trames, et
-ce que la console lit. Le document est maintenant tenu à jour, mais rien
-ne le lit — c'est un gain de sûreté, pas encore un gain de
-fonctionnalité.
+**Retirer les sept `TXXX` devenues redondantes** — les quatre de Shazam,
+les deux de pochette, celle de l'id. Elles ne sont plus lues ; elles sont
+encore écrites, volontairement, parce qu'elles sont le chemin de retour.
+C'est **le seul geste irréversible** de toute l'opération, et il n'y a
+aucune raison de le presser.
 
-L'inventaire des données, en revanche, est clos. La passe Shazam globale
-n'attend plus que cette décision. Côté YouTube, oEmbed ne rend que la
-chaîne et le titre ; `publish_date`, `length`, `description` et
-`keywords` demanderaient une requête plus lourde et n'ont pas été jugés
-nécessaires.
+**Ce que la console lit.** Le document porte trois choses qu'aucune trame
+ne portera jamais : l'origine YouTube, la provenance de chaque valeur, et
+les identifiants Shazam. C'est la réponse laissée en suspens à la question
+de l'UI — quatre champs de plus dans le formulaire de l'inspecteur
+seraient redondants avec la ligne sous le titre ; ces trois-là ne le sont
+pas.
+
+**La passe Shazam globale**, qui n'attend plus rien : l'inventaire des
+données est clos, et elle écrira désormais dans le monde d'après. Côté
+YouTube, oEmbed ne rend que la chaîne et le titre ; `publish_date`,
+`length`, `description` et `keywords` demanderaient une requête plus
+lourde et n'ont pas été jugés nécessaires.
 
 ## Méthode — trois échecs de procédure, et ce que les contre-épreuves ont appris
 
@@ -1213,20 +1281,44 @@ fois pendant une contre-épreuve, pour restaurer un fichier modifié
 exprès. Les contre-épreuves passent maintenant par une copie hors de
 git.
 
-Les contre-épreuves, elles, ont payé : elles ont attrapé sept tests
+Les contre-épreuves, elles, ont payé : elles ont attrapé huit tests
 creux, dont un `outline:\s*[^;n]` qui reconnaissait `outline: none` à
 travers l'espace et comptait donc chaque suppression comme un anneau, un
 `".t" in selector` qui attrapait aussi `.track`, et une regex cherchant la
 fin du groupe `#volume` qui ne matchait rien du tout à cause des `</div>`
 imbriqués.
 
-Et une fois un manque d'un autre genre : pas un test creux, mais un test
-absent. Treize tests vérifiaient la mécanique des identifiants Shazam en
-posant l'attribut à la main ; supprimer la ligne qui le remplit
-réellement n'en a fait tomber aucun. Une suite peut couvrir toute la
-logique d'une fonctionnalité et rien de son branchement — et la
-contre-épreuve est le seul procédé qui le montre, parce que le test
-manquant, par définition, ne se relit pas.
+Le huitième est d'une espèce à part, parce que rien dans son texte
+n'était faux. Il vérifiait qu'une pochette inchangée garde l'instant où
+elle a été enregistrée : deux sauvegardes, deux horodatages comparés.
+Mais l'horloge du document a une résolution d'une seconde, et deux
+sauvegardes de test tombent dans la même — donc l'assertion était vraie
+que la règle existe ou non. Un test peut être juste, lisible, et ne rien
+mesurer, parce que ce qui le vide est ailleurs que dans ce qu'il dit.
+
+**Trois fois un manque d'un autre genre : pas un test creux, mais un test
+absent.** Treize tests vérifiaient la mécanique des identifiants Shazam
+en posant l'attribut à la main ; supprimer la ligne qui le remplit
+réellement n'en a fait tomber aucun. La sauvegarde qui pose la pochette
+n'était couverte par rien — elle n'écrit pas par le même chemin que les
+autres, et c'est justement pourquoi elle méritait un test. Et le loquet
+du junkisage, laissé levé, ne cassait rien de visible puisque les valeurs
+sont réécrites juste après : ce qu'il emportait, c'était la provenance et
+les identifiants, si bien qu'il a fallu prendre l'horodatage pour témoin.
+Une suite peut couvrir toute la logique d'une fonctionnalité et rien de
+son branchement — et la contre-épreuve est le seul procédé qui le montre,
+parce que le test manquant, par définition, ne se relit pas.
+
+**Et une fois, ce n'est pas un test qu'elle a corrigé mais un
+commentaire.** J'avais écrit que ne pas relire le fichier lors d'une
+réinitialisation empêchait les anciennes valeurs de revenir par-dessus
+les nouvelles. La contre-épreuve a retiré la garde : rien n'est tombé.
+Les gardes situées en dessous s'en chargeaient déjà ; ce que la ligne
+économise, c'est une relecture du fichier — et sur un fichier sans
+document, sa réouverture complète et le réhachage de sa pochette à chaque
+édition. La ligne était bonne, sa justification était fausse, et c'est
+la sorte d'erreur qu'aucune relecture n'attrape : un commentaire ne
+s'exécute pas.
 
 Elles ont aussi montré deux fois qu'une **contre-épreuve peut mentir** :
 un `sed` dont le motif ne s'applique pas laisse le test passer et fait
