@@ -1326,6 +1326,95 @@ illisible est pire qu'aucun avertissement, parce que le panneau a l'air
 d'avoir prévenu. `--text-2` donne 6,21 et 6,27. Mesuré dans le
 navigateur, pas choisi à l'œil.
 
+### La passe Shazam, enfin lancée — `fc012b7`
+
+**811 morceaux, 3 h 20, 797 remplis, 14 écartés, zéro échec.** Le seuil
+était à 75 %, comme la passe précédente : à 50 % la première ligne
+écrivait déjà « Sisters Of Tranquility » sur l'*Ave Maria* d'André Rieu.
+
+Ce qu'elle a rapporté, et qui n'existait nulle part avant :
+
+| dans `sources.shazam` | avant | après |
+|---|---|---|
+| identifiant et lien Shazam | 0 | **797** |
+| identifiants Apple, album / artistes | 0 | **768 / 794** |
+| palette de la pochette | 0 | **768** |
+| code d'enregistrement | 2 | **768** |
+
+**Elle ne les aurait pas rapportés sans deux corrections faites la
+veille.** Le script n'appelle pas `shazam_song` — c'est délibéré, il ne
+doit pas écraser artiste et titre — donc il ne relevait pas les poignées
+que seule une reconnaissance produit, et ne disait pas non plus qui
+décidait la sortie. Relu avant de dépenser cinq heures, il aurait rendu
+l'ISRC et rien d'autre. Les deux corrections tiennent en quatre lignes ;
+les trouver a demandé de lire le script contre ce que le document porte
+désormais, ce qu'aucun test n'aurait fait à ma place.
+
+**Une sauvegarde, et vérifiée.** Un bloc ID3 par morceau pour les 944, 50
+Mo compressés — et surtout une restauration essayée sur une copie avant
+de lancer : balises abîmées, remises, fichier identique à l'octet près.
+Elle a servi trois fois ensuite, non pour restaurer mais pour **prouver**
+qu'aucune des trois écritures suivantes n'avait perdu quoi que ce soit.
+C'est le vrai usage : une sauvegarde d'avant est un témoin autant qu'un
+filet.
+
+### La provenance, close en deux passes — `1a0b464`, `fb3f9d3`
+
+Le document savait *quoi*, pas *qui*. Sur 5 918 champs, 4 387 disaient
+`legacy` — son mot pour « personne ne sait » —, hérité de ce que la
+construction depuis les trames pouvait établir, c'est-à-dire presque
+rien.
+
+Et la passe Shazam n'a pas réparé ça toute seule : elle écrit bien
+`by="shazam"`, mais 780 de ses 811 morceaux portaient déjà les mêmes
+valeurs, et **la règle qui protège une valeur inchangée protège aussi son
+`by` périmé**. Cinq champs ont bougé. La règle est bonne — c'est elle qui
+distingue « j'ai tapé ça » de « je n'ai pas protesté » — et sa
+conséquence ici est qu'une attribution fausse survit à ce qui aurait dû
+la corriger.
+
+**Première passe : ce que la réponse de Shazam prouve.** Elle est
+maintenant rangée à côté de la valeur, alors là où un champ `legacy`
+porte exactement ce que Shazam a répondu, Shazam l'a décidé — les deux
+chaînes ne peuvent pas être égales autrement, quelqu'un qui aurait tapé
+la même URL serait marqué `user`. **678 champs, dont 631 pochettes.**
+
+**Seconde passe : ce que le code rend certain.** Trois règles, chacune
+adossée à une propriété du code et non à l'allure des valeurs.
+
+Les quatre champs de sortie ne peuvent être que de Shazam : **exactement
+deux endroits les écrivent** dans tout le programme — la branche
+match-accepté de `shazam_song` et le script de rattrapage. Ni l'import,
+ni le formulaire de l'établi, ni la saisie du terminal ne les proposent.
+Il n'y a pas de porte par où une personne aurait pu passer. **3 108
+champs.**
+
+Un artiste ou un titre égal au nom de la vidéo est de l'import, qui écrit
+`video.author` et `video.title` **sans les parser** — et oEmbed rend ces
+deux chaînes-là, donc la comparaison est exacte et non ressemblante. Une
+pochette dont l'URL porte l'id de cette vidéo l'est pour la même raison.
+**247 champs.**
+
+Le reste est d'une personne : `Pixies` contre une chaîne nommée
+`Subbacultcha`, `Bernard Lavilliers` contre `BernardLavillierVEVO`. **155
+champs.**
+
+**Deux exceptions gardent la dernière règle honnête**, et ce sont elles
+qui valaient la mesure. Les 169 pochettes restantes sont **toutes** sur
+l'hôte d'Apple : personne n'en a collé cent soixante-neuf à la main, ce
+sont des réponses dont l'URL a bougé depuis. Et les noms d'un morceau
+junkisé n'ont jamais été saisis — `reset_state` efface les trames, le
+constructeur les redérive du nom de fichier et les réécrit — donc un
+avertissement là-dessus porterait sur rien.
+
+**Il reste 30 champs `legacy`** : 14 sur des junks, 16 sur des vidéos
+parties avant qu'on note leur titre. Rien à comparer, et `legacy` y est
+la réponse vraie plutôt qu'un trou à boucher. Le script les **compte**,
+parce qu'un rapport qui n'énumère que ses succès se lit comme s'il avait
+tout couvert.
+
+Bilan : `shazam` 5 486, `import` 247, `user` 155, `legacy` 30.
+
 ### Ce qui reste
 
 **Retirer les sept `TXXX` devenues redondantes** — les quatre de Shazam,
@@ -1334,19 +1423,21 @@ encore écrites, volontairement, parce qu'elles sont le chemin de retour.
 C'est **le seul geste irréversible** de toute l'opération, et il n'y a
 aucune raison de le presser.
 
-**La passe Shazam globale** est désormais le seul gros morceau : environ
-cinq heures. Elle remplirait le lien vers la fiche Shazam, les
-identifiants Apple et la palette, aujourd'hui à **zéro** sur toute la
-bibliothèque, faute de reconnaissance depuis `f94eca7`. Le nombre de
-candidats mesuré (≈800) date d'avant l'ajout du critère ISRC et demande
-à être repris avant de lancer.
+**`import -p` en mode interactif** (`WebInteraction`), qui traîne depuis
+l'ouverture du projet et n'a rien à voir avec le document.
 
-Côté YouTube en revanche, rien n'attend : oEmbed ne rend que la chaîne et
-le titre, et `publish_date`, `length`, `description` et `keywords`
-demanderaient une requête plus lourde sans être jugés nécessaires.
+Et deux morceaux hors d'atteinte du rattrapage : *Children of the Sky* et
+*TSAWAR ÑAN* portaient déjà un `TSRC`, donc les critères — calculés sur
+les trames — ne les ont jamais rendus candidats, et ils n'auront pas
+leurs identifiants. Deux sur 944 ; une ligne dans `what_is_missing` si on
+veut la couverture complète.
 
-Rien de tout cela ne se dégrade. L'origine YouTube était le seul manque
-qui empirait avec le temps, et elle est sauvée.
+Côté YouTube, rien n'attend : oEmbed ne rend que la chaîne et le titre, et
+`publish_date`, `length`, `description` et `keywords` demanderaient une
+requête plus lourde sans être jugés nécessaires.
+
+Rien de tout cela ne se dégrade, et il n'y a plus de manque qui empire
+avec le temps.
 
 ## Méthode — trois échecs de procédure, et ce que les contre-épreuves ont appris
 
@@ -1372,12 +1463,23 @@ fois pendant une contre-épreuve, pour restaurer un fichier modifié
 exprès. Les contre-épreuves passent maintenant par une copie hors de
 git.
 
-Les contre-épreuves, elles, ont payé : elles ont attrapé dix tests
+Les contre-épreuves, elles, ont payé : elles ont attrapé douze tests
 creux, dont un `outline:\s*[^;n]` qui reconnaissait `outline: none` à
 travers l'espace et comptait donc chaque suppression comme un anneau, un
 `".t" in selector` qui attrapait aussi `.track`, et une regex cherchant la
 fin du groupe `#volume` qui ne matchait rien du tout à cause des `</div>`
 imbriqués.
+
+Les onzième et douzième passaient tous les deux **pour une autre raison
+que celle qu'ils annonçaient**, et c'est la même : la réparation des
+attributions a deux gardes en série — une liste des champs dont on
+accepte la preuve, et une comparaison d'égalité — et mes deux tests
+étaient attrapés par la seconde avant d'atteindre la première. Retirer la
+liste ne cassait rien. Il a fallu construire des documents que le
+programme ne produit jamais — un `sources.shazam` portant un album, un
+champ vide en regard d'une réponse vide — pour que la garde visée soit la
+seule qui puisse répondre. Quand deux gardes protègent la même chose, un
+test qui n'en distingue pas une n'en tient aucune.
 
 Le dixième cherchait la phrase « set by hand » dans la page pour vérifier
 qu'elle ne s'affiche que là où il y a lieu. Rendre le paragraphe sans
@@ -1414,6 +1516,27 @@ les identifiants, si bien qu'il a fallu prendre l'horodatage pour témoin.
 Une suite peut couvrir toute la logique d'une fonctionnalité et rien de
 son branchement — et la contre-épreuve est le seul procédé qui le montre,
 parce que le test manquant, par définition, ne se relit pas.
+
+**Une sauvegarde d'avant est un témoin autant qu'un filet.** Le bloc ID3
+de chaque morceau a été archivé avant la passe Shazam, avec une
+restauration essayée sur une copie — un fichier remis à l'octet près —
+parce qu'une sauvegarde non vérifiée n'en est pas une. Elle n'a jamais
+servi à restaurer. Elle a servi trois fois à **prouver** : après chacune
+des trois écritures globales, comparer chaque document à son état
+d'avant, clé par clé, a montré ce qui avait bougé et surtout ce qui
+n'avait pas bougé. C'est ce qui a permis d'affirmer « aucun instant
+déplacé » plutôt que de l'espérer — et, une fois, de constater que cinq
+instants *avaient* bougé et de vérifier que c'étaient exactement les cinq
+champs que la passe avait elle-même réécrits.
+
+**Et une alerte levée à tort, par moi.** J'ai annoncé que la passe avait
+fait tomber le nombre de scores de 877 à 834. C'était un défaut de
+comptage : `score is not None` avant, valeur vraie après, et les 43
+d'écart sont les morceaux à score **0** — Shazam n'a rien reconnu. La
+comparaison à la sauvegarde l'a réfutée en une minute. Deux mesures qui
+se répondent doivent être prises avec le même critère, ce qui est
+évident écrit ainsi et ne l'est pas quand les deux sont séparées par
+trois heures.
 
 **Deux fois, la contre-épreuve n'a pas montré un test manquant mais un
 défaut.** Le loquet du junkisage en était un ; l'autre est que le modèle
