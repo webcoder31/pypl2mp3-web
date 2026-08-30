@@ -958,7 +958,8 @@ l'ouverture, écrit dans `TSRC`, effacé par `reset_state`. Le critère du
 rattrapage s'élargit en conséquence — un morceau complet par ailleurs
 mais sans code redevient candidat, ce qui était le cas des 944 avant
 l'essai décrit ci-dessous, et de 942 juste après. **Ils ne sont plus que
-174 depuis la passe globale** (`fc012b7`), décrite plus bas.
+174 depuis la passe globale** (`fc012b7`) — et ce critère est désormais
+posé au document plutôt qu'aux trames, qui n'existent plus.
 
 La passe n'a pas été relancée *à ce moment-là*. Chacune coûte cinq heures
 et huit cents requêtes ; en lancer une pour l'ISRC puis une autre pour ce
@@ -978,8 +979,9 @@ littéral était en NFC.
 
 L'arc est complet : le document existe, le modèle l'écrit, le modèle le
 lit, la console en montre trois choses et la provenance est close. Ce qui
-suit le raconte dans l'ordre où il a été fait ; ce qui reste tient en deux
-points, tout en bas, dont aucun ne se dégrade.
+suit le raconte dans l'ordre où il a été fait ; les trames en doublon
+sont parties, et ce qui reste tient en un point, tout en bas, qui ne se
+dégrade pas.
 
 Construit sur la branche `metadata-document`, **fusionné dans `main` en
 `bf34c7c`** : neuf fichiers ajoutés, trois modifiés. La branche avait
@@ -1429,22 +1431,64 @@ tout couvert.
 
 Bilan : `shazam` 5 486, `import` 247, `user` 155, `legacy` 30.
 
-### Ce qui reste
+### Plus aucune `TXXX` — `9f2cd2a`, `773bb05`
 
-**Retirer les sept `TXXX` devenues redondantes** — les quatre de Shazam,
-les deux de pochette, celle de l'id. Elles ne sont plus lues ; elles sont
-encore écrites, volontairement, parce qu'elles sont le chemin de retour.
-C'est **le seul geste irréversible** de toute l'opération, et il n'y a
-aucune raison de le presser.
+Le dernier geste, et le seul irréversible. Une donnée privée dans une
+trame privée : la règle que ce projet s'est écrite le jour où il a trouvé
+ses identifiants vidéo logés dans `TRCK`, où tout lecteur les affichait
+comme un numéro de piste.
+
+**La différence entre les deux familles est le fond de l'affaire.** Une
+`TXXX` est une trame *texte* : elle se trouve par une étiquette en texte
+libre et elle est faite pour être montrée. Une `PRIV` se trouve par un
+propriétaire — ici une URL — et son contrat est qu'elle appartient à une
+application, personne d'autre n'ayant à l'interpréter. La première clé
+est celle qui a laissé trois générations de noms de trames Shazam
+cohabiter, chacune invisible au lecteur qui en attendait une autre.
+
+**L'inventaire a trouvé plus que les sept attendues : onze étiquettes**,
+dont quatre que le code ne nomme nulle part — `Shazam matching artist`,
+`matching title`, `matching rate`, `matching cover art URL`. Une passe
+qui n'aurait retiré que ce que le modèle écrit les aurait laissées, et ce
+sont exactement les trames dont l'existence justifiait le document.
+
+**Vérifié avant de retirer quoi que ce soit : sur 5 305 trames, 5 304
+portaient mot pour mot ce que le document disait déjà.** L'unique
+exception — la seule `Stored cover art URL` de la bibliothèque — a été
+reportée dans le document plutôt que perdue.
+
+Deux choses ont dû être faites avant.
+
+**Le script de rattrapage serait devenu aveugle.** Ses critères lisaient
+encore les trames : `1 candidat avant, 0 après`, mesuré sur douze copies.
+Ils interrogent le document, et gagnent au passage un groupe qui ne
+pouvait pas exister auparavant — `handles`, pour la fiche Shazam, les
+identifiants Apple et la palette : aucune trame ne les a jamais portés,
+donc aucun critère fondé sur les trames n'aurait pu les réclamer. Ça
+referme le trou des deux morceaux que ce document signalait, *Children of
+the Sky* et *TSAWAR ÑAN*, qui portaient déjà un `TSRC` et n'étaient donc
+jamais candidats.
+
+**Et l'id n'était pas l'exception que j'ai cru.** Je l'avais mis à part —
+« c'est l'identité, elle coûte trente octets » — sans voir que la règle du
+projet la visait comme les autres, et qu'elle est déjà à la racine du
+document et dans le nom de fichier. Elle est partie avec les autres. Elle
+reste **lue** à un seul endroit, jamais écrite : la sonde qui demande si
+un fichier a déjà été écrit par nous. Sans cette clause, ouvrir un
+fichier d'un build antérieur le réécrirait — et lire n'a pas le droit
+d'écrire. C'est une propriété qu'un test tient, et la contre-épreuve la
+chiffre : 7 tests tombent quand on la retire.
+
+**Après : 0 `TXXX` sur 944 morceaux**, 944 ouverts sans erreur et sans
+qu'un seul fichier soit réécrit, et tous les documents identiques à leur
+état d'avant sauf l'URL reportée. Il ne reste que des trames standard —
+`APIC`, `TALB`, `TIT2`, `TPE1`, `TPUB`, `TDRC`, `TCON`, `TSRC`, `TSSE` —
+et les deux `PRIV` du projet.
+
+### Ce qui reste
 
 **`import -p` en mode interactif** (`WebInteraction`), qui traîne depuis
 l'ouverture du projet et n'a rien à voir avec le document.
-
-Et deux morceaux hors d'atteinte du rattrapage : *Children of the Sky* et
-*TSAWAR ÑAN* portaient déjà un `TSRC`, donc les critères — calculés sur
-les trames — ne les ont jamais rendus candidats, et ils n'auront pas
-leurs identifiants. Deux sur 944 ; une ligne dans `what_is_missing` si on
-veut la couverture complète.
 
 Côté YouTube, rien n'attend : oEmbed ne rend que la chaîne et le titre, et
 `publish_date`, `length`, `description` et `keywords` demanderaient une
@@ -1495,6 +1539,14 @@ champ vide en regard d'une réponse vide — pour que la garde visée soit la
 seule qui puisse répondre. Quand deux gardes protègent la même chose, un
 test qui n'en distingue pas une n'en tient aucune.
 
+Le retrait des trames en a produit une troisième variante, et la plus
+retorse : le test qui vérifie qu'un document illisible ne fait pas
+réécrire le fichier posait un fichier **avec** sa trame d'id, laquelle
+rattrapait la sonde par l'autre clause. Il passait donc avec la garde
+supprimée. Il a fallu le poser dans l'état d'après le nettoyage — aucune
+trame du tout — pour que la garde visée soit la seule à pouvoir
+répondre. Un fixture peut sauver la garde qu'on essaie de tester.
+
 Le dixième cherchait la phrase « set by hand » dans la page pour vérifier
 qu'elle ne s'affiche que là où il y a lieu. Rendre le paragraphe sans
 condition le laissait passer : vide, il ne contient pas la phrase. Il
@@ -1518,8 +1570,8 @@ sauvegardes de test tombent dans la même — donc l'assertion était vraie
 que la règle existe ou non. Un test peut être juste, lisible, et ne rien
 mesurer, parce que ce qui le vide est ailleurs que dans ce qu'il dit.
 
-**Trois fois un manque d'un autre genre : pas un test creux, mais un test
-absent.** Treize tests vérifiaient la mécanique des identifiants Shazam
+**Quatre fois un manque d'un autre genre : pas un test creux, mais un
+test absent.** Treize tests vérifiaient la mécanique des identifiants Shazam
 en posant l'attribut à la main ; supprimer la ligne qui le remplit
 réellement n'en a fait tomber aucun. La sauvegarde qui pose la pochette
 n'était couverte par rien — elle n'écrit pas par le même chemin que les
@@ -1527,6 +1579,9 @@ autres, et c'est justement pourquoi elle méritait un test. Et le loquet
 du junkisage, laissé levé, ne cassait rien de visible puisque les valeurs
 sont réécrites juste après : ce qu'il emportait, c'était la provenance et
 les identifiants, si bien qu'il a fallu prendre l'horodatage pour témoin.
+Et le report de l'URL de pochette, au retrait des trames : trois tests
+exerçaient la règle elle-même, aucun ne vérifiait que la passe l'appelle.
+
 Une suite peut couvrir toute la logique d'une fonctionnalité et rien de
 son branchement — et la contre-épreuve est le seul procédé qui le montre,
 parce que le test manquant, par définition, ne se relit pas.
@@ -1551,6 +1606,18 @@ comparaison à la sauvegarde l'a réfutée en une minute. Deux mesures qui
 se répondent doivent être prises avec le même critère, ce qui est
 évident écrit ainsi et ne l'est pas quand les deux sont séparées par
 trois heures.
+
+**Une fois, elle a montré que je venais de casser une propriété du
+projet.** Rendre la sonde « document seul » revenait à faire réécrire, à
+la simple ouverture, tout fichier écrit par un build antérieur. Or lire
+n'a pas le droit d'écrire, et c'est un test qui le tient depuis
+longtemps : `propose_fix` est une opération de lecture et doit laisser
+les octets tranquilles. La trame d'id est donc restée *lue*, jamais
+écrite. Et en la remettant j'ai marché dans le piège que mon propre
+commentaire décrivait deux lignes plus haut — `legacy.song_id` retombe
+sur le nom de fichier, donc tout fichier répondait « déjà taggé » : 32
+tests rouges. Un commentaire qui décrit un piège ne protège pas de ce
+piège.
 
 **Deux fois, la contre-épreuve n'a pas montré un test manquant mais un
 défaut.** Le loquet du junkisage en était un ; l'autre est que le modèle
@@ -1578,6 +1645,11 @@ un `sed` dont le motif ne s'applique pas laisse le test passer et fait
 croire à une assertion solide. Les deux fois, l'édition refaite
 proprement a bien fait tomber le test. Une contre-épreuve doit donc
 vérifier qu'elle a modifié quelque chose.
+
+La garde a payé depuis : au retrait des trames, une altération dont le
+motif était mal recopié s'est arrêtée sur son `assert` au lieu de rendre
+un faux vert. C'est la seule fois où le procédé s'est protégé lui-même,
+et c'est ce qu'on lui demande.
 
 Dernier piège du même genre, et le plus instructif : une assertion qui
 **comptait** les gardes d'ère du tableau (`== 2`) est tombée le jour où
