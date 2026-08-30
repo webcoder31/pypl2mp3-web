@@ -57,6 +57,7 @@ from shazamio import Shazam
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+from pypl2mp3.libs import metadata  # noqa: E402
 from pypl2mp3.libs.song import SongModel  # noqa: E402
 
 
@@ -107,39 +108,54 @@ def frames_of(path: Path):
         return None
 
 
-def what_is_missing(tags) -> set:
-    """Which of the two gaps this file has.
+def what_is_missing(document: dict) -> set:
+    """Which gaps this song has, and so whether it is worth a request.
 
-    Returns the names of the groups worth a request: "release" for the
-    four standard frames, "provenance" for the four TXXX ones, "isrc" for
-    the recording code. A song missing none of them is not worth fifteen
-    seconds.
+    Asked of the document, not of the frames. The frames are on their way
+    out — and even before that, asking them was already wrong: the
+    provenance test read `TXXX:Shazam artist`, a name that only exists on
+    files written after May 2025, so three older generations of the same
+    frame answered "never identified" and the first count came out seven
+    times too small.
+
+    "handles" is the group the document made possible: the Shazam page,
+    the Apple identifiers, the cover's palette. No frame ever carried
+    them, so no frame-based criterion could ever have asked for them.
     """
 
+    answer = document["sources"]["shazam"]
     missing = set()
 
-    if not any(tags.get(frame) for frame in ("TALB", "TPUB", "TDRC", "TCON")):
+    if not any(metadata.value(document, name)
+               for name in ("album", "publisher", "year", "genre")):
         missing.add("release")
 
-    if not tags.get("TXXX:Shazam artist"):
+    if not answer.get("artist"):
         missing.add("provenance")
 
-    if not tags.get("TSRC"):
+    if not answer.get("isrc"):
         missing.add("isrc")
+
+    if not answer.get("key"):
+        missing.add("handles")
 
     return missing
 
 
-def was_identified(tags) -> bool:
-    """Whether Shazam ever named this song, on the only evidence that
-    survives in the oldest files."""
+def was_identified(document: dict) -> bool:
+    """Whether Shazam ever named this song.
 
-    if tags.get("TXXX:Shazam artist"):
-        return True
+    The document records the answer itself, so this no longer has to be
+    inferred from the host serving the cover art — a workaround for the
+    fact that nothing else survived on the oldest files.
+    """
 
-    cover = tags.get("TXXX:Cover art URL")
+    answer = document["sources"]["shazam"]
 
-    return bool(cover) and SHAZAM_COVER_HOST in str(cover.text[0])
+    return bool(
+        answer.get("artist") or answer.get("title")
+        or answer.get("score") is not None
+    )
 
 
 def candidates(repository: Path, playlist: str = "") -> list:
@@ -158,12 +174,23 @@ def candidates(repository: Path, playlist: str = "") -> list:
         if "(JUNK)" in path.name:
             continue
 
-        tags = frames_of(path)
-
-        if tags is None or not was_identified(tags):
+        try:
+            document = metadata.read(path)
+        except metadata.MetadataError:
+            # A document written by a newer build, or a damaged frame.
+            # Either way this pass has no business guessing what it holds.
+            continue
+        except Exception:
+            # Not a document problem but a file one — a truncated
+            # download, a rename mid-write. `frames_of` used to absorb
+            # this and the switch to the document lost it; a corrupt file
+            # must not end a five-hour run.
             continue
 
-        if what_is_missing(tags):
+        if document is None or not was_identified(document):
+            continue
+
+        if what_is_missing(document):
             found.append(path)
 
     return found
