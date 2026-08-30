@@ -553,8 +553,10 @@ exprès et en sont dispensées ; elles peuvent tout de même être redéfinies,
 et deux le sont, ce qui est précisément ce qui permet aux deux surfaces
 de permuter.
 
-Vérifié sur l'état du jour : 55 variables côté clair dont 26 à valeur-
-couleur, 28 côté sombre, aucune orpheline dans un sens ni dans l'autre.
+Vérifié sur l'état du jour : 57 variables côté clair dont 26 à valeur-
+couleur, 30 côté sombre, aucune orpheline dans un sens ni dans l'autre —
+les totaux bougent au fil des ajouts, c'est la parité que le test tient,
+pas le compte.
 Cinq contre-épreuves, dont une qui doit passer — ajouter une variable
 d'échelle au seul bloc clair reste licite.
 
@@ -955,11 +957,13 @@ Il rejoint album, label, année et genre : extrait de `track.isrc`, lu à
 l'ouverture, écrit dans `TSRC`, effacé par `reset_state`. Le critère du
 rattrapage s'élargit en conséquence — un morceau complet par ailleurs
 mais sans code redevient candidat, ce qui était le cas des 944 avant
-l'essai décrit ci-dessous, et l'est de 942 depuis.
+l'essai décrit ci-dessous, et de 942 juste après. **Ils ne sont plus que
+174 depuis la passe globale** (`fc012b7`), décrite plus bas.
 
-La passe n'a pas été relancée. Chacune coûte cinq heures et huit cents
-requêtes ; en lancer une pour l'ISRC puis une autre pour ce qui manquera
-encore serait payer deux fois. Un essai réel sur trois morceaux a servi
+La passe n'a pas été relancée *à ce moment-là*. Chacune coûte cinq heures
+et huit cents requêtes ; en lancer une pour l'ISRC puis une autre pour ce
+qui manquera encore serait payer deux fois. Un essai réel sur trois
+morceaux a servi
 de vérification : comparés à la sauvegarde de leurs balises, la **seule**
 différence est l'ajout de `TSRC` — artiste, titre, album, label, année,
 genre et pochette identiques à l'octet près.
@@ -970,7 +974,12 @@ là, et une recherche par nom de fichier qui échouait parce que macOS
 stocke les noms en **NFD** — `E` suivi d'un accent combinant — quand le
 littéral était en NFC.
 
-## En cours — le document par morceau
+## Le document par morceau
+
+L'arc est complet : le document existe, le modèle l'écrit, le modèle le
+lit, la console en montre trois choses et la provenance est close. Ce qui
+suit le raconte dans l'ordre où il a été fait ; ce qui reste tient en deux
+points, tout en bas, dont aucun ne se dégrade.
 
 Construit sur la branche `metadata-document`, **fusionné dans `main` en
 `bf34c7c`** : neuf fichiers ajoutés, trois modifiés. La branche avait
@@ -1054,9 +1063,10 @@ source de vérité tant que l'application les écrit.
 
 ### Où on en est
 
-Les 944 documents sont écrits. Médiane **907 octets** à ce stade — 1056
-depuis que le bloc `youtube` s'y ajoute — soit 0,9 Mo pour toute la
-bibliothèque contre 58,6 Mo de balises. Relus intégralement : 944/944,
+Les 944 documents sont écrits. Médiane **907 octets** à ce stade, 1056
+une fois le bloc `youtube` ajouté, **1 280 aujourd'hui** depuis que la
+passe globale y range les identifiants et la palette — soit 1,13 Mo pour
+toute la bibliothèque contre 58,6 Mo de balises. Relus intégralement : 944/944,
 aucun illisible, pochettes et crêtes intactes. Seconde passe : **944
 « matches the frames », 0 écrit** — l'idempotence tient sur la vraie
 bibliothèque et pas seulement en test.
@@ -1249,9 +1259,10 @@ plus bas, avec le reste de ce que la méthode a coûté.
 Le premier usage du document à l'écran, et il porte sur les deux seules
 choses qui étaient utilisables tout de suite : l'origine et les vidéos
 mortes. Le reste — le lien vers la fiche Shazam, les identifiants, la
-palette — n'existe encore nulle part, faute de reconnaissance nouvelle
-depuis `f94eca7` ; c'est du crédit sur la passe globale, pas de la
-donnée.
+palette — n'existait alors nulle part, faute de reconnaissance nouvelle
+depuis `f94eca7` : c'était du crédit sur la passe globale, pas de la
+donnée. La passe a eu lieu depuis (`fc012b7`) et ces trois-là existent
+sur 797 morceaux ; rien à l'écran ne s'en sert encore.
 
 **L'origine, en troisième face du tableau à volets.** Le titre et la
 chaîne de la vidéo, préfixés `from`. Le préfixe n'est pas décoratif : le
@@ -1407,9 +1418,12 @@ junkisé n'ont jamais été saisis — `reset_state` efface les trames, le
 constructeur les redérive du nom de fichier et les réécrit — donc un
 avertissement là-dessus porterait sur rien.
 
-**Il reste 30 champs `legacy`** : 14 sur des junks, 16 sur des vidéos
-parties avant qu'on note leur titre. Rien à comparer, et `legacy` y est
-la réponse vraie plutôt qu'un trou à boucher. Le script les **compte**,
+**Il reste 30 champs `legacy`** : 20 sur des junks, 3 sur des morceaux
+dont la vidéo est partie avant qu'on note son titre, et 7 qui sont les
+deux à la fois — un premier comptage les avait répartis en 14 et 16 en
+oubliant que les deux catégories se recouvrent. Rien à comparer dans les
+trois cas, et `legacy` y est la réponse vraie plutôt qu'un trou à
+boucher. Le script les **compte**,
 parce qu'un rapport qui n'énumère que ses succès se lit comme s'il avait
 tout couvert.
 
