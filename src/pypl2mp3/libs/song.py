@@ -1089,22 +1089,35 @@ class SongModel:
         self._told = None if self.is_already_initialized else self._read()
 
         # Not a metadata read but a probe: has this file ever been
-        # written by us? A document answers yes. Before documents there
-        # was the id frame, and it answers yes for everything written
-        # since 2024. Neither means an untagged file, and the end of this
-        # constructor is where it gets tagged — so this must stay a
-        # question about the file's frames and not about `_told`, which
-        # falls back to the filename and would answer yes for a file that
-        # carries no tags at all.
+        # written by us? The document answers it, and the id frame
+        # answers it for anything written before documents existed.
+        #
+        # It must not be asked of `_told`, which falls back to the
+        # filename and would answer yes for a file carrying no tags at
+        # all. A fresh download would then never be tagged.
+        #
+        # The second clause is why the frame is still *read* here after
+        # it stopped being written: without it, opening a file from an
+        # older build would rewrite it, and reading is not allowed to
+        # write. A test holds exactly that — `propose_fix` is read-only
+        # and must leave the bytes alone. Once such a file is saved for
+        # any real reason it gains a document and this clause goes quiet
+        # for good.
         try:
-            youtube_id_tag = self.mp3.tags["TXXX:YouTube ID"].text[0]
-        except:
-            youtube_id_tag = None
+            is_tagged = metadata.of(self.mp3.tags) is not None
+        except metadata.MetadataError:
+            # A document this build cannot read is still a document: the
+            # file was written by us, and rewriting it is not this
+            # probe's business.
+            is_tagged = True
 
-        if youtube_id_tag is None and self._told is not None \
-            and metadata.of(self.mp3.tags) is not None:
-
-            youtube_id_tag = self._told["id"] or None
+        if not is_tagged:
+            # The frame alone. `legacy.song_id` would do, except that it
+            # falls back to the filename — the very trap named above,
+            # walked into once already: every file in this repository is
+            # named `... [id].mp3`, so it answers yes for all of them and
+            # nothing is ever tagged.
+            is_tagged = bool(legacy._custom(self.mp3.tags, "YouTube ID"))
 
         # YouTube ID is required.
         # Try to get it from constructor parameters first, 
@@ -1115,8 +1128,7 @@ class SongModel:
 
         self.youtube_id = youtube_id \
             or getattr(self, "youtube_id", None) \
-            or (self._told["id"] if self._told else None) \
-            or youtube_id_tag
+            or (self._told["id"] if self._told else None)
 
         if not self.youtube_id:
             match = re.match(
@@ -1310,7 +1322,7 @@ class SongModel:
         # e.g. if song state is modified after initialization (deliberate 
         # recall of constructor) or if song MP3 file was just created and 
         # not yet tagged
-        if self.is_already_initialized or youtube_id_tag is None:
+        if self.is_already_initialized or not is_tagged:
             self.update_id3_tags()
 
         # Compute expected filenames
@@ -1675,66 +1687,26 @@ class SongModel:
             else:
                 self.mp3.tags.delall(frame)
 
-        # Delete all custom tags
+        # Every custom tag goes, and none is written back.
+        #
+        # Seven of them lived here — the id, the two cover URLs, the four
+        # Shazam ones — and the document has carried all seven for a
+        # while: 5 304 frames out of 5 305 in this library were verified
+        # to be word for word what the document already said.
+        #
+        # A TXXX is a *text* frame: it is found by a free-text label and
+        # it is meant to be shown. That is what let three generations of
+        # Shazam frame names live here at once, each invisible to the
+        # reader expecting another. A PRIV is found by an owner nobody
+        # else will collide with, and its contract is that it belongs to
+        # one application. Private bookkeeping belongs in a private
+        # frame — the rule this project wrote for itself the day it found
+        # its video ids sitting in TRCK, where every player was showing
+        # them as a track number.
+        #
+        # The id is not an exception, though it looked like one: it is at
+        # the root of the document, and the filename carries it too.
         self.mp3.tags.delall("TXXX")
-
-        # Set custom tag for YouTube ID
-        self.mp3.tags.add(TXXX(
-            encoding=3,
-            desc=u"YouTube ID",
-            text=u"" + self.youtube_id
-        ))
-
-        # Set custom tag for cover art URL if required
-        if self.cover_art_url:
-            self.mp3.tags.add(TXXX(
-                encoding=3,
-                desc=u"Cover art URL",
-                text=u"" + self.cover_art_url
-            ))
-
-        # Kept across ordinary saves. It was not, and update_id3_tags
-        # wipes every TXXX before rewriting the ones it knows — so the
-        # record written on each download survived exactly until the next
-        # save of anything at all. One file in 944 still had it.
-        if self.stored_cover_art_url:
-            self.mp3.tags.add(TXXX(
-                encoding=3,
-                desc=u"Stored cover art URL",
-                text=u"" + str(self.stored_cover_art_url)
-            ))
-
-        # Set custom tag for Shazam match level if required
-        if self.shazam_match_score is not None:
-            self.mp3.tags.add(TXXX(
-                encoding=3,
-                desc=u"Shazam match level",
-                text=u"" + str(self.shazam_match_score)
-            ))
-
-        # Set custom tag for Shazam artist if required
-        if self.shazam_artist:
-            self.mp3.tags.add(TXXX(
-                encoding=3,
-                desc=u"Shazam artist",
-                text=u"" + str(self.shazam_artist)
-            ))
-
-        # Set custom tag for Shazam title if required
-        if self.shazam_title:
-            self.mp3.tags.add(TXXX(
-                encoding=3,
-                desc=u"Shazam title",
-                text=u"" + str(self.shazam_title)
-            ))
-
-        # Set custom tag for Shazam cover art URL if required
-        if self.shazam_cover_art_url:
-            self.mp3.tags.add(TXXX(
-                encoding=3,
-                desc=u"Shazam cover art URL",
-                text=u"" + str(self.shazam_cover_art_url)
-            ))
 
         # The document, beside the frames and in the same write. Two
         # saves would leave a window in which the file's frames and its

@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 from mutagen.id3 import ID3, APIC, TXXX
 
+from pypl2mp3.libs import metadata
+
 from pypl2mp3.services.fix_junks import (
     FixProposal,
     SongNotFound,
@@ -143,18 +145,21 @@ async def test_an_empty_cover_field_leaves_the_stored_url_alone(tmp_path):
 
     frames = ID3(path)
     frames.add(TXXX(encoding=3, desc="YouTube ID", text="aaaaaaaaaaa"))
-    frames.add(TXXX(encoding=3, desc="Cover art URL",
-                    text="https://example.invalid/art.jpg"))
+    metadata.attach(frames, metadata.set_field(
+        metadata.blank("aaaaaaaaaaa"), "cover",
+        "https://example.invalid/art.jpg", "user",
+    ))
     frames.save(path)
 
     result = await apply_fix(tmp_path, "aaaaaaaaaaa", "THE PHARCYDE",
                              "Passin Me By", cover_art_url="")
 
-    written = ID3(tmp_path / PLAYLIST / result.filename)
-    kept = written.getall("TXXX:Cover art URL")
+    kept = metadata.value(
+        metadata.read(tmp_path / PLAYLIST / result.filename), "cover"
+    )
 
     assert kept, "saving without touching the cover deleted its URL"
-    assert kept[0].text[0] == "https://example.invalid/art.jpg"
+    assert kept == "https://example.invalid/art.jpg"
 
 
 async def test_an_empty_name_still_means_empty(tmp_path):
@@ -261,7 +266,9 @@ async def test_a_cover_that_cannot_be_fetched_leaves_the_song_alone(
     assert path.exists(), "the song was renamed on a failed save"
     frames = ID3(path)
     assert not frames.getall("TPE1"), "the artist was written anyway"
-    assert not frames.getall("TXXX:Cover art URL"), (
+    stored = metadata.read(path)
+
+    assert not (stored and metadata.value(stored, "cover")), (
         "the file claims a picture it never received"
     )
 
@@ -287,23 +294,25 @@ async def test_the_file_records_where_its_picture_came_from(
     await apply_fix(tmp_path, "aaaaaaaaaaa", "A", "B",
                     cover_art_url="https://example.invalid/one.jpg")
 
-    frames = ID3(next(tmp_path.rglob("*.mp3")))
-    assert frames.getall("TXXX:Stored cover art URL")[0].text[0] == (
-        "https://example.invalid/one.jpg"
-    )
+    embedded = metadata.read(next(tmp_path.rglob("*.mp3")))["embedded"]
+
+    assert embedded["cover_url"] == "https://example.invalid/one.jpg"
+    assert embedded["cover_sha256"], "the bytes were not fingerprinted"
     assert len(calls) == 1
 
 
 async def test_the_record_survives_a_save_that_is_not_about_the_cover(
     tmp_path, monkeypatch
 ):
-    """update_id3_tags wipes every TXXX before rewriting the ones it
-    knows, and this was not among them — so the record written on each
-    download lasted exactly until the next save of anything at all. One
-    file in a 944-song library still had it.
+    """It used to live in a TXXX that `update_id3_tags` wiped before
+    rewriting the ones it knew, and this was not among them — so the
+    record written on each download lasted exactly until the next save of
+    anything at all. One file in a 944-song library still had it.
 
-    Without it the comparison finds nothing, decides "unknown", and
-    refetches a picture the file already carries.
+    It lives in the document now, beside the fingerprint of the bytes it
+    describes, and an ordinary save carries it. Without it the comparison
+    finds nothing, decides "unknown", and refetches a picture the file
+    already carries.
     """
 
     _make_junk(tmp_path)
@@ -315,10 +324,9 @@ async def test_the_record_survives_a_save_that_is_not_about_the_cover(
     # A save about the names only.
     await apply_fix(tmp_path, "aaaaaaaaaaa", "OTHER", "NAME")
 
-    frames = ID3(next(tmp_path.rglob("*.mp3")))
-    assert frames.getall("TXXX:Stored cover art URL"), (
-        "an ordinary save dropped the record"
-    )
+    assert metadata.read(next(tmp_path.rglob("*.mp3")))["embedded"].get(
+        "cover_url"
+    ), "an ordinary save dropped the record"
 
     # And the same picture is still not fetched again.
     await apply_fix(tmp_path, "aaaaaaaaaaa", "A", "B",

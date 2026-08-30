@@ -364,9 +364,67 @@ class TestTheTaggedProbe:
 
         song = SongModel(path)
 
-        assert MP3(path).tags["TXXX:YouTube ID"].text[0] == VID
+        # A document, and no custom frame at all: the id used to be
+        # written to `TXXX:YouTube ID` beside it, and that frame is what
+        # this step removed. The id is at the root of the document, and
+        # the filename carries it too.
         assert metadata.read(path) is not None
+        assert metadata.read(path)["id"] == VID
+        assert MP3(path).tags.getall("TXXX") == []
         assert song.artist == "IAMX"
+
+    def test_a_document_this_build_cannot_read_still_counts_as_written(
+        self, tmp_path
+    ):
+        """Otherwise every open rewrites the file, for ever: `_document`
+        declines to overwrite what it cannot read, so nothing would ever
+        make the probe say yes, and merely listing the library would
+        rewrite it on every pass."""
+
+        path = _file(tmp_path)
+
+        # No id frame: this is the state after the cleanup, which is the
+        # only state where this clause is the one answering. A first
+        # version of this test kept the frame, and the legacy clause
+        # rescued the probe — so it passed with the guard removed and
+        # proved nothing.
+        tags = ID3()
+        tags.add(TPE1(encoding=3, text="Frames Artist"))
+        tags.add(PRIV(owner=metadata.OWNER, data=b'{"v": 99, "id": "x"}'))
+        tags.save(path, v1=0, v2_version=3)
+
+        assert ID3(path).getall("TXXX") == []
+
+        before = path.stat().st_mtime_ns
+
+        SongModel(path)
+
+        assert path.stat().st_mtime_ns == before, "reading rewrote the file"
+
+    def test_saving_clears_the_custom_frames_it_no_longer_writes(
+        self, tmp_path
+    ):
+        """The seven the model used to write, and the four older names
+        it never wrote but the library still carried. `update_id3_tags`
+        wipes every TXXX and puts none back, so a save is what cleans a
+        file — and a pass over the library is what cleans the rest."""
+
+        path = _file(tmp_path)
+        tags = _old_frames(path)
+
+        for desc in ("Cover art URL", "Stored cover art URL",
+                     "Shazam artist", "Shazam matching artist",
+                     "Shazam matching rate", "Foreign"):
+            tags.add(TXXX(encoding=3, desc=desc, text="x"))
+
+        tags.save(path, v1=0, v2_version=3)
+        assert len(ID3(path).getall("TXXX")) == 7
+
+        SongModel(path).update_state(title="Kiss")
+
+        assert ID3(path).getall("TXXX") == []
+        # And what mattered is still there, in the one frame that holds it.
+        assert metadata.read(path)["id"] == VID
 
     def test_a_file_that_carries_a_document_is_not_retagged(self, tmp_path):
         """`update_id3_tags` clears every TXXX before rewriting the ones
