@@ -193,7 +193,22 @@ mesuré est chiffré, ce qui est un choix est motivé.
 
 ## Reste à faire
 
-### 1. Le mode interactif de `import -p`
+### 1. Revoir l'UI de l'inspecteur
+
+**La prochaine étape.** Décidée sans être encore spécifiée : le panneau
+porte aujourd'hui trois champs, une ligne à trois faces, quatre boutons
+et une ligne de provenance, et la question de ce qu'il devrait montrer
+n'a jamais été reprise depuis la passe « look ». Elle s'est posée deux
+fois en chemin — quand les quatre champs de sortie ont voulu y entrer, et
+quand la provenance a voulu s'y dire — et les deux fois la réponse a été
+une ligne plutôt qu'un champ, faute d'avoir tranché le fond.
+
+Ce que le document sait et que l'inspecteur ne montre pas encore, pour
+mémoire : les identifiants et la fiche Shazam (797 morceaux), la palette
+de la pochette (768), le code d'enregistrement (768), l'empreinte de
+l'image embarquée.
+
+### 2. Le mode interactif de `import -p`
 
 Seul cas qui justifierait un `WebInteraction` : le port `InteractionPort`
 existe, la console ne s'en sert pas.
@@ -202,6 +217,52 @@ existe, la console ne s'en sert pas.
 
 Ni dettes ni tâches : des décisions prises, susceptibles d'être reprises,
 écrites ici pour qu'elles ne passent pas pour des oublis.
+
+### Rester indépendant de l'API Google — et ce que ça ferme
+
+**Décidé : pas d'API YouTube Data, donc pas d'écriture dans les
+playlists.** L'outil lit YouTube par scraping (`pytubefix`), sans compte,
+sans clé, sans consentement à demander. Il ne peut rien casser en amont :
+le pire bug possible abîme des fichiers locaux, que les sauvegardes de
+balises couvrent. Écrire supposerait un projet Google Cloud, un OAuth sur
+un scope que Google classe comme sensible, un quota journalier et une
+revue de validation — et surtout, un outil qu'on ne peut plus lancer sans
+compte Google aurait perdu quelque chose que celui-ci a.
+
+Ce que ça ferme, et il faut le savoir pour ne pas y revenir par hasard :
+
+- **le dédoublonnage ne peut pas être durable.** Supprimer un fichier ne
+  fait rien : `check_new_songs` compare les id distants aux fichiers
+  locaux, donc la vidéo redevient « manquante » et le prochain import la
+  retélécharge. Retirer la vidéo de la playlist se fait à la main dans
+  l'interface de YouTube ;
+- **remplacer un ré-upload par la version officielle est hors d'atteinte**,
+  puisque ça demande de retirer une entrée et d'en insérer une autre ;
+- **les 11 vidéos disparues restent dans les playlists**, marquées dans la
+  console et rien de plus.
+
+Reste possible sans écrire nulle part : refuser un doublon **à l'import**,
+puisque l'ISRC est en main juste après le téléchargement. Ça n'économise
+pas la bande passante — l'ISRC vient de la réponse Shazam, donc après la
+partie chère — mais ça empêche le doublon de s'installer. Il faut alors
+en garder la mémoire, sinon chaque passe repaie le téléchargement et les
+15 s de Shazam pour rejeter la même vidéo : l'id rejeté se note dans le
+document du morceau **gardé**, sous une clé à la racine — ce n'est pas ce
+que le fichier affirme de lui-même, ce n'est la réponse de personne,
+c'est une décision prise à propos d'une autre vidéo. `check_new_songs`
+gagne alors une clause et cesse de la proposer.
+
+Avec un garde-fou que les données imposent : **même ISRC ne veut pas dire
+même fichier** (voir la section suivante). Rejet automatique seulement
+quand les durées sont à 5 s près ; au-delà, on signale et l'utilisateur
+tranche.
+
+Et l'idée d'une **extension Chrome** qui proposerait la bonne version au
+moment où on ajoute une vidéo à une playlist : c'était un contournement de
+cette même impossibilité. Elle garde un seul avantage propre — être là
+avant l'import, quand le choix se fait — mais tout le reste de ce qu'elle
+ferait, l'outil le fait mieux, avec l'ISRC et le niveau sonore que le
+navigateur n'a pas.
 
 ### Le reflet du waveform non joué, très pâle
 
@@ -980,8 +1041,10 @@ littéral était en NFC.
 L'arc est complet : le document existe, le modèle l'écrit, le modèle le
 lit, la console en montre trois choses et la provenance est close. Ce qui
 suit le raconte dans l'ordre où il a été fait ; les trames en doublon
-sont parties, et ce qui reste tient en un point, tout en bas, qui ne se
-dégrade pas.
+sont parties, et l'arc est clos. Les deux dernières sections ne sont pas
+du travail livré mais des mesures — ce que le code d'enregistrement a
+révélé, et ce qui permettrait de choisir entre deux copies — gardées
+parce qu'elles n'ont pas fini en commit.
 
 Construit sur la branche `metadata-document`, **fusionné dans `main` en
 `bf34c7c`** : neuf fichiers ajoutés, trois modifiés. La branche avait
@@ -1485,12 +1548,82 @@ qu'un seul fichier soit réécrit, et tous les documents identiques à leur
 `APIC`, `TALB`, `TIT2`, `TPE1`, `TPUB`, `TDRC`, `TCON`, `TSRC`, `TSSE` —
 et les deux `PRIV` du projet.
 
+### Ce que l'ISRC a révélé — mesuré, pas encore exploité
+
+Aucun code écrit pour ça : une lecture des 768 codes rangés par la passe
+globale. Consigné parce que c'est la seule chose de cette étape qui n'a
+pas fini en commit.
+
+**L'ISRC désigne un enregistrement, et c'est là qu'il gagne.** Il a trouvé
+**25 enregistrements présents sous plusieurs vidéos — 54 fichiers, 29 en
+trop, 118 Mo.** Rudimental *Feel the Love* est là quatre fois sous quatre
+id différents ; *Waiting All Night* trois fois. Et le complément, plus
+fin : **6 cas de même artiste et même titre où les enregistrements
+diffèrent** — *L'amour et la violence* de Sébastien Tellier existe en deux
+codes, deux années, un titre identique. Aucune comparaison de noms ne peut
+dire lequel des deux cas on regarde.
+
+**Mais même ISRC ne veut pas dire même fichier.** Les 25 se coupent en
+deux : 9 groupes où les durées tiennent dans 5 s — même bande, rognée
+autrement — et 16 où elles s'écartent de 6 à **149 s**. Leftfield *Swords*
+en 8:05 contre 5:36, The Avener *Fade Out Lines* en 6:00 contre 4:23
+alors que le titre annonce « Radio Edit ». Un rejet sur le seul code
+jetterait la version longue parce qu'elle est arrivée deuxième.
+
+**Trois signaux secondaires**, notés parce qu'ils décrivent le catalogue :
+`QM`, `QZ` et `TC` ne sont pas des pays mais des blocs attribués aux
+déclarants sans agence nationale — 46 morceaux venus de circuits
+d'auto-distribution. **7 codes en `UK`**, qui n'est pas un code ISO
+valide — c'est `GB` : erreur du déclarant, telle quelle dans le catalogue.
+Et **38 codes portent une année antérieure à 1986**, année de création de
+la norme, donc ce champ n'est pas « quand le code a été attribué » mais ce
+que le déclarant a bien voulu y mettre : `FR77F7300790` porte 1973 pour
+une sortie annoncée en 2025, une réédition dont le code a gardé l'année
+de la prise.
+
+### Choisir lequel garder : deux critères sur trois sont déjà là
+
+**Le débit ne discriminera jamais : 944 fichiers, 944 à 128 kbps.** Ce
+n'est pas une propriété de la source mais de notre conversion —
+`write_audiofile` encode au défaut de moviepy. Il y a un vrai sujet
+derrière, et il n'a rien à voir avec le dédoublonnage : **toute la
+bibliothèque est à 128 kbps** quand YouTube sert souvent mieux. À
+reprendre pour les futurs imports, séparément.
+
+**Le niveau sonore est déjà dans les fichiers.** Les crêtes du waveform
+sont stockées sur **échelle absolue** — un choix fait pour qu'un
+téléchargement muet ressemble à ce qu'il est — donc le niveau se lit sans
+ffmpeg et sans recalcul, sur 432 des 768 morceaux à code. Et il
+discrimine fort : *Texas Sun* à 192 de moyenne contre 79 pour l'autre
+copie ; le *Swords* de `LeftfieldVEVO` plafonne à **64 sur 255**,
+enregistré si bas qu'il faut doubler le volume.
+
+**La provenance aussi est déjà là**, contre ce que j'avais supposé : la
+passe de récupération a rendu le nom de chaîne pour 933 morceaux — **114
+en `- Topic`** (l'audio livré par le label), **124 VEVO**, **234** dont le
+nom de chaîne contient celui de l'artiste, **461 aucun des trois**. Les
+chaînes les plus fréquentes sont des agrégateurs — UKF Drum & Bass 24,
+Majestic Casual 18, MrSuicideSheep 15 — soit exactement les cas qui ont
+une version `- Topic` ailleurs.
+
+**Et officiel ne veut pas dire meilleur fichier** : sur *Fade Out Lines*,
+`TheAvenerVEVO` est plus faible que le ré-upload. Donc classer et montrer
+les trois — provenance, niveau, durée — plutôt que trancher.
+
 ### Ce qui reste
 
-**`import -p` en mode interactif** (`WebInteraction`), qui traîne depuis
-l'ouverture du projet et n'a rien à voir avec le document.
+Rien, pour ce chantier-ci. **La suite est ailleurs : revoir l'UI de
+l'inspecteur**, premier point de « Reste à faire » tout en haut — c'est là
+que le document cesse d'être un rangement pour devenir quelque chose qui
+se voit.
 
-Côté YouTube, rien n'attend : oEmbed ne rend que la chaîne et le titre, et
+Reste `import -p` en mode interactif (`WebInteraction`), qui traîne depuis
+l'ouverture du projet et n'a rien à voir avec le document. Et l'écriture
+dans les playlists YouTube, **écartée délibérément** : voir « Rester
+indépendant de l'API Google » dans les choix laissés ouverts, qui dit ce
+que ça ferme.
+
+Côté YouTube en lecture, rien n'attend : oEmbed ne rend que la chaîne et le titre, et
 `publish_date`, `length`, `description` et `keywords` demanderaient une
 requête plus lourde sans être jugés nécessaires.
 
