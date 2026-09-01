@@ -692,10 +692,30 @@ Placés d'abord tout à droite de la rangée, sur l'argument que le
 transport signifie « déplacement dans la file » depuis le marquage du
 sens, et qu'un niveau n'est pas un déplacement. **Déplacés depuis entre
 le transport et la timeline**, à la demande : les quatre choses qu'on
-attrape en écoutant sont désormais au même endroit. Mesuré après le
-déplacement — la timeline garde exactement ses 508 px, parce que ce qui
+attrape en écoutant sont désormais au même endroit. Mesuré au moment du
+déplacement — la timeline gardait exactement ses 508 px, parce que ce qui
 la protège est `flex: 0 0 auto` et non la position ; l'argument portait
 sur le sens, pas sur la place.
+
+**Puis allongés pour finir sur le bord droit de la pochette**, qui est
+juste au-dessus dans la même colonne : 132 px au lieu de 112, la piste
+passant de 64 à 84 px et donc de 3,2 à **4,2 px par cran**. Les 20 px
+viennent de la timeline, qui tombe à 488 — c'est le troisième prélèvement
+sur elle, et le seul consenti pour une raison d'alignement plutôt que de
+contenu.
+
+La largeur est écrite comme une **soustraction depuis `--cover-size`** et
+non comme le nombre qu'elle vaut, pour suivre la pochette si elle bouge.
+Mais elle doit épeler la largeur du transport, faute pour CSS de savoir
+dire « aussi large que ce que les deux éléments d'avant me laissent » —
+et les boutons ont déjà été redimensionnés une fois. Un test recalcule
+donc ce nombre depuis les règles qui le produisent.
+
+L'alignement ne tient qu'au-dessus de 62 rem, là où la pochette utilise
+ce token. En dessous elle passe à une vignette de 9 rem — 144 px, moins
+que le transport et un écart réunis — donc aucune largeur ne peut
+atteindre son bord, et on n'essaie pas : le contrôle garde la sienne.
+Vérifié à 900 px, rien ne se chevauche.
 
 **Crans de 5 %, pas de continu.** `#seek` mappe le clic directement sur la
 durée parce qu'un pixel y désigne un instant demandé ; un niveau n'a

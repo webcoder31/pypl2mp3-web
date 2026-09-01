@@ -1266,6 +1266,27 @@ tbody tr.playing td.num { color: var(--accent); }
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  /* Its right edge lands on the cover's, which sits directly above it in
+     the panel. Both start at the same left padding and the transport is
+     between them, so the width that aligns the two is the cover less the
+     transport and one gap.
+
+     Written as that subtraction rather than as the 132px it comes to, so
+     it follows `--cover-size` if the picture is ever resized. The 8.25rem
+     is the transport — three buttons of 2.5rem and two gaps of 0.375rem —
+     and a test recomputes it from those two rules, because the buttons
+     have been resized once already.
+
+     The alignment holds where the cover uses that token, which is above
+     62rem. Below it the cover drops to a 9rem thumbnail — 144px, less
+     than the transport and a gap together — so no width could reach its
+     edge, and none is attempted: the control keeps this one. Measured at
+     900px: cover 144, volume 132, and nothing overlaps.
+
+     The floor guards the other case, the one a stylesheet edit could
+     cause rather than a window: a `--cover-size` small enough to make the
+     subtraction collapse the control. */
+  width: max(7rem, calc(var(--cover-size) - 8.25rem - var(--space-4)));
   /* More on the right than the left: the track ends in a hard edge
      and the speaker in the white space its own glyph carries, so
      equal padding sat the wash tight against one and loose around
@@ -1318,12 +1339,16 @@ tbody tr.playing td.num { color: var(--accent); }
    second look for the smaller one. */
 #volume-track {
   position: relative;
-  width: 4rem;
+  /* Whatever the group has left once the speaker has taken its own
+     width. The group is sized to align with the cover, so the track is
+     what absorbs the difference — and it can only grow, which makes the
+     notches easier to hit, never harder. */
+  flex: 1;
+  min-width: 4rem;
   height: 2rem;
   cursor: pointer;
   display: flex;
   align-items: center;
-  flex: 0 0 auto;
 }
 #volume-track .track { position: absolute; left: 0; right: 0; height: 3px;
                        background: var(--level-rest); }

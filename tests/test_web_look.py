@@ -2047,11 +2047,58 @@ async def test_the_level_lands_on_a_notch(tmp_path):
         f"the level can leave the ends: {setter}"
     )
 
-    # Wide enough that every notch is a target a mouse can hit.
+    # Wide enough that every notch is a target a mouse can hit. Asked of
+    # the floor and not of the actual width: the track flexes to whatever
+    # the group has left, so the narrowest it can ever be is `min-width`,
+    # and that is the case worth holding.
     track = re.search(r"\n#volume-track \{([^}]*)\}", css).group(1)
-    width = float(re.search(r"width: ([\d.]+)rem;", track).group(1)) * 16
-    assert width / (100 / step) >= 3, (
-        f"{width}px over {100 // step} notches is under 3px each"
+    floor = float(re.search(r"min-width: ([\d.]+)rem;", track).group(1)) * 16
+    assert floor / (100 / step) >= 3, (
+        f"{floor}px over {100 // step} notches is under 3px each"
+    )
+
+
+async def test_the_volume_ends_where_the_cover_ends(tmp_path):
+    """They sit one above the other in the same column, and the eye reads
+    the misalignment before it reads either.
+
+    The width is written as a subtraction from `--cover-size` so it
+    follows the picture, but the transport's own width has to be spelled
+    out in it — CSS has no way to say "as wide as the two things before
+    me leave". This recomputes that number from the rules that make it,
+    because the buttons have already been resized once and nothing else
+    would notice.
+
+    Measured in a browser at 1104px: cover 24→304, volume 172→304.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    def rem(pattern, block):
+        return float(re.search(pattern, block).group(1))
+
+    transport = re.search(r"\n#transport \{([^}]*)\}", css).group(1)
+    button = re.search(r"\n#transport button \{([^}]*)\}", css).group(1)
+    wide = (3 * rem(r"width: ([\d.]+)rem;", button)
+            + 2 * rem(r"gap: ([\d.]+)rem;", transport))
+
+    # The expression as it must be written, not the number it comes to. A
+    # first version pulled the transport's rem out of the calc and then
+    # rebuilt the rest of the subtraction itself — so deleting
+    # `- var(--space-4)` from the stylesheet changed nothing it looked at,
+    # and it passed. A test that reconstructs what it is checking is
+    # checking its own arithmetic.
+    declaration = re.search(r"\n  width: (max\(.*?\));", volume := re.search(
+        r"\n#volume \{([^}]*)\}", css).group(1), re.DOTALL).group(1)
+    wanted = (
+        f"calc(var(--cover-size) - {wide:g}rem - var(--space-4))"
+    )
+
+    assert wanted in declaration, (
+        f"the volume no longer ends where the cover does.\n"
+        f"  the stylesheet says : {declaration}\n"
+        f"  aligning needs      : {wanted}"
     )
 
 
