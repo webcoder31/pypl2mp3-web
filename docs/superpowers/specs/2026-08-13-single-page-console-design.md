@@ -685,10 +685,17 @@ morceau précédent/suivant, Espace lecture/pause, Tab ouvre la vidéo — et
 le précédent `localStorage` du thème, note sur la navigation privée
 comprise.
 
-Retenu : le haut-parleur et une piste courte tout à droite de la rangée,
-`flex: 0 0 auto` pour qu'ils ne reprennent jamais de la place à l'image.
-À droite et non collés au transport, parce que le transport signifie
-désormais « déplacement dans la file » depuis le marquage du sens.
+Retenu : le haut-parleur et une piste courte, `flex: 0 0 auto` pour
+qu'ils ne reprennent jamais de la place à l'image.
+
+Placés d'abord tout à droite de la rangée, sur l'argument que le
+transport signifie « déplacement dans la file » depuis le marquage du
+sens, et qu'un niveau n'est pas un déplacement. **Déplacés depuis entre
+le transport et la timeline**, à la demande : les quatre choses qu'on
+attrape en écoutant sont désormais au même endroit. Mesuré après le
+déplacement — la timeline garde exactement ses 508 px, parce que ce qui
+la protège est `flex: 0 0 auto` et non la position ; l'argument portait
+sur le sens, pas sur la place.
 
 **Crans de 5 %, pas de continu.** `#seek` mappe le clic directement sur la
 durée parce qu'un pixel y désigne un instant demandé ; un niveau n'a

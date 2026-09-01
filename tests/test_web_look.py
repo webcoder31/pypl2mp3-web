@@ -1863,14 +1863,17 @@ async def test_the_next_up_length_comes_after_the_name_and_survives_it(
 
 
 async def test_the_volume_never_takes_from_the_timeline(tmp_path):
-    """At the far end of the row, and fixed: the picture has fought for
-    that width twice — once to get the readouts out of its way, once to
-    give some back to bigger buttons — and a control that grew with the
-    window would take it a third time.
+    """Fixed width, wherever it sits: the picture has fought for that
+    width twice — once to get the readouts out of its way, once to give
+    some back to bigger buttons — and a control that grew with the window
+    would take it a third time.
 
-    Beside the timeline rather than beside the transport, because the
-    transport now means movement through the queue, which is what the lit
-    arrow on it says, and a level is not a movement.
+    That is the whole of what this test holds. The position is not: it
+    sat at the far end first, on the argument that the transport means
+    movement through the queue and a level is not a movement, and it was
+    moved beside the transport on request. The argument was about
+    meaning, and `flex: 0 0 auto` is what actually protects the picture —
+    which is why the move costs the timeline nothing.
     """
 
     async with _client(create_app(tmp_path)) as client:
@@ -1879,9 +1882,11 @@ async def test_the_volume_never_takes_from_the_timeline(tmp_path):
 
     footer = re.search(r'<footer id="player".*?</footer>', page, re.DOTALL)
     assert footer, "the player is not where this test looks"
-    assert (footer.group(0).index('id="timeline"')
-            < footer.group(0).index('id="volume"')), (
-        "the volume sits inside the transport's half of the row"
+    # Between the transport and the timeline, in that order.
+    assert (footer.group(0).index('id="transport"')
+            < footer.group(0).index('id="volume"')
+            < footer.group(0).index('id="timeline"')), (
+        "the player's row is not in the order this test expects"
     )
 
     group = re.search(r"\n#volume \{([^}]*)\}", css).group(1)

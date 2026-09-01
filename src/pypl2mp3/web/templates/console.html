@@ -133,30 +133,15 @@
                   title="Next (right arrow)" aria-label="Next">&#9197;</button>
         </div>
 
-        <div id="timeline">
-          <span class="t" id="player-elapsed">0:00</span>
-          {# The waveform is drawn inside the slider, not in place of it:
-             every seek gesture — the click, the drag, the arrow keys —
-             is bound to #seek and measured from its box, so the picture
-             can change without any of that being rewritten.
+        {# The volume, between the transport and the timeline.
 
-             The plain bar underneath is what shows while the peaks are
-             being fetched, and what stays if they never arrive. The
-             canvas is decoration over a control that already works; it
-             is hidden from assistive technology for the same reason. #}
-          <div id="seek" role="slider" aria-label="Seek"
-               aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
-               tabindex="0">
-            <span class="track"></span>
-            <span class="fill"></span>
-            <canvas id="waveform" aria-hidden="true"></canvas>
-          </div>
-          <span class="t" id="player-total">0:00</span>
-        </div>
-
-        {# The volume, at the far end rather than beside the transport.
-           The transport means movement through the queue — that is what
-           the lit arrow on it says — and a level is not a movement.
+           It sat at the far end first, on the argument that the
+           transport means movement through the queue — that is what the
+           lit arrow on it says — and a level is not a movement. Moved
+           here on request: the four things you reach for while listening
+           are now in one place, and the picture keeps the whole of the
+           rest of the row. What the argument protected is protected by
+           `flex: 0 0 auto`, not by the position.
 
            Drawn, like #seek and for the same reason: a range input is
            one of the shapes in a browser no stylesheet can reach. Same
@@ -188,6 +173,27 @@
             <span class="track"></span>
             <span class="fill"></span>
           </div>
+        </div>
+
+        <div id="timeline">
+          <span class="t" id="player-elapsed">0:00</span>
+          {# The waveform is drawn inside the slider, not in place of it:
+             every seek gesture — the click, the drag, the arrow keys —
+             is bound to #seek and measured from its box, so the picture
+             can change without any of that being rewritten.
+
+             The plain bar underneath is what shows while the peaks are
+             being fetched, and what stays if they never arrive. The
+             canvas is decoration over a control that already works; it
+             is hidden from assistive technology for the same reason. #}
+          <div id="seek" role="slider" aria-label="Seek"
+               aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+               tabindex="0">
+            <span class="track"></span>
+            <span class="fill"></span>
+            <canvas id="waveform" aria-hidden="true"></canvas>
+          </div>
+          <span class="t" id="player-total">0:00</span>
         </div>
 
         <audio id="audio"></audio>
