@@ -1758,6 +1758,40 @@ déplacé » plutôt que de l'espérer — et, une fois, de constater que cinq
 instants *avaient* bougé et de vérifier que c'étaient exactement les cinq
 champs que la passe avait elle-même réécrits.
 
+**Une migration peut être sûre contre tout le code du dépôt et fausse
+contre une copie du programme déjà en train de tourner.** C'est le seul
+incident de perte de données de ce chantier, et il a coûté 6 920 clés sur
+770 morceaux — tout `sources.shazam` sauf le code d'enregistrement.
+
+Le retrait des `TXXX` a été vérifié contre chaque chemin du dépôt :
+`legacy`, le modèle, les scripts, la console. Aucun n'y perdait rien. Ce
+qui n'a pas été vérifié, parce que ce n'est pas dans le dépôt, c'est un
+serveur `pypl2mp3 ui` **resté ouvert depuis la veille**, tenant en mémoire
+le code de `dc1cfae` — d'avant la fusion de `f94eca7`, et d'avant que le
+modèle cesse d'écrire les trames.
+
+L'enchaînement, reproduit à l'identique sur une copie : le retrait efface
+`TXXX:YouTube ID`, qui est précisément le signal sur lequel cette
+version-là décide qu'un fichier n'est pas taggé. Au premier listing
+suivant, elle a donc retaggé **les 944**, chacun avec son idée du
+document — celle d'avant la fusion, qui remplace le bloc Shazam au lieu
+de le compléter. Les 770 portant un `TSRC` sont retombés à `{isrc}` ; les
+174 sans en ont réchappé, leur réponse reconstruite étant vide et une
+réponse vide n'écrasant rien. La preuve laissée sur place était les 944
+`TXXX:YouTube ID` réapparues, que plus aucune ligne du dépôt n'écrit.
+
+Ce que ça change à la méthode : **une migration qui retire ce qu'un
+ancien build lit doit s'accompagner de l'arrêt de ce qui tourne.** Le
+dépôt ne peut pas le savoir tout seul ; c'est une consigne, pas un test.
+
+La réparation est venue de la sauvegarde d'avant — la même qui avait déjà
+servi trois fois de témoin. `restore_shazam_block.py --audit` est la
+garde, et elle ne dépend pas de connaître la cause : une clé qui était
+dans un document et n'y est plus est une perte, quel qu'en soit l'auteur.
+Deux jours ont passé avant que quiconque le voie, parce que **rien à
+l'écran ne montre `sources.shazam`** — argument versé au dossier de
+l'inspecteur.
+
 **Et une alerte levée à tort, par moi.** J'ai annoncé que la passe avait
 fait tomber le nombre de scores de 877 à 834. C'était un défaut de
 comptage : `score is not None` avant, valeur vraie après, et les 43
