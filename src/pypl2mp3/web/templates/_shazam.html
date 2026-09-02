@@ -54,10 +54,6 @@
          registers before the digits are read. #}
       {% set score = result.score | round | int %}
       <div class="proposal">
-        <span class="score
-          {%- if score >= 85 %} score-high
-          {%- elif score >= 60 %} score-mid
-          {%- else %} score-low{% endif %}">{{ score }}% match</span>
         <div class="proposal-value">{{ result.artist }} - {{ result.title }}</div>
         {# What the answer says about the release, in the same two lines
            the board turns to — so the same fact reads the same way
@@ -79,6 +75,15 @@
            them as they were. Without the second, the only way to refuse
            was to reload the panel. #}
         <span class="proposal-actions">
+          {# The score leads the row of actions rather than heading the
+             block. It is a judgement on what is above it, so it reads
+             better after it than before — and it costs the block a whole
+             line where it had one of its own, which is what paid for the
+             air between the three lines that remain. #}
+          <span class="score
+            {%- if score >= 85 %} score-high
+            {%- elif score >= 60 %} score-mid
+            {%- else %} score-low{% endif %}">{{ score }}% match</span>
           <button type="button"
                   data-shazam-artist="{{ result.artist }}"
                   data-shazam-title="{{ result.title }}"

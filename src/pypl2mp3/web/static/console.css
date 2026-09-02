@@ -1131,11 +1131,11 @@ tbody tr.playing td.num { color: var(--accent); }
   border-left: 2px solid var(--accent);
   border-radius: 2px;
   background: var(--accent-soft);
-  /* Vertical padding halved when the release lines joined: the block
-     shares the fields' grid cell and anything taller than them moves the
-     panel off the cover. Six lines of content in the height of three
-     fields is what it costs. */
-  padding: var(--space-1) var(--space-3);
+  /* The score moving down to the buttons' row gave a whole line back,
+     and it went into the padding and the gaps rather than being kept as
+     slack. Still five lines of content in the height of three fields,
+     which is what sharing their grid cell costs. */
+  padding: var(--space-2) var(--space-3);
   margin: 0.6rem 0;
 }
 .score { font-size: var(--fs-xs); font-weight: 700;
@@ -1143,21 +1143,23 @@ tbody tr.playing td.num { color: var(--accent); }
 .score-high { color: var(--score-high); }
 .score-mid { color: var(--score-mid); }
 .score-low { color: var(--score-low); }
-/* Tightened when the release lines joined it. The half-rem below was
-   the gap between the name and the buttons; there are two lines in that
-   gap now, and the block has to stay inside the height the three fields
-   set — it shares their grid cell, so anything taller than them moves
-   the panel off the cover. */
-.proposal-value { font-weight: 600; margin: 0.1rem 0 0.2rem;
+/* The name leads the block now that the score has gone to the foot of
+   it, so it takes the top margin the score used to have. */
+.proposal-value { font-weight: 600; margin: 0 0 0.35rem;
                   font-size: var(--fs-base); }
 /* What the answer says about the release, under the name it proposes.
    Smaller and quieter: the name is what is being judged, these are what
    it is judged by, and they must not compete with it for the eye. */
 .proposal-aside { font-size: var(--fs-sm); color: var(--text-2);
-                  line-height: 1.25; }
+                  line-height: 1.5; }
 
 
-.proposal-actions { display: flex; gap: var(--space-2); }
+.proposal-actions { display: flex; align-items: center;
+                    gap: var(--space-2); }
+/* The score sits at the head of that row and keeps its own spacing from
+   the buttons: it is a label, not a third control, and running it up
+   against the first button would read as one. */
+.proposal-actions .score { margin-right: var(--space-2); }
 
 /* The wait, in the box the answer will fill. Same class, so the same
    size and border; the difference is the ground and the direction. */
@@ -1196,8 +1198,19 @@ tbody tr.playing td.num { color: var(--accent); }
 /* The block fills the height the fields left, rather than sitting at the
    top of an empty cell. */
 #shazam.showing { display: flex; flex-direction: column; }
-#shazam.showing .proposal { flex: 1; display: flex; flex-direction: column;
-                            justify-content: center; }
+#shazam.showing .proposal { flex: 1; display: flex; flex-direction: column; }
+/* The block fills the cell and its slack goes between the text and the
+   buttons, which is the one place it is worth anything.
+
+   `margin: 0` is the half of this that took measuring to find. The
+   `.proposal` rule carries a 0.6rem vertical margin from where the block
+   sat above the form, and inside the cell that margin was eating the
+   nineteen pixels the block could have filled — so the content sat at
+   111 in a box of 130 with the difference spent outside it, invisible.
+   Removed, the block is the cell, and `margin-top: auto` hands the whole
+   difference to the row of actions. */
+#shazam.showing .proposal { margin: 0; }
+#shazam.showing .proposal .proposal-actions { margin-top: auto; }
 
 /* Nothing to save yet. Kept legible rather than greyed to the floor: it
    is not broken, it is waiting, and a control the eye cannot find is

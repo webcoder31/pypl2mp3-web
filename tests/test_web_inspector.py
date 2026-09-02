@@ -679,3 +679,34 @@ async def test_the_answer_shows_what_it_says_about_the_release(
     assert "--fs-sm" in aside, (
         f"the release lines are not smaller than the name: {aside}"
     )
+
+    # The score leads the row of actions rather than heading the block:
+    # it is a judgement on what is above it, so it reads better after
+    # it — and giving up its own line is what paid for the air between
+    # the three that remain.
+    actions = re.search(
+        r'<span class="proposal-actions">(.*?)</span>\s*</div>',
+        body, re.DOTALL,
+    )
+    assert actions, "the actions row is gone"
+    assert actions.group(1).index('class="score') < actions.group(1).index(
+        "<button"
+    ), "the score no longer leads the row"
+    assert body.index('class="proposal-value"') < body.index(
+        'class="proposal-actions"'
+    ), "the score is back above the name"
+
+    # And the row is pushed to the foot of the block, so the gap in front
+    # of it is whatever the block has spare. Two rules make that work and
+    # the second took measuring to find: `.proposal` carries a 0.6rem
+    # vertical margin from where the block used to sit above the form, and
+    # inside the cell that margin ate the space the block could have
+    # filled — the content sat at 111 in a box of 130 with the difference
+    # spent outside it, where it separated nothing. Measured after: 22px.
+    assert "#shazam.showing .proposal { margin: 0; }" in css, (
+        "the block's old margin is back, and the gap goes with it"
+    )
+    assert (
+        "#shazam.showing .proposal .proposal-actions { margin-top: auto; }"
+        in css
+    ), "the buttons no longer sit at the foot of the block"
