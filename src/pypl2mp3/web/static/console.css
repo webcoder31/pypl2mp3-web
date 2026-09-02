@@ -978,14 +978,18 @@ tbody tr.playing td.num { color: var(--accent); }
    Shazam block up as well — it shares the fields' cell, so it costs the
    column nothing.
    
-   The one state that overruns is the provenance line, which adds 25px
-   when a field was set by hand. It appears on no song in this library
-   yet and will appear on few; the panel grows for it rather than the
-   line being denied its own row. */
-#inspector .inspector-tools { margin: 0.85rem 0 0.6rem; }
+   Air asked for before Save was taken from above the tools row rather
+   than added, which is what a budget means: the row's own margins came
+   out even at 9.6 either side, and Save gained the 4px. The alternative
+   was to overrun the cover, and the alignment was asked for first.
+
+   Nothing overruns any more. The warning about hand-typed fields used to
+   have a row here and cost 25px; it is a colour on the button and on the
+   labels now, and colours have no height. */
+#inspector .inspector-tools { margin: 0.6rem 0; }
 .inspector-actions { display: flex; align-items: baseline; gap: 0.7rem;
                      min-width: 0; }
-#inspector .inspector-actions { margin-top: 0.8rem; }
+#inspector .inspector-actions { margin-top: 1.05rem; }
 /* Takes what is left and truncates: a filename can run to a hundred
    characters and must not push the button it belongs to off the row. */
 .inspector-actions .filename { flex: 1; min-width: 0; overflow: hidden;
