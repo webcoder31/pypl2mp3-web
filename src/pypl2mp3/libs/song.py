@@ -542,6 +542,12 @@ class SongModel:
     # document assembly reads to tell a fresh answer from a plain save.
     _shazam_extras: dict = {}
 
+    # What the last answer said about the release, applied or not. A
+    # class attribute like the one above, and for the same reason: a
+    # song nobody has asked about has no answer, and an empty dict is
+    # the honest shape of that.
+    _shazam_release: dict = {}
+
     # Set by `reset_state` and consumed by `_document`, because the
     # constructor stands between them: `reset_state` clears the
     # attributes and re-calls it, and by the time the document is built
@@ -1433,6 +1439,20 @@ class SongModel:
         }
 
 
+    @property
+    def shazam_release(self) -> dict:
+        """What the last answer said about the release, applied or not.
+
+        A copy, and public, because a caller outside this module wants
+        it: the panel that offers an answer for judgement has to be able
+        to show the answer. Below the threshold none of it reaches the
+        file, and reading the song's own album there would show the
+        file's and label it Shazam's.
+        """
+
+        return dict(self._shazam_release)
+
+
     def _read(self) -> dict:
         """The file's own account of itself, in document shape.
 
@@ -1980,6 +2000,12 @@ class SongModel:
         if "track" in shazam_metadata:
             try:
                 release = self._release_data(shazam_metadata["track"])
+                # Kept whether or not it is applied. Below the threshold
+                # none of it reaches the file, but it is still what
+                # Shazam said — and a panel offering the answer for
+                # judgement has to be able to show the answer, not the
+                # values the file already had.
+                self._shazam_release = dict(release)
                 self._shazam_extras = self._shazam_identity(
                     shazam_metadata["track"]
                 )

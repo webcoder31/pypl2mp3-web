@@ -12,10 +12,14 @@ That is also why `fix` needs no InteractionPort: there is no dialogue to
 port.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from pypl2mp3.services.list_songs import (
+    recording_line,
+    release_line,
+)
 from pypl2mp3.libs.song import SongModel
 from pypl2mp3.ports.progress import ProgressPort
 from pypl2mp3.services.find_song import SongNotFound, find_song_file
@@ -45,6 +49,29 @@ class FixProposal:
     shazam_cover_art_url: str
     shazam_match_score: Optional[float]
     has_cover_art: bool
+    # What the answer said about the release, whether or not the score
+    # let any of it reach the file. A panel offering an answer for
+    # judgement has to show the answer; reading the song's own album
+    # below the threshold would show the file's and call it Shazam's.
+    shazam_release: dict = field(default_factory=dict)
+    shazam_isrc: str = ""
+
+    @property
+    def release(self) -> str:
+        """Shazam's release line, labelled. See `release_line`."""
+
+        return release_line(
+            self.shazam_release.get("album", ""),
+            self.shazam_release.get("year", ""),
+            self.shazam_release.get("genre", ""),
+            self.shazam_release.get("publisher", ""),
+        )
+
+    @property
+    def recording(self) -> str:
+        """Shazam's recording code, opened out. See `recording_line`."""
+
+        return recording_line(self.shazam_isrc)
 
     @property
     def matched(self) -> bool:
@@ -95,6 +122,8 @@ async def propose_fix(
         shazam_cover_art_url=song.shazam_cover_art_url or "",
         shazam_match_score=song.shazam_match_score,
         has_cover_art=bool(song.has_cover_art),
+        shazam_release=song.shazam_release,
+        shazam_isrc=song.shazam_release.get("isrc", ""),
     )
 
 

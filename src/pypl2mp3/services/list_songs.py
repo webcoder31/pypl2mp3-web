@@ -27,6 +27,59 @@ _BY_HAND_ORDER = (
 )
 
 
+def release_line(album: str, year: str, genre: str, publisher: str) -> str:
+    """The release data as one labelled line, or nothing at all.
+
+    Joined here rather than in a template because the parts are each
+    optional: Shazam answers with all four, three, or none, and a
+    template assembling separators around holes is where the stray
+    middot comes from.
+
+    A function and not only a property, because two places show this now
+    — the listing's board and the panel offering Shazam's answer — and a
+    second implementation would be a second format.
+    """
+
+    line = " · ".join(part for part in (album, year, genre, publisher) if part)
+
+    return f"Album: {line}" if line else ""
+
+
+def recording_line(isrc: str) -> str:
+    """The recording code, opened out into what it says.
+
+    `FRZ031900123` is four things run together and nobody reads it as
+    four. Country of the registrant, year of reference, the registrant
+    itself, then its own numbering.
+
+    Labelled `Recording`, which is the standard's own word — ISRC is the
+    International Standard Recording Code. It identifies a take, not a
+    disc and not a song: two recordings of one piece carry two codes,
+    which is what settled Chill Rob G against Snap!.
+
+    The year is shown as the registrant wrote it, and that is the point:
+    38 codes in this library predate the standard, so the field is
+    whatever was put there — usually the recording's own year. A 1973
+    code on a 2025 release says the reissue kept the take.
+
+    A string that is not a code is shown whole rather than split into
+    four parts it does not have. At least the error is visible.
+    """
+
+    code = (isrc or "").replace("-", "").upper()
+
+    if not re.fullmatch(r"[A-Z]{2}[A-Z0-9]{3}\d{7}", code):
+        return f"Recording (ISRC): {isrc}" if isrc else ""
+
+    two = int(code[5:7])
+    pivot = datetime.date.today().year % 100
+    year = 2000 + two if two <= pivot else 1900 + two
+
+    return (
+        f"Recording (ISRC): {code[:2]} · {year} · {code[2:5]} · {code[7:]}"
+    )
+
+
 @dataclass(frozen=True)
 class SongSummary:
     """What a listing needs about one song, without reopening the file."""
@@ -92,63 +145,15 @@ class SongSummary:
 
     @property
     def release(self) -> str:
-        """The release data as one line, or nothing at all.
+        """The release line. See `release_line`."""
 
-        Joined here rather than in the template because the parts are
-        each optional: Shazam answers with all four, three, or none, and
-        a template assembling separators around holes is where the stray
-        middot comes from.
-
-        Labelled, like every face now is. They were told apart by their
-        shape before, which worked while there were two of them and
-        stopped working at four: a middot-joined line can be a release,
-        an origin, or a recording code broken into its parts.
-        """
-
-        line = " · ".join(
-            part for part in (self.album, self.year, self.genre,
-                              self.publisher) if part
-        )
-
-        return f"Album: {line}" if line else ""
+        return release_line(self.album, self.year, self.genre, self.publisher)
 
     @property
     def recording(self) -> str:
-        """The recording code, opened out into what it says.
+        """The recording code, opened out. See `recording_line`."""
 
-        Labelled `Recording`, which is the standard's own word — ISRC is
-        the International Standard Recording Code. It identifies a take,
-        not a disc and not a song: two recordings of one piece carry two
-        codes, which is what settled Chill Rob G against Snap!. `Release`
-        was wrong for that reason and `Record` would have been worse,
-        reading first as the object.
-
-        `FRZ031900123` is four things run together and nobody reads it as
-        four. Country of the registrant, year of reference, the registrant
-        itself, then its own numbering — spaced out, it becomes something
-        the eye can use.
-
-        The year is the one part worth a word of warning, and the library
-        gives it: 38 codes here carry a year earlier than 1986, when the
-        standard did not exist. It is what the registrant chose to put
-        there, usually the recording's own year, and that is exactly why
-        it is worth showing — a 1973 code on a 2025 release says the
-        reissue kept the take.
-        """
-
-        code = self.isrc.replace("-", "").upper()
-
-        if not re.fullmatch(r"[A-Z]{2}[A-Z0-9]{3}\d{7}", code):
-            # Including empty: a face with nothing to say takes no turn.
-            return f"Recording (ISRC): {self.isrc}" if self.isrc else ""
-
-        two = int(code[5:7])
-        pivot = datetime.date.today().year % 100
-        year = 2000 + two if two <= pivot else 1900 + two
-
-        return (
-            f"Recording (ISRC): {code[:2]} · {year} · {code[2:5]} · {code[7:]}"
-        )
+        return recording_line(self.isrc)
 
     @property
     def playlist_face(self) -> str:

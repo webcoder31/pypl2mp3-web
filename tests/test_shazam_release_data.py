@@ -325,3 +325,154 @@ class TestMatchScore:
             assert 0 <= SongModel.match_score(
                 artist, title, "IAMX", "Kiss"
             ) <= 100
+
+
+class TestWhatThePanelIsGivenToShow:
+    """The block offers Shazam's answer for judgement, so it has to be
+    able to show the answer — not the values the file already had.
+
+    `matched` is true whenever Shazam named anything, threshold or not.
+    Below it none of the release data reaches the file, so reading the
+    song's own album there would show the file's album and label it
+    Shazam's. That is the confusion this project keeps fighting: a
+    decision is not evidence.
+    """
+
+    def test_the_answer_is_kept_whether_or_not_it_is_applied(self):
+        from pypl2mp3.libs.song import SongModel
+
+        song = SongModel.__new__(SongModel)
+        song._shazam_release = {
+            "album": "Kingdom of Welcome Addiction", "year": "2009",
+            "genre": "Alternative", "publisher": "61 Seconds",
+            "isrc": "GBDHC1907207",
+        }
+
+        assert song.shazam_release["album"] == "Kingdom of Welcome Addiction"
+        # A copy: a caller holding it must not be able to edit the answer.
+        song.shazam_release["album"] = "Something Else"
+        assert song.shazam_release["album"] == "Kingdom of Welcome Addiction"
+
+    def test_a_song_nobody_asked_about_has_no_answer(self):
+        from pypl2mp3.libs.song import SongModel
+
+        assert SongModel.__new__(SongModel).shazam_release == {}
+
+    def test_the_proposal_shows_it_in_the_lines_the_board_uses(self):
+        """The same fact reads the same way wherever it appears, because
+        both callers go through one formatter rather than each having
+        their own."""
+
+        from pypl2mp3.services.fix_junks import FixProposal
+
+        proposal = FixProposal(
+            youtube_id="a", filename="x.mp3", current_artist="A",
+            current_title="T", shazam_artist="IAMX", shazam_title="Kiss",
+            shazam_cover_art_url="", shazam_match_score=97.0,
+            has_cover_art=True,
+            shazam_release={"album": "Alive", "year": "2018"},
+            shazam_isrc="GBDHC1907207",
+        )
+
+        assert proposal.release == "Album: Alive · 2018"
+        assert proposal.recording == "Recording (ISRC): GB · 2019 · DHC · 07207"
+
+    def test_no_answer_is_no_line(self):
+        from pypl2mp3.services.fix_junks import FixProposal
+
+        proposal = FixProposal(
+            youtube_id="a", filename="x.mp3", current_artist="A",
+            current_title="T", shazam_artist="IAMX", shazam_title="Kiss",
+            shazam_cover_art_url="", shazam_match_score=97.0,
+            has_cover_art=True,
+        )
+
+        assert proposal.release == ""
+        assert proposal.recording == ""
+
+
+class TestTheWiring:
+    """That `shazam_song` actually keeps the answer.
+
+    Every test above sets `_shazam_release` by hand, so removing the one
+    line that fills it broke nothing — a counter-experiment caught that,
+    and this is the gap it found. Twice now in this project: a suite can
+    cover all of a rule and none of its wiring.
+    """
+
+    def _song(self, repo, artist="IAMX", title="Kiss"):
+        import asyncio
+        from mutagen.id3 import ID3, TPE1, TIT2, TXXX
+
+        folder = repo / "Owner - Alpha [PL0000000000000000000000000000001]"
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"{artist} - {title} [aaaaaaaaaaa].mp3"
+        path.write_bytes((b"\xff\xfb\x90\xc0" + b"\x00" * 413) * 8)
+
+        tags = ID3()
+        tags.add(TXXX(encoding=3, desc="YouTube ID", text="aaaaaaaaaaa"))
+        tags.add(TPE1(encoding=3, text=artist))
+        tags.add(TIT2(encoding=3, text=title))
+        tags.save(path, v1=0, v2_version=3)
+
+        return path
+
+    def _ask(self, path, answer, monkeypatch, threshold=50):
+        import asyncio
+
+        class Client:
+            async def recognize_song(self, _path):
+                # The payload, not the track: `_shazam_answer` builds the
+                # inner object and `shazam_song` looks for the key.
+                return {"track": answer}
+
+        monkeypatch.setattr(SongModel, "shazam_client", Client())
+        monkeypatch.setattr(SongModel, "last_shazam_request_time", 0)
+        monkeypatch.setattr(
+            "pypl2mp3.libs.song.asyncio.sleep",
+            lambda _s: asyncio.sleep(0),
+        )
+
+        song = SongModel(path)
+        asyncio.run(song.shazam_song(shazam_match_threshold=threshold))
+
+        return song
+
+    def test_a_recognition_keeps_what_it_said_about_the_release(
+        self, tmp_path, monkeypatch
+    ):
+        song = self._ask(
+            self._song(tmp_path),
+            _shazam_answer(
+                [{"title": "Album", "text": "Alive in New Light"},
+                 {"title": "Released", "text": "2018"}],
+                isrc="GBDHC1907207",
+            ),
+            monkeypatch,
+        )
+
+        assert song.shazam_release["album"] == "Alive in New Light"
+        assert song.shazam_release["isrc"] == "GBDHC1907207"
+
+    def test_it_keeps_it_even_when_the_score_refuses_it(
+        self, tmp_path, monkeypatch
+    ):
+        """The case the panel needs. Below the threshold none of it
+        reaches the file — and the block still has to be able to show
+        what Shazam said, or it shows the file's own album and calls it
+        Shazam's."""
+
+        song = self._ask(
+            self._song(tmp_path, artist="SOMEONE ELSE", title="Another Song"),
+            _shazam_answer(
+                [{"title": "Album", "text": "Alive in New Light"}],
+                isrc="GBDHC1907207",
+            ),
+            monkeypatch,
+            threshold=99,
+        )
+
+        # Refused: nothing of the release reached the song itself.
+        assert song.album != "Alive in New Light"
+        # Kept all the same.
+        assert song.shazam_release["album"] == "Alive in New Light"

@@ -780,6 +780,8 @@ def create_app(repository_path: Path) -> FastAPI:
                 "title": proposal.shazam_title,
                 "cover_art_url": proposal.shazam_cover_art_url,
                 "score": proposal.shazam_match_score,
+                "release": proposal.release,
+                "recording": proposal.recording,
             }
 
         try:

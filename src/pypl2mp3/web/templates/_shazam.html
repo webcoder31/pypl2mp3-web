@@ -59,6 +59,21 @@
           {%- elif score >= 60 %} score-mid
           {%- else %} score-low{% endif %}">{{ score }}% match</span>
         <div class="proposal-value">{{ result.artist }} - {{ result.title }}</div>
+        {# What the answer says about the release, in the same two lines
+           the board turns to — so the same fact reads the same way
+           wherever it appears. Smaller than the name, because the name
+           is what you are judging and these are what you judge it by.
+
+           Shown whether or not the score let any of it through: below
+           the threshold none of it reaches the file, but it is still
+           what Shazam said, and that is the whole of what this block is
+           for. #}
+        {% if result.release %}
+          <div class="proposal-aside">{{ result.release }}</div>
+        {% endif %}
+        {% if result.recording %}
+          <div class="proposal-aside">{{ result.recording }}</div>
+        {% endif %}
         {# Two ways out, and both give the fields back. Taking the
            answer fills them and lets Save through; dismissing leaves
            them as they were. Without the second, the only way to refuse

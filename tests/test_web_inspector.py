@@ -627,3 +627,55 @@ async def test_the_block_does_not_blink_while_it_polls(tmp_path):
     assert "#shazam.htmx-request { opacity: 1; }" in css, (
         "the self-polling block dims on every tick"
     )
+
+
+async def test_the_answer_shows_what_it_says_about_the_release(
+    tmp_path, monkeypatch
+):
+    """Two lines under the name it proposes, in the same shape the board
+    turns to — one formatter, so the same fact reads the same way
+    wherever it appears.
+
+    Smaller than the name: the name is what is being judged, these are
+    what it is judged by, and they must not compete for the eye.
+
+    Six lines of content in the height of three fields, because the block
+    shares their grid cell and anything taller moves the panel off the
+    cover. Measured at 130 against 130.
+    """
+
+    async def fake(self, **kwargs):
+        self.shazam_artist = "IAMX"
+        self.shazam_title = "Kiss"
+        self.shazam_match_score = 97.0
+        self._shazam_release = {
+            "album": "Alive in New Light", "year": "2018",
+            "genre": "Alternative", "isrc": "GBDHC1907207",
+        }
+
+    monkeypatch.setattr("pypl2mp3.libs.song.SongModel.shazam_song", fake)
+    _make_song(tmp_path, "UNKNOWN", "Something", "aaaaaaaaaaa", junk=True)
+
+    async with _client(create_app(tmp_path)) as client:
+        body = (await client.post(
+            "/songs/aaaaaaaaaaa/shazam", headers=HX
+        )).text
+
+        for _ in range(60):
+            if "Listening" not in body:
+                break
+            answer = await client.get(
+                "/fragments/shazam/aaaaaaaaaaa", headers=HX
+            )
+            if answer.status_code == 200:
+                body = answer.text
+
+        css = (await client.get("/static/console.css")).text
+
+    assert "Album: Alive in New Light · 2018 · Alternative" in body, body
+    assert "Recording (ISRC): GB · 2019 · DHC · 07207" in body, body
+
+    aside = re.search(r"\n\.proposal-aside \{([^}]*)\}", css).group(1)
+    assert "--fs-sm" in aside, (
+        f"the release lines are not smaller than the name: {aside}"
+    )
