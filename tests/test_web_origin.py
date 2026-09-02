@@ -93,23 +93,26 @@ class TestTheLine:
             origin_author="corandcrank", origin_title="Amor Mio",
         )
 
-        assert summary.origin == "from corandcrank · Amor Mio"
+        assert summary.origin == "From: corandcrank · Amor Mio"
 
-    def test_it_is_prefixed_where_the_release_line_is_not(self):
-        """The board gives its faces no labels, and both lines are
-        middot-joined: "Chill Masters · SYNAPSON - Djon Maya Maï" reads
-        exactly like a label and an album. Five characters buy the
-        distinction."""
+    def test_every_face_says_what_it_is(self):
+        """They were told apart by their shape while there were two of
+        them, and that stopped working at four: a middot-joined line
+        could be a release, an origin, or a recording code opened out.
+        "Chill Masters · SYNAPSON - Djon Maya Maï" reads exactly like a
+        label and an album."""
 
         summary = SongSummary(
             path=Path("x.mp3"), youtube_id="a", artist="A", title="T",
             playlist=PLAYLIST, duration="00:03:00", is_junk=False,
-            album="Album", year="1971",
+            album="Album", year="1971", isrc="FRZ031900123",
             origin_author="Chill Masters", origin_title="SYNAPSON",
         )
 
-        assert summary.release.startswith("Album")
-        assert summary.origin.startswith("from ")
+        assert summary.release.startswith("Album: ")
+        assert summary.recording.startswith("ISRC: ")
+        assert summary.playlist_face.startswith("Playlist: ")
+        assert summary.origin.startswith("From: ")
 
     def test_nothing_known_is_no_line_at_all(self):
         """An empty face would still take its ten seconds on the board."""
@@ -137,13 +140,22 @@ class TestTheTemplates:
         return (Path("src/pypl2mp3/web/templates") / name).read_text()
 
     @pytest.mark.parametrize("name", ["_inspector.html", "_workbench.html"])
-    def test_the_board_is_given_a_third_face(self, name):
-        markup = self._markup(name)
+    def test_the_board_turns_its_faces_in_the_written_order(self, name):
+        """Release, recording code, playlist, origin. The attribute order
+        in the markup is the turning order — the page reads them in the
+        order they are written — so this holds the markup to it."""
 
-        assert 'data-origin="{{ song.origin }}"' in markup, name
+        markup = self._markup(name)
+        board = re.search(r'<span class="board"(.*?)>', markup, re.DOTALL).group(1)
+        seen = re.findall(r"data-(release|recording|playlist|origin)=", board)
+
+        assert seen == ["release", "recording", "playlist", "origin"], seen
         # Only when there is one: the board turns to every face it is
-        # given, and an empty one is ten seconds of nothing.
-        assert "{% if song.origin %} data-origin" in markup, name
+        # given, and an empty one is ten seconds of nothing. The playlist
+        # is the exception, because every song has one.
+        for face in ("release", "recording", "origin"):
+            assert f"song.{face if face != 'release' else 'release'} %}}" in markup \
+                or f"if song.{face}" in markup, f"{face} is unconditional"
 
     async def test_a_gone_video_is_marked_and_still_linked(self, tmp_path):
         """Asked of the rendered page and not of the template source: a
@@ -399,3 +411,76 @@ class TestWhatWasTypedRatherThanFound:
                 "/fragments/inspector/aaaaaaaaaaa", headers=HX)).text
 
         assert "set by hand" not in markup
+
+
+class TestTheTurningOrder:
+    async def test_the_page_turns_them_in_the_same_order_as_the_markup(
+        self, tmp_path
+    ):
+        """The markup's attribute order is what a reader sees written
+        down; `boardFaces` is what actually decides. A first version of
+        this only held the template, so swapping the array in the script
+        changed the order on screen and nothing failed."""
+
+        async with _client(create_app(tmp_path)) as client:
+            js = (await client.get("/static/console.js")).text
+
+        faces = re.search(
+            r"function boardFaces\(board\) \{(.*?)\n  \}", js, re.DOTALL
+        ).group(1)
+        read = re.findall(r"board\.dataset\.(\w+)", faces)
+
+        assert read == ["release", "recording", "playlist", "origin"], read
+
+    async def test_an_empty_face_is_dropped_rather_than_shown(self, tmp_path):
+        """Ten seconds of a blank line is worse than three faces."""
+
+        async with _client(create_app(tmp_path)) as client:
+            js = (await client.get("/static/console.js")).text
+
+        faces = re.search(
+            r"function boardFaces\(board\) \{(.*?)\n  \}", js, re.DOTALL
+        ).group(1)
+
+        assert ".filter(" in faces and 'face !== ""' in faces, faces
+
+
+class TestTheRecordingFace:
+    """`FRZ031900123` is four things run together and nobody reads it as
+    four. Opened out, it becomes something the eye can use."""
+
+    def _summary(self, isrc):
+        return SongSummary(
+            path=Path("x.mp3"), youtube_id="a", artist="A", title="T",
+            playlist=PLAYLIST, duration="00:03:00", is_junk=False, isrc=isrc,
+        )
+
+    def test_it_reads_country_year_registrant_number(self):
+        assert self._summary("FRZ031900123").recording == (
+            "ISRC: FR · 2019 · Z03 · 00123"
+        )
+
+    def test_the_separators_a_code_may_carry_are_not_part_of_it(self):
+        """The standard writes it with hyphens and files store it
+        without. Both are the same code."""
+
+        assert self._summary("FR-Z03-19-00123").recording == (
+            self._summary("FRZ031900123").recording
+        )
+
+    def test_a_year_the_standard_predates_is_shown_as_written(self):
+        """38 codes here carry a year earlier than 1986, when the
+        standard did not exist: the field is whatever the registrant put
+        there, usually the recording's own year. A 1973 code on a 2025
+        release is the point, not a bug — the reissue kept the take."""
+
+        assert "1973" in self._summary("FR77F7300790").recording
+
+    def test_nothing_to_say_takes_no_turn(self):
+        assert self._summary("").recording == ""
+
+    def test_a_code_that_is_not_one_is_shown_rather_than_parsed(self):
+        """Splitting it would invent four parts out of something that has
+        none. Shown whole, it is at least visibly wrong."""
+
+        assert self._summary("NOT A CODE").recording == "ISRC: NOT A CODE"

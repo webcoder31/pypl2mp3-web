@@ -1479,7 +1479,7 @@ async def test_every_colour_is_answered_by_both_palettes(tmp_path):
     assert not orphaned, f"dark-only, so unset on a light screen: {orphaned}"
 
 
-async def test_the_meta_line_holds_two_faces_and_only_one_line(tmp_path):
+async def test_the_meta_line_holds_its_faces_and_only_one_line(tmp_path):
     """Two lines under the title was one too many. The playlist is always
     one face of a single line; what Shazam answered about the release is
     the other, when there is one. The duration went with the second line —
@@ -1505,10 +1505,12 @@ async def test_the_meta_line_holds_two_faces_and_only_one_line(tmp_path):
         ).read_text()
 
         assert markup.count('class="board"') == 1, name
-        assert 'data-playlist="{{ song.playlist_name }}"' in markup, name
+        assert 'data-playlist="{{ song.playlist_face }}"' in markup, name
         # Only when there is one — an empty attribute would start a clock
-        # for a face with nothing on it.
+        # for a face with nothing on it. The playlist is the exception,
+        # and the only one: every song has one.
         assert '{%- if song.release %} data-release=' in markup, name
+        assert "{% if song.recording %} data-recording=" in markup, name
         assert "release\">" not in markup, (
             f"{name} still draws the release on a line of its own"
         )

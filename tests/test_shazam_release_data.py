@@ -142,14 +142,21 @@ def _summary(**release):
 def test_the_release_line_is_joined_where_the_parts_are_known():
     """Assembled in the summary and not in the template: the parts are
     each optional, and a template putting separators between holes is
-    where a stray middot comes from."""
+    where a stray middot comes from.
+
+    Labelled since the board went to four faces, where shape alone stopped
+    telling them apart."""
 
     assert _summary(
         album="Madonna", year="1983", genre="Pop", publisher="Sire"
-    ).release == "Madonna · 1983 · Pop · Sire"
+    ).release == "Album: Madonna · 1983 · Pop · Sire"
 
-    assert _summary(year="1983").release == "1983"
-    assert _summary(album="Madonna", genre="Pop").release == "Madonna · Pop"
+    assert _summary(year="1983").release == "Album: 1983"
+    assert _summary(album="Madonna", genre="Pop").release == "Album: Madonna · Pop"
+
+    # Nothing known is no face, not an empty label that would still take
+    # its ten seconds on the board.
+    assert _summary().release == ""
     assert _summary().release == ""
 
 

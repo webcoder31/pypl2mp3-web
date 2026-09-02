@@ -8,6 +8,7 @@ Reads the local filesystem only — no network call, ever. Building a
 SongModel parses the file's ID3 tags, which is disk work, not a request.
 """
 
+import datetime
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,6 +50,10 @@ class SongSummary:
     # takes it, Shazam overwrites it, and on 652 songs the two differ.
     origin_author: str = ""
     origin_title: str = ""
+    # The recording code, from Shazam's answer and nowhere else. Not a
+    # field: it is not something the file asserts about itself, it is
+    # what one upstream replied.
+    isrc: str = ""
     # The fields somebody typed, as opposed to the ones a pass proposed.
     # A tuple and not a set: the sentence built from it has to come out
     # the same way twice.
@@ -93,12 +98,54 @@ class SongSummary:
         each optional: Shazam answers with all four, three, or none, and
         a template assembling separators around holes is where the stray
         middot comes from.
+
+        Labelled, like every face now is. They were told apart by their
+        shape before, which worked while there were two of them and
+        stopped working at four: a middot-joined line can be a release,
+        an origin, or a recording code broken into its parts.
         """
 
-        return " · ".join(
+        line = " · ".join(
             part for part in (self.album, self.year, self.genre,
                               self.publisher) if part
         )
+
+        return f"Album: {line}" if line else ""
+
+    @property
+    def recording(self) -> str:
+        """The recording code, opened out into what it says.
+
+        `FRZ031900123` is four things run together and nobody reads it as
+        four. Country of the registrant, year of reference, the registrant
+        itself, then its own numbering — spaced out, it becomes something
+        the eye can use.
+
+        The year is the one part worth a word of warning, and the library
+        gives it: 38 codes here carry a year earlier than 1986, when the
+        standard did not exist. It is what the registrant chose to put
+        there, usually the recording's own year, and that is exactly why
+        it is worth showing — a 1973 code on a 2025 release says the
+        reissue kept the take.
+        """
+
+        code = self.isrc.replace("-", "").upper()
+
+        if not re.fullmatch(r"[A-Z]{2}[A-Z0-9]{3}\d{7}", code):
+            # Including empty: a face with nothing to say takes no turn.
+            return f"ISRC: {self.isrc}" if self.isrc else ""
+
+        two = int(code[5:7])
+        pivot = datetime.date.today().year % 100
+        year = 2000 + two if two <= pivot else 1900 + two
+
+        return f"ISRC: {code[:2]} · {year} · {code[2:5]} · {code[7:]}"
+
+    @property
+    def playlist_face(self) -> str:
+        """The playlist, labelled like the rest."""
+
+        return f"Playlist: {self.playlist_name}"
 
     @property
     def by_hand(self) -> str:
@@ -139,17 +186,17 @@ class SongSummary:
         recovered, which is what keeps it off the board: a face with
         nothing to say should not take a turn.
 
-        Prefixed, unlike `release`, because the board gives its faces no
-        labels and these two would otherwise be told apart by guesswork:
-        both are middot-joined, and "Chill Masters · SYNAPSON - Djon Maya
-        Maï" reads exactly like a label and an album.
+        Prefixed, as they all are now. It was the first face to need it,
+        back when it was the only one: both lines were middot-joined and
+        "Chill Masters · SYNAPSON - Djon Maya Maï" read exactly like a
+        label and an album.
         """
 
         line = " · ".join(
             part for part in (self.origin_author, self.origin_title) if part
         )
 
-        return f"from {line}" if line else ""
+        return f"From: {line}" if line else ""
 
     @property
     def label(self) -> str:
@@ -245,6 +292,7 @@ def summarize(song: SongModel) -> SongSummary:
             name for name in _BY_HAND_ORDER
             if song.decided_by.get(name) == "user"
         ),
+        isrc=song.isrc or "",
         origin_author=song.youtube_origin.get("author") or "",
         origin_title=song.youtube_origin.get("title") or "",
         video_gone=bool(song.youtube_origin.get("gone")),

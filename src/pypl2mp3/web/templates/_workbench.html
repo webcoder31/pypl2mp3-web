@@ -31,10 +31,22 @@
          the slots hold still, and those trailing spaces are real. A
          middot after them floated half the panel away. #}
       <span id="workbench-position"></span>
-      <span class="board" data-playlist="{{ song.playlist_name }}"
+      {# Four faces, in the order they turn: the release, the recording
+         code opened out, the playlist, then where the file came from.
+         Each is labelled, because at four they can no longer be told
+         apart by their shape — a middot-joined line could be any of
+         them. The attribute order is the turning order; the page reads
+         them in the order written here.
+
+         The playlist is the only one always present. Whichever face
+         comes first is what shows at rest, so a song with no release
+         opens on its code, and one with neither opens on its playlist. #}
+      <span class="board"
             {%- if song.release %} data-release="{{ song.release }}"{% endif
-            %}{% if song.origin %} data-origin="{{ song.origin }}"{% endif
-            %}>{{ song.playlist_name }}</span>
+            %}{% if song.recording %} data-recording="{{ song.recording }}"{% endif
+            %} data-playlist="{{ song.playlist_face }}"
+            {%- if song.origin %} data-origin="{{ song.origin }}"{% endif
+            %}>{{ song.release or song.recording or song.playlist_face }}</span>
     </p>
     <h2 class="inspector-title">
       {% if song.is_junk %}<span class="junk">⚠</span> {% endif %}

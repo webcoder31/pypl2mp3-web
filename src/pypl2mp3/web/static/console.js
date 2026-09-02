@@ -591,13 +591,16 @@
   // previous one.
   let boardEra = 0;
 
-  // The faces this board can show, in the order it shows them. The
-  // playlist is always there; the others only when the file knows them,
-  // and a face with nothing to say does not take a turn.
+  // The faces this board can show, in the order it shows them: the
+  // release, the recording code, the playlist, then where the file came
+  // from. Only the playlist is always there; a face with nothing to say
+  // does not take a turn, which is why they are filtered rather than
+  // padded — an empty one would cost ten seconds of nothing.
   function boardFaces(board) {
     return [
-      board.dataset.playlist || "",
       board.dataset.release || "",
+      board.dataset.recording || "",
+      board.dataset.playlist || "",
       board.dataset.origin || ""
     ].filter(function (face) { return face !== ""; });
   }
