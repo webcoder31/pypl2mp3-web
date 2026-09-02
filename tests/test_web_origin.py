@@ -357,6 +357,24 @@ class TestWhatWasTypedRatherThanFound:
             "Ask Shazam would replace them"
         )
 
+    def test_the_short_form_is_shorter_than_the_sentence(self):
+        """Two forms because the row has width for one of them. What
+        shows is which fields; the consequence is the tooltip. A short
+        form that carried the consequence too would be the sentence
+        again, and the row would ellipsis it away."""
+
+        summary = SongSummary(
+            path=Path("x.mp3"), youtube_id="a", artist="A", title="T",
+            playlist=PLAYLIST, duration="00:03:00", is_junk=False,
+            set_by_hand=("artist", "title"),
+        )
+
+        assert len(summary.by_hand_short) < len(summary.by_hand)
+        assert "Ask Shazam" not in summary.by_hand_short
+        # But it still names the fields, which is the half worth showing.
+        assert "artist" in summary.by_hand_short
+        assert "title" in summary.by_hand_short
+
     def test_nothing_typed_is_no_line_at_all(self):
         """Which is every song in the library today: on 5 918 fields,
         4 392 are `legacy` and 1 526 `shazam`, and none is `user`. The
@@ -369,9 +387,23 @@ class TestWhatWasTypedRatherThanFound:
 
         assert summary.by_hand == ""
 
-    async def test_the_panel_shows_it_only_where_there_is_one(self, tmp_path):
+    async def test_the_panel_marks_it_without_spending_a_pixel(
+        self, tmp_path
+    ):
         """Asked of the rendered page: a template test would pass on
-        markup the reader never receives."""
+        markup the reader never receives.
+
+        Two marks, neither costing width or height. The button says
+        something is at stake — amber, the colour this page already uses
+        for a junk song and a dead video — and the labels say which
+        fields. The sentence is the button's tooltip.
+
+        It was a line of words twice before. On its own row it cost the
+        panel the 25px that stopped it landing on the cover; at the end
+        of the tools row it was squeezed to twenty pixels at a 760px
+        window and to nothing below, which is a warning that disappears
+        exactly when the panel is hardest to read.
+        """
 
         _song(tmp_path, vid="aaaaaaaaaaa")
         _song(tmp_path, vid="bbbbbbbbbbb")
@@ -385,14 +417,41 @@ class TestWhatWasTypedRatherThanFound:
             plain = (await client.get(
                 "/fragments/inspector/bbbbbbbbbbb", headers=HX)).text
 
-        assert "set by hand" in marked
-        assert "Ask Shazam would replace" in marked
-        assert "set by hand" not in plain
-        # The element itself, not only its words: an empty paragraph
-        # rendered unconditionally passes a test that only looks for the
-        # sentence, and leaves a blank line of margin above the fields.
-        assert 'class="by-hand"' in marked
-        assert 'class="by-hand"' not in plain
+        for markup, expected in ((marked, True), (plain, False)):
+            shazam = re.search(
+                r"<button[^>]*>Ask Shazam</button>", markup, re.DOTALL
+            )
+            assert shazam, "the Ask Shazam button is gone"
+            assert ('class="armed"' in shazam.group(0)) is expected, (
+                shazam.group(0)
+            )
+            assert ("Ask Shazam would replace" in shazam.group(0)) is expected
+
+        # And the label of the field that was typed, not the others.
+        typed_labels = {
+            name for attrs, name in
+            re.findall(r"<label([^>]*)>(\w+)", marked) if "typed" in attrs
+        }
+        # Artist as well as Title: the save claimed both, because nothing
+        # had ever claimed the artist and pressing Save on a form is an
+        # assertion about everything in it. Cover is not there — it has
+        # no value at all, so there was nothing to claim.
+        assert typed_labels == {"Artist", "Title"}, typed_labels
+        assert not re.search(r'<label[^>]*class="typed"', plain)
+
+        # And something has to paint them. The markup carried both
+        # classes while the stylesheet had no rule for either, and every
+        # assertion above still passed — a mark nobody can see.
+        async with _client(create_app(tmp_path)) as client:
+            css = (await client.get("/static/console.css")).text
+
+        for rule in ("#inspector button.armed", "#inspector label.typed"):
+            block = re.search(re.escape(rule) + r" \{([^}]*)\}", css)
+            assert block, f"{rule} is not painted"
+            assert "var(--junk)" in block.group(1), (
+                f"{rule} does not use the colour this page already means "
+                f"'look before you click' with: {block.group(1)}"
+            )
 
     async def test_junking_takes_the_line_away_with_the_values(self, tmp_path):
         """`reset_state` clears the document, so a junked song is no

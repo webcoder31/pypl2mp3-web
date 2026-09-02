@@ -1038,18 +1038,37 @@ tbody tr.playing td.num { color: var(--accent); }
    where it says everything else about this song. */
 .held { display: none; color: var(--junk); }
 /* What was typed rather than found. Muted, not amber: nothing is wrong
-   here and nothing is about to be — it is a fact about the fields below,
-   and it only becomes a warning if you were reaching for Ask Shazam. An
-   alarm colour on a line that is true most of the time stops being read.
+   here and nothing is about to be — it is a fact about the fields, and
+   it only becomes a warning if you were reaching for Ask Shazam. An
+   alarm colour on a note that is true most of the time stops being read.
 
-   --text-2 and not --text-3, which is where a quiet line would normally
+   --text-2 and not --text-3, which is where a quiet note would normally
    sit. Measured in the browser: --text-3 gives 3.13:1 against the light
    panel and 3.73:1 against the dark one, both under the 4.5:1 that
    twelve-pixel text needs to be legible. A warning nobody can read
    before a destructive click is worse than no warning, because the panel
-   looks like it warned. --text-2 gives 6.21:1 and 6.27:1. */
-.by-hand { margin: 0.7rem 0 0; font-size: var(--fs-sm);
-           color: var(--text-2); }
+   looks like it warned. --text-2 gives 6.21:1 and 6.27:1.
+
+   Pushed to the far end of the tools row, and allowed to ellipsis rather
+   than wrap: a second line here would put back the 25px that moving it
+   off its own row was meant to save. */
+/* Two marks, and neither takes a pixel of width or height.
+
+   The button says something is at stake — amber, the colour this page
+   already uses for a junk song and a dead video, all three meaning the
+   same thing: look before you click. The labels say which fields, which
+   is the half a reader acts on; the sentence is the button's tooltip.
+
+   This replaced a line of words. It had a row of its own first, which
+   cost the panel the 25px that stopped it landing on the cover; then a
+   place at the end of the tools row, where it was squeezed to twenty
+   pixels at a 760px window and to nothing below — a warning that
+   vanishes exactly when the panel is hardest to read. */
+#inspector button.armed {
+  border-color: var(--junk);
+  color: var(--junk);
+}
+#inspector label.typed { color: var(--junk); }
 #inspector.holding-edits .held { display: inline; }
 /* Gone when the panel already describes what you are hearing: an offer
    to play the song that is playing is noise, and its absence is what

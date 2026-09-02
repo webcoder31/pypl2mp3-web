@@ -187,6 +187,21 @@ class SongSummary:
         )
 
     @property
+    def by_hand_short(self) -> str:
+        """The same warning, short enough for a row that is already full.
+
+        It had a row of its own and that row cost the panel 25px, which
+        was the difference between landing on the cover and overrunning
+        it. What is left is the half a reader acts on — which fields —
+        with the consequence in the tooltip.
+        """
+
+        if not self.set_by_hand:
+            return ""
+
+        return f"{', '.join(self.set_by_hand)} set by hand"
+
+    @property
     def origin(self) -> str:
         """The video this file was made from, as one line.
 

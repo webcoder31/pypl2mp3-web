@@ -78,7 +78,19 @@
              fill="currentColor"><path d="M5 3.2 13 8l-8 4.8Z"/></svg>
         Play this
       </button>
+      {# Armed when there is something to lose. A match overwrites these
+         fields without asking, and a value somebody typed is the one
+         thing asking again cannot bring back.
+
+         The warning is on the button rather than in words beside it,
+         because words need width and this row has none to spare: a note
+         here was squeezed to twenty pixels at a 760px window and to
+         nothing below that, which is a warning that disappears exactly
+         when the panel is hardest to read. A colour costs no width, and
+         the sentence is the tooltip. #}
       <button type="button"
+              {%- if song.by_hand %} class="armed"
+              title="{{ song.by_hand }}"{% endif %}
               hx-post="/songs/{{ song.youtube_id }}/shazam"
               hx-target="#shazam"
               hx-swap="outerHTML">Ask Shazam</button>
@@ -106,17 +118,6 @@
     <form hx-post="/songs/{{ song.youtube_id }}/fix"
           hx-target="#inspector"
           hx-swap="innerHTML">
-      {# The warning that was missing in front of Ask Shazam. A match
-         overwrites these fields without asking, and a value somebody
-         typed is the one thing in the file that asking again cannot
-         bring back.
-
-         Above the fields and under the button, because it is about
-         both: what is at stake is what the inputs hold, and what would
-         take it away is one click up. #}
-      {% if song.by_hand %}
-        <p class="by-hand">{{ song.by_hand }}</p>
-      {% endif %}
       {# The block and the fields share one cell. Asking Shazam used to
          push the three inputs down the panel, which moved everything
          under the pointer at the moment you were about to read it — and
@@ -134,11 +135,11 @@
            cost twice the height for a form that already competes with
            the listing underneath it. #}
         <div class="inspector-fields">
-          <label>Artist
+          <label{% if "artist" in song.set_by_hand %} class="typed"{% endif %}>Artist
             <input type="text" name="artist" value="{{ song.artist }}"></label>
-          <label>Title
+          <label{% if "title" in song.set_by_hand %} class="typed"{% endif %}>Title
             <input type="text" name="title" value="{{ song.title }}"></label>
-          <label>Cover
+          <label{% if "cover" in song.set_by_hand %} class="typed"{% endif %}>Cover
             <input type="url" name="cover_art_url"
                    placeholder="https://… — leave empty to keep the current one">
           </label>
