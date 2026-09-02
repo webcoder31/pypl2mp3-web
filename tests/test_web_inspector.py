@@ -499,8 +499,13 @@ async def test_the_wait_wears_the_same_box_as_the_answer(tmp_path):
     waiting = block[block.index("{% if state in"):block.index("{% elif state ==")]
 
     assert 'class="proposal waiting"' in waiting, waiting
-    assert "Listening {{ elapsed }}s" in waiting, (
-        "the wait no longer says how long it has been waiting"
+    assert "Listening…" in waiting, waiting
+    # No counter, on purpose. It never counted: the prefetch warms the
+    # answers, so the job is usually finished before the first poll and
+    # the only frame painted was "0s" — a broken clock rather than a fast
+    # reply. The bars say "still going" without pretending to measure.
+    assert "elapsed" not in waiting, (
+        f"the counter is back, and it will read 0s forever: {waiting}"
     )
 
     async with _client(create_app(tmp_path)) as client:

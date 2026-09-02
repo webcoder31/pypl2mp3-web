@@ -221,10 +221,6 @@ def create_app(repository_path: Path) -> FastAPI:
                 "tick": (
                     f" {job.elapsed_seconds}s" if job.elapsed_seconds else ""
                 ),
-                # Shown outright rather than as a growing ellipsis: the
-                # throttle can make this wait fifteen seconds, and a
-                # counter is the difference between waiting and worrying.
-                "elapsed": job.elapsed_seconds,
                 "polling": job.state.value in ("pending", "running"),
             },
         )

@@ -26,11 +26,14 @@
        and a green box that turns out to say "no match" has promised
        something it cannot keep.
 
-       The seconds, not an ellipsis. Shazam is throttled to one request
-       every fifteen seconds and a refused one waits thirty-five more, so
-       a wait here can be long enough that a reader wants to know whether
-       it is progressing or stuck. The bars say "still going"; the number
-       says how long. #}
+       No counter. There was one, and it never counted: the prefetch
+       worker warms the queue's answers, so by the time this is asked the
+       job is usually already finished and the only frame ever painted is
+       "0s" — which reads as a broken clock rather than a fast reply. The
+       bars carry the whole of the message now, which is "still going".
+       The wait that would have justified a number — the fifteen-second
+       throttle, the thirty-five of a refusal — is the rare case, and it
+       is the one the bars were drawn for. #}
     <div class="proposal waiting">
       <svg class="pulse" viewBox="0 0 22 16" aria-hidden="true"
            fill="currentColor">
@@ -41,7 +44,7 @@
         <rect x="16" y="1" width="2" height="14" rx="1"/>
         <rect x="20" y="6" width="2" height="4" rx="1"/>
       </svg>
-      <span class="job-running">Listening {{ elapsed }}s</span>
+      <span class="job-running">Listening…</span>
     </div>
   {% elif state == "completed" %}
     {% if result and result.matched %}
