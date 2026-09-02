@@ -116,6 +116,13 @@ class SongSummary:
     def recording(self) -> str:
         """The recording code, opened out into what it says.
 
+        Labelled `Recording`, which is the standard's own word — ISRC is
+        the International Standard Recording Code. It identifies a take,
+        not a disc and not a song: two recordings of one piece carry two
+        codes, which is what settled Chill Rob G against Snap!. `Release`
+        was wrong for that reason and `Record` would have been worse,
+        reading first as the object.
+
         `FRZ031900123` is four things run together and nobody reads it as
         four. Country of the registrant, year of reference, the registrant
         itself, then its own numbering — spaced out, it becomes something
@@ -133,14 +140,14 @@ class SongSummary:
 
         if not re.fullmatch(r"[A-Z]{2}[A-Z0-9]{3}\d{7}", code):
             # Including empty: a face with nothing to say takes no turn.
-            return f"Release (ISRC): {self.isrc}" if self.isrc else ""
+            return f"Recording (ISRC): {self.isrc}" if self.isrc else ""
 
         two = int(code[5:7])
         pivot = datetime.date.today().year % 100
         year = 2000 + two if two <= pivot else 1900 + two
 
         return (
-            f"Release (ISRC): {code[:2]} · {year} · {code[2:5]} · {code[7:]}"
+            f"Recording (ISRC): {code[:2]} · {year} · {code[2:5]} · {code[7:]}"
         )
 
     @property

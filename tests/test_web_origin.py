@@ -110,7 +110,7 @@ class TestTheLine:
         )
 
         assert summary.release.startswith("Album: ")
-        assert summary.recording.startswith("Release (ISRC): ")
+        assert summary.recording.startswith("Recording (ISRC): ")
         assert summary.playlist_face.startswith("Playlist: ")
         assert summary.origin.startswith("From: ")
 
@@ -457,7 +457,7 @@ class TestTheRecordingFace:
 
     def test_it_reads_country_year_registrant_number(self):
         assert self._summary("FRZ031900123").recording == (
-            "Release (ISRC): FR · 2019 · Z03 · 00123"
+            "Recording (ISRC): FR · 2019 · Z03 · 00123"
         )
 
     def test_the_separators_a_code_may_carry_are_not_part_of_it(self):
@@ -484,5 +484,5 @@ class TestTheRecordingFace:
         none. Shown whole, it is at least visibly wrong."""
 
         assert self._summary("NOT A CODE").recording == (
-            "Release (ISRC): NOT A CODE"
+            "Recording (ISRC): NOT A CODE"
         )
