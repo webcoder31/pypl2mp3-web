@@ -547,3 +547,83 @@ async def test_the_wait_shows_that_it_is_still_going(tmp_path):
         r"@media \(prefers-reduced-motion: reduce\) \{(.*?)\n\}", css, re.DOTALL
     ).group(1)
     assert ".pulse rect { animation: none; }" in reduced, reduced
+
+
+async def test_a_running_identification_answers_with_nothing(
+    tmp_path, monkeypatch
+):
+    """The block polls once a second and the waiting markup is the same
+    every time. Answering with it made htmx tear the element down and
+    build it again on every tick, which restarts the bars' animation and
+    reads as a flicker — reported from the other side of the screen
+    before anything here noticed.
+
+    A 204 tells htmx to swap nothing. The element is left alone and the
+    bars run.
+
+    The polling loops elsewhere in this file never reach this: their fake
+    answers instantly, so the first poll already finds the job finished.
+    This one holds it open on purpose.
+    """
+
+    import asyncio
+
+    held = asyncio.Event()
+
+    async def slow(self, **kwargs):
+        await held.wait()
+        self.shazam_artist = "THE PHARCYDE"
+        self.shazam_title = "Passin Me By"
+        self.shazam_match_score = 88.0
+
+    monkeypatch.setattr("pypl2mp3.libs.song.SongModel.shazam_song", slow)
+    _make_song(tmp_path, "UNKNOWN", "Something", "aaaaaaaaaaa", junk=True)
+
+    async with _client(create_app(tmp_path)) as client:
+        started = await client.post("/songs/aaaaaaaaaaa/shazam", headers=HX)
+
+        assert started.status_code == 200
+        assert "Listening" in started.text, (
+            "the wait has to be painted once, by the answer to the POST"
+        )
+
+        polled = await client.get(
+            "/fragments/shazam/aaaaaaaaaaa", headers=HX
+        )
+
+        assert polled.status_code == 204, (
+            f"the poll rebuilds the block while nothing has changed: "
+            f"{polled.text[:120]}"
+        )
+        assert not polled.text
+
+        # And once it settles, the answer comes through the same door.
+        held.set()
+
+        for _ in range(60):
+            done = await client.get(
+                "/fragments/shazam/aaaaaaaaaaa", headers=HX
+            )
+            if done.status_code == 200:
+                break
+            await asyncio.sleep(0.05)
+
+    assert done.status_code == 200, "the answer never arrived"
+    assert "88% match" in done.text, done.text
+
+
+async def test_the_block_does_not_blink_while_it_polls(tmp_path):
+    """Dimming says "a request is in flight", which is useful when a
+    request is an event and noise when it is a heartbeat: the block would
+    drop to half opacity and back on every tick for as long as Shazam
+    took to answer."""
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    assert ".htmx-request.job { opacity: 0.5; }" in css, (
+        "this test's premise is gone: jobs are no longer dimmed"
+    )
+    assert "#shazam.htmx-request { opacity: 1; }" in css, (
+        "the self-polling block dims on every tick"
+    )

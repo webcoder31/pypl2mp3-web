@@ -738,12 +738,23 @@ def create_app(repository_path: Path) -> FastAPI:
         )
 
     @app.get("/fragments/shazam/{youtube_id}", response_class=HTMLResponse)
-    def shazam_fragment(youtube_id: str, request: Request) -> HTMLResponse:
-        """Where a running identification has got to."""
+    def shazam_fragment(youtube_id: str, request: Request):
+        """Where a running identification has got to.
+
+        Nothing while it is still running, and that is the point. The
+        block polls once a second and the waiting markup is the same
+        every time, so answering with it made htmx tear the element down
+        and build it again — which restarts the bars' animation on every
+        tick and reads as a flicker. A 204 tells htmx to swap nothing,
+        the element is left alone, and the bars run.
+        """
 
         job = app.state.jobs.get(f"shazam:{youtube_id}")
         if job is None:
             raise HTTPException(status_code=404, detail="no such job")
+
+        if job.state.value in ("pending", "running"):
+            return Response(status_code=204)
 
         return _shazam_fragment(request, youtube_id, job)
 

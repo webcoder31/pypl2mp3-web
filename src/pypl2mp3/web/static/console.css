@@ -1168,6 +1168,11 @@ tbody tr.playing td.num { color: var(--accent); }
 .job-none { color: var(--text-3); }
 .job-error { color: var(--bad); }
 .htmx-request .job, .htmx-request.job { opacity: 0.5; }
+/* Except the one that asks after itself once a second. Dimming says "a
+   request is in flight", which is useful when a request is an event and
+   noise when it is a heartbeat: the block would drop to half and back
+   every tick for as long as Shazam took to answer. */
+#shazam.htmx-request { opacity: 1; }
 
 .report-list { list-style: none; padding: 0; margin: 0.3rem 0; }
 .report-list li { padding: var(--space-1) 0; border-bottom: 1px solid var(--line);
