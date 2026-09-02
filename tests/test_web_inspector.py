@@ -483,3 +483,62 @@ async def test_save_waits_for_a_change(tmp_path):
     )
     marks = re.search(r"function markDirty\(\) \{(.*?)\n  \}", js, re.DOTALL)
     assert "save.disabled = false" in marks.group(1), marks.group(1)
+
+
+async def test_the_wait_wears_the_same_box_as_the_answer(tmp_path):
+    """One becoming the other must move nothing. They share the class
+    that gives the box its size and border; only the ground and the
+    direction differ — grey rather than the accent tint, because there
+    is nothing to accept yet and a green box that turns out to say "no
+    match" has promised something it cannot keep.
+
+    Measured in a browser: 480×111 for both.
+    """
+
+    block = Path("src/pypl2mp3/web/templates/_shazam.html").read_text()
+    waiting = block[block.index("{% if state in"):block.index("{% elif state ==")]
+
+    assert 'class="proposal waiting"' in waiting, waiting
+    assert "Listening {{ elapsed }}s" in waiting, (
+        "the wait no longer says how long it has been waiting"
+    )
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    rule = re.search(
+        r"#shazam\.showing \.proposal\.waiting \{([^}]*)\}", css
+    ).group(1)
+
+    for wanted in ("justify-content: center", "background: var(--sunken)"):
+        assert wanted in rule, f"{wanted} missing: {rule}"
+
+
+async def test_the_wait_shows_that_it_is_still_going(tmp_path):
+    """An equaliser rather than a spinner: what is being waited on is
+    listening to audio, and the shape says so before the word does. The
+    number says how long, the bars say it has not stopped.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    block = Path("src/pypl2mp3/web/templates/_shazam.html").read_text()
+    assert block.count("<rect") >= 4, "too few bars to read as an equaliser"
+
+    bars = re.search(r"\n\.pulse rect \{([^}]*)\}", css).group(1)
+    assert "animation: pulse-bar" in bars, bars
+    # An SVG child's transform origin is the viewport's corner otherwise,
+    # so every bar would scale from the top left and the icon fly apart.
+    assert "transform-box: fill-box" in bars, bars
+    # Out of phase, or it is one bar drawn six times.
+    assert css.count(".pulse rect:nth-child(") >= 3, css.count(
+        ".pulse rect:nth-child("
+    )
+
+    # Keyframes run straight through the blanket rule that neutralises
+    # transitions, so this one has to be named.
+    reduced = re.search(
+        r"@media \(prefers-reduced-motion: reduce\) \{(.*?)\n\}", css, re.DOTALL
+    ).group(1)
+    assert ".pulse rect { animation: none; }" in reduced, reduced

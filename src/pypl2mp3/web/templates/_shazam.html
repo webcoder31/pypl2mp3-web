@@ -18,11 +18,31 @@
      hx-target="this"
      hx-swap="outerHTML"{% endif %}>
   {% if state in ("pending", "running") %}
-    {# The seconds, not an ellipsis. Shazam is throttled to one request
+    {# The wait wears the same box the answer will fill, so one becoming
+       the other moves nothing — the fields it stands in front of are
+       already holding the panel's height, and this holds its own.
+
+       Grey rather than the accent tint: there is nothing to accept yet,
+       and a green box that turns out to say "no match" has promised
+       something it cannot keep.
+
+       The seconds, not an ellipsis. Shazam is throttled to one request
        every fifteen seconds and a refused one waits thirty-five more, so
        a wait here can be long enough that a reader wants to know whether
-       it is progressing or stuck. #}
-    <span class="job-running">Listening {{ elapsed }}s</span>
+       it is progressing or stuck. The bars say "still going"; the number
+       says how long. #}
+    <div class="proposal waiting">
+      <svg class="pulse" viewBox="0 0 22 16" aria-hidden="true"
+           fill="currentColor">
+        <rect x="0" y="6" width="2" height="4" rx="1"/>
+        <rect x="4" y="3" width="2" height="10" rx="1"/>
+        <rect x="8" y="0" width="2" height="16" rx="1"/>
+        <rect x="12" y="4" width="2" height="8" rx="1"/>
+        <rect x="16" y="1" width="2" height="14" rx="1"/>
+        <rect x="20" y="6" width="2" height="4" rx="1"/>
+      </svg>
+      <span class="job-running">Listening {{ elapsed }}s</span>
+    </div>
   {% elif state == "completed" %}
     {% if result and result.matched %}
       {# The score is a judgement, not a number: 92% and 54% call for

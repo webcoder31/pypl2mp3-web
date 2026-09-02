@@ -777,6 +777,10 @@ body[data-tab="imports"] #imports { display: block; }
 @keyframes crawl { to { background-position: 16px 0; } }
 @media (prefers-reduced-motion: reduce) {
   .bar-fill.indeterminate { animation: none; opacity: 0.6; }
+  /* Named here rather than left to the blanket rule below, which only
+     neutralises transitions: a keyframe animation runs straight through
+     it. The bars keep their shape and stop moving. */
+  .pulse rect { animation: none; }
 }
 /* A row nobody has started reads as waiting, not as working. */
 .import-row.pending .import-name { color: var(--text-2); }
@@ -1073,6 +1077,41 @@ tbody tr.playing td.num { color: var(--accent); }
 .proposal-value { font-weight: 600; margin: 0.2rem 0 0.5rem;
                   font-size: var(--fs-base); }
 .proposal-actions { display: flex; gap: var(--space-2); }
+
+/* The wait, in the box the answer will fill. Same class, so the same
+   size and border; the difference is the ground and the direction. */
+#shazam.showing .proposal.waiting {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  background: var(--sunken);
+  border-left-color: var(--line-strong);
+}
+
+/* Six bars breathing out of phase. An equaliser rather than a spinner:
+   the thing being waited on is listening to audio, and the shape says so
+   before the word does.
+
+   `transform-box: fill-box` because an SVG child's transform origin is
+   the viewport's origin otherwise, so every bar would scale from the
+   top-left corner of the icon and fly apart. */
+.pulse { width: 22px; height: 16px; flex: 0 0 auto; color: var(--busy); }
+.pulse rect {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pulse-bar 900ms ease-in-out infinite;
+}
+.pulse rect:nth-child(2) { animation-delay: 110ms; }
+.pulse rect:nth-child(3) { animation-delay: 220ms; }
+.pulse rect:nth-child(4) { animation-delay: 330ms; }
+.pulse rect:nth-child(5) { animation-delay: 160ms; }
+.pulse rect:nth-child(6) { animation-delay: 60ms; }
+
+@keyframes pulse-bar {
+  0%, 100% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1); }
+}
 /* The block fills the height the fields left, rather than sitting at the
    top of an empty cell. */
 #shazam.showing { display: flex; flex-direction: column; }
