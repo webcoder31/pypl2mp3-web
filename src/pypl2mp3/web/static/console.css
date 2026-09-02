@@ -941,9 +941,20 @@ tbody tr.playing td.num { color: var(--accent); }
    the one thing here that earns the room. The fields are capped
    individually below. */
 .inspector-detail { flex: 1; min-width: 0; }
+/* Air on both sides. The row is the panel's only band of controls and it
+   was sitting flush between the line above and the fields below, so the
+   three read as one block of small type — the margins are what make it a
+   row of its own.
+
+   Written under `#inspector` and not on the class alone, because both of
+   these are paragraphs and `#inspector p` sets a margin with an id in
+   it. A class cannot outrank that, so the rule was there and did
+   nothing — the computed value stayed at the 0.5rem the id had set. */
 .inspector-tools { display: flex; align-items: center; gap: 0.75rem; }
+#inspector .inspector-tools { margin: 0.85rem 0 1rem; }
 .inspector-actions { display: flex; align-items: baseline; gap: 0.7rem;
-                     margin-top: 0.9rem; min-width: 0; }
+                     min-width: 0; }
+#inspector .inspector-actions { margin-top: 1.4rem; }
 /* Takes what is left and truncates: a filename can run to a hundred
    characters and must not push the button it belongs to off the row. */
 .inspector-actions .filename { flex: 1; min-width: 0; overflow: hidden;

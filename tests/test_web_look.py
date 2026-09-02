@@ -3109,3 +3109,29 @@ async def test_the_last_field_leads_somewhere_visible(tmp_path):
         and re.search(r"outline:\s*(?!none)\S", body)
     ]
     assert len(rings) == 1, f"more than the one step has a ring: {rings}"
+
+
+async def test_the_panel_s_own_margins_outrank_its_paragraph_rule(tmp_path):
+    """`#inspector p` sets a margin with an id in it, and both bands of
+    controls in the panel are paragraphs. A class cannot outrank that, so
+    a rule written on `.inspector-tools` alone is there and does nothing —
+    the computed value stays at the 0.5rem the id had set, which is what
+    happened the first time these margins were asked for.
+
+    Held on the selector rather than the number: the spacing is a matter
+    of taste and will move, the reason it has to carry an id will not.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    assert re.search(r"#inspector p \{[^}]*margin", css), (
+        "this test's premise is gone: the panel no longer sets a "
+        "paragraph margin by id"
+    )
+
+    for band in ("inspector-tools", "inspector-actions"):
+        assert re.search(rf"#inspector \.{band} \{{[^}}]*margin", css), (
+            f".{band} sets its margin without an id, so #inspector p wins "
+            f"and the margin does nothing"
+        )

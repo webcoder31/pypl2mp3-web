@@ -471,7 +471,7 @@ async def test_save_waits_for_a_change(tmp_path):
             "/fragments/inspector/aaaaaaaaaaa", headers=HX)).text
         js = (await client.get("/static/console.js")).text
 
-    submit = re.search(r"<button type=\"submit\"[^>]*>Save</button>", panel)
+    submit = re.search(r"<button type=\"submit\"[^>]*>Save MP3</button>", panel)
     assert submit and "disabled" in submit.group(0), submit and submit.group(0)
 
     # Both doors have to open it: typing, and taking Shazam's answer. The
