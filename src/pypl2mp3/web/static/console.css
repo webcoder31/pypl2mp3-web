@@ -903,12 +903,32 @@ tbody tr.playing td.num { color: var(--accent); }
 #inspector > .job-none { margin: 0; }
 
 #inspector-body { display: flex; gap: var(--space-5); align-items: flex-start; }
-.inspector-cover { flex: 0 0 var(--cover-size); }
-/* object-fit: cover — a 16:9 thumbnail fills the square and loses its
-   edges, rather than sitting in the middle of two empty bands. */
-.inspector-cover .cover { width: var(--cover-size);
-                          height: var(--cover-size);
-                          object-fit: cover; box-shadow: var(--shadow); }
+/* Always square, and always the same square, in both panels. The width
+   is the flex basis and `aspect-ratio` makes the height follow it — so
+   the media query that narrows the picture narrows it in both directions
+   instead of leaving a tall thin box, and there is no second number to
+   keep in step.
+
+   The box is sized rather than the image, so it holds its 280 even when
+   the image is missing: `onerror` hides the img, and a box that took its
+   height from its content would collapse and take the panel with it.
+
+   object-fit: cover — a 16:9 thumbnail fills the square and loses its
+   edges, rather than sitting in the middle of two empty bands. The
+   workbench had none of this: `width: 100%` with no height and no
+   object-fit, so its picture kept the source's ratio and the panel
+   changed shape between songs — 272×153 for a thumbnail, 272×272 for a
+   sleeve. */
+.inspector-cover, .workbench-cover {
+  flex: 0 0 var(--cover-size);
+  aspect-ratio: 1;
+}
+.inspector-cover .cover, .workbench-cover .cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  box-shadow: var(--shadow);
+}
 
 /* Crossfading covers. The outgoing picture is left as the container's
    background while the incoming one comes up over it, so a song change
@@ -1472,8 +1492,6 @@ body.workbench-mode #inspector { border-bottom: none; overflow-y: auto;
 
 .workbench { display: flex; gap: 2.25rem; align-items: flex-start;
              max-width: 56rem; margin: 0 auto; }
-.workbench-cover { flex: 0 0 17rem; }
-.workbench-cover .cover { width: 100%; box-shadow: var(--shadow); }
 .workbench-detail { flex: 1; min-width: 0; }
 .workbench-detail .inspector-title { font-size: var(--fs-xl);
                                      letter-spacing: -0.015em; }

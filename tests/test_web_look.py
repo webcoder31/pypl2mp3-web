@@ -1128,7 +1128,18 @@ async def test_ordinary_buttons_sit_back(tmp_path):
 
 async def test_the_cover_is_a_fixed_square(tmp_path):
     """YouTube art arrives in every shape. A box that resized with it
-    made the fields below jump each time you changed song."""
+    made the fields below jump each time you changed song.
+
+    Both panels, and that is the half this used to miss: the workbench
+    sized its picture with `width: 100%` and nothing else, so the source's
+    ratio decided the height — 272×153 for a thumbnail, 272×272 for a
+    sleeve, and the card changed shape between songs.
+
+    The box is what is sized, not the image. `aspect-ratio` gives it its
+    height from its own width, so the media query that narrows the
+    picture narrows it in both directions; and a box that took its height
+    from its content would collapse when `onerror` hides a missing image.
+    """
 
     async with _client(create_app(tmp_path)) as client:
         css = (await client.get("/static/console.css")).text
@@ -1136,14 +1147,26 @@ async def test_the_cover_is_a_fixed_square(tmp_path):
     size = re.search(r"--cover-size:\s*([^;]+);", css).group(1).strip()
     assert size == "280px", size
 
-    rule = re.search(
-        r"\.inspector-cover \.cover \{([^}]*)\}", css, re.DOTALL
-    ).group(1)
-    assert "width: var(--cover-size)" in rule, rule
-    assert "height: var(--cover-size)" in rule, (
+    box = re.search(
+        r"\n\.inspector-cover, \.workbench-cover \{([^}]*)\}", css
+    )
+    assert box, "the two panels no longer share one rule for the box"
+    assert "flex: 0 0 var(--cover-size)" in box.group(1), box.group(1)
+    assert "aspect-ratio: 1" in box.group(1), (
+        "the height does not follow the width, so a narrowed cover goes "
+        "tall and thin"
+    )
+
+    picture = re.search(
+        r"\n\.inspector-cover \.cover, \.workbench-cover \.cover \{"
+        r"\n  width: 100%;([^}]*)\}",
+        css,
+    )
+    assert picture, "the image no longer fills the box it was given"
+    assert "height: 100%" in picture.group(1), (
         "only the width is pinned, so a 16:9 thumbnail still sets the height"
     )
-    assert "object-fit: cover" in rule, (
+    assert "object-fit: cover" in picture.group(1), (
         "without it a non-square image is stretched to fit the box"
     )
 
@@ -1734,10 +1757,19 @@ async def test_the_cover_dissolves_between_songs(tmp_path):
         css = (await client.get("/static/console.css")).text
         js = (await client.get("/static/console.js")).text
 
-    fade = re.search(
-        r"\n\.inspector-cover \.cover, \.workbench-cover \.cover \{"
-        r"([^}]*)\}",
-        css,
+    # The one carrying the transition, not merely the first rule with
+    # that selector: sizing the picture took the same one, and this read
+    # the wrong block.
+    fade = next(
+        (
+            m for m in re.finditer(
+                r"\n\.inspector-cover \.cover, \.workbench-cover \.cover \{"
+                r"([^}]*)\}",
+                css,
+            )
+            if "transition" in m.group(1)
+        ),
+        None,
     )
     assert fade, "nothing fades"
     # A transition and not a keyframe animation: the reduced-motion rule
