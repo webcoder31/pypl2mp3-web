@@ -103,8 +103,6 @@
          {%- endif %}>video{% if song.video_gone %} ⚠{% endif %}</a>
     </p>
 
-    <div id="shazam" class="job"></div>
-
     <form hx-post="/songs/{{ song.youtube_id }}/fix"
           hx-target="#inspector"
           hx-swap="innerHTML">
@@ -119,19 +117,40 @@
       {% if song.by_hand %}
         <p class="by-hand">{{ song.by_hand }}</p>
       {% endif %}
-      {# Labels beside the fields, not above them: three stacked pairs
-         cost twice the height for a form that already competes with the
-         listing underneath it. #}
-      <label>Artist
-        <input type="text" name="artist" value="{{ song.artist }}"></label>
-      <label>Title
-        <input type="text" name="title" value="{{ song.title }}"></label>
-      <label>Cover
-        <input type="url" name="cover_art_url"
-               placeholder="https://… — leave empty to keep the current one">
-      </label>
+      {# The block and the fields share one cell. Asking Shazam used to
+         push the three inputs down the panel, which moved everything
+         under the pointer at the moment you were about to read it — and
+         moved it back when the answer went. Stacked, the slot is as tall
+         as the taller of the two, which is the fields, so the panel
+         holds still whatever is showing.
+
+         The block comes first in the markup only so the fields can be
+         hidden by a sibling selector; both are in the same grid cell, so
+         the order says nothing about where they appear. #}
+      <div class="inspector-slot">
+        <div id="shazam" class="job"></div>
+
+        {# Labels beside the fields, not above them: three stacked pairs
+           cost twice the height for a form that already competes with
+           the listing underneath it. #}
+        <div class="inspector-fields">
+          <label>Artist
+            <input type="text" name="artist" value="{{ song.artist }}"></label>
+          <label>Title
+            <input type="text" name="title" value="{{ song.title }}"></label>
+          <label>Cover
+            <input type="url" name="cover_art_url"
+                   placeholder="https://… — leave empty to keep the current one">
+          </label>
+        </div>
+      </div>
       <p class="inspector-actions">
-        <button type="submit">Save</button>
+        {# Disabled until something changes. A Save that is always
+           available invites the click that rewrites a file with exactly
+           what it already held — which costs a rename, a timestamp, and
+           the cover's cached address. The page enables it on the first
+           edit, and on taking Shazam's answer. #}
+        <button type="submit" disabled>Save</button>
         {% if saved %}<span class="job-new">Saved.</span>{% endif %}
         {# Beside the button that rewrites it: saving renames the file,
            so this is the line that is about to change. #}

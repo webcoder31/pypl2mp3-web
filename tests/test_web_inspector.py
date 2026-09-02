@@ -352,3 +352,134 @@ async def test_playing_from_the_panel_uses_the_listing(tmp_path):
     assert "at >= 0" in handler, (
         "the panel always plays the song alone, throwing away the queue"
     )
+
+
+async def test_the_shazam_block_says_which_element_it_replaces(tmp_path):
+    """It sits inside the form, and htmx inherits `hx-target` from
+    ancestors — so a block that only said `outerHTML` took the form's
+    `#inspector` and every poll replaced the whole panel with itself.
+
+    It swapped itself correctly for as long as it had no ancestor with an
+    opinion, which is why moving it broke it and nothing said so: the
+    first swap looked right, and the second one ate the page.
+    """
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        panel = (await client.get(
+            "/fragments/inspector/aaaaaaaaaaa", headers=HX)).text
+
+    form = re.search(r"<form[^>]*>", panel).group(0)
+    assert 'hx-target="#inspector"' in form, (
+        "this test's premise is gone: the form no longer sets a target"
+    )
+
+    block = Path("src/pypl2mp3/web/templates/_shazam.html").read_text()
+    poll = block[block.index("{% if polling %}"):block.index("{% endif %}>")]
+
+    assert 'hx-target="this"' in poll, (
+        f"the poll inherits a target from the form it now lives in: {poll}"
+    )
+
+
+async def test_the_block_takes_the_fields_place_rather_than_pushing_them(
+    tmp_path
+):
+    """Asking Shazam used to insert the answer above the form, which moved
+    the three inputs down the panel at the moment you were about to read
+    them — and moved them back when it went.
+
+    They share one grid cell now. Both stay in it whichever is showing,
+    because the hidden one is `visibility` and not `display`, so the slot
+    is always as tall as the taller of the two. Measured in a browser:
+    280px of panel before, during and after.
+    """
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        panel = (await client.get(
+            "/fragments/inspector/aaaaaaaaaaa", headers=HX)).text
+        css = (await client.get("/static/console.css")).text
+
+    slot = re.search(
+        r'<div class="inspector-slot">(.*?)</div>\s*</div>', panel, re.DOTALL
+    )
+    assert slot, "the fields and the block no longer share a container"
+    assert slot.group(1).index('id="shazam"') < slot.group(1).index(
+        'class="inspector-fields"'
+    ), "the sibling selector that hides the fields needs the block first"
+
+    assert ".inspector-slot > * { grid-area: 1 / 1; }" in css, (
+        "the two no longer stack in one cell, so the panel will jump"
+    )
+    assert "#shazam.showing + .inspector-fields { visibility: hidden; }" in css
+
+    # And the fragment has to claim the class the selector waits for.
+    # Without it the block simply draws over nothing and the fields stay
+    # where they are, which looks exactly like the bug this replaced.
+    block = Path("src/pypl2mp3/web/templates/_shazam.html").read_text()
+    root = block[block.index("<div id=\"shazam\""):block.index(">", block.index("<div id=\"shazam\""))]
+    assert "showing" in root, root
+    # `display: none` would take the fields out of the grid and let the
+    # slot collapse to the block's height.
+    assert "display: none" not in re.search(
+        r"#shazam\.showing \+ \.inspector-fields \{([^}]*)\}", css
+    ).group(1)
+
+
+async def test_the_answer_offers_both_ways_out(tmp_path):
+    """Taking it fills the fields and lets Save through; dismissing leaves
+    them as they were. Without the second, the only way to refuse an
+    answer was to reload the panel."""
+
+    block = Path("src/pypl2mp3/web/templates/_shazam.html").read_text()
+
+    # The proposal itself, where both buttons have to sit side by side —
+    # asked of that branch and not of the file, because every other
+    # branch also carries a Dismiss and would answer for it.
+    # Sliced on the template's own branch rather than matched with a
+    # regex: `(.*?)</div>` stops at the first inner close, which is above
+    # the buttons — so it read as if they were not there.
+    proposal = block[
+        block.index('<div class="proposal">'):block.index("{% else %}")
+    ]
+
+    assert "data-shazam-artist=" in proposal, proposal
+    assert "data-shazam-dismiss" in proposal, (
+        f"the answer can be taken but not refused: {proposal}"
+    )
+
+    # And every other terminal state can be dismissed too, not just the
+    # one that proposes something: "Shazam does not recognise it" was a
+    # dead end with no way back to the fields.
+    for state in ("job-none", "job-error"):
+        after = block[block.index(state):]
+        assert "data-shazam-dismiss" in after[:400], state
+
+
+async def test_save_waits_for_a_change(tmp_path):
+    """A Save that is always available invites the click that rewrites a
+    file with exactly what it already held — a rename, a timestamp, and
+    the cover's cached address, for nothing."""
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        panel = (await client.get(
+            "/fragments/inspector/aaaaaaaaaaa", headers=HX)).text
+        js = (await client.get("/static/console.js")).text
+
+    submit = re.search(r"<button type=\"submit\"[^>]*>Save</button>", panel)
+    assert submit and "disabled" in submit.group(0), submit and submit.group(0)
+
+    # Both doors have to open it: typing, and taking Shazam's answer. The
+    # second is why this is a function and not a line — it was a flag with
+    # one side effect, and a second caller was about to forget it.
+    assert "function markDirty()" in js
+    assert js.count("markDirty();") >= 2, (
+        "only one of the two ways to change the form enables Save"
+    )
+    marks = re.search(r"function markDirty\(\) \{(.*?)\n  \}", js, re.DOTALL)
+    assert "save.disabled = false" in marks.group(1), marks.group(1)

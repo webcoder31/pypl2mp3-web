@@ -1455,10 +1455,37 @@
     form.requestSubmit();
   });
 
+  // Unsaved work, in one place. Two things follow from it: the panel
+  // stops following the player, and Save becomes available. They were
+  // one flag and one side effect before; now the side effect is written
+  // down, because a second caller was about to forget it.
+  function markDirty() {
+    dirty = true;
+
+    const save = document.querySelector(
+      "#inspector form button[type='submit']"
+    );
+
+    if (save) save.disabled = false;
+  }
+
   // Anything typed in the inspector is unsaved work; stop following the
   // player until it is saved or the panel is replaced.
   document.addEventListener("input", function (event) {
-    if (event.target.closest("#inspector")) dirty = true;
+    if (event.target.closest("#inspector")) markDirty();
+  });
+
+  // Both ways out of the Shazam block give the fields back. Dismissing
+  // empties it, which is also what stops it polling: the attributes that
+  // drive the poll go with the markup.
+  document.addEventListener("click", function (event) {
+    if (!event.target.closest("[data-shazam-dismiss]")) return;
+
+    const block = document.querySelector("#inspector #shazam");
+    if (!block) return;
+
+    block.classList.remove("showing");
+    block.innerHTML = "";
   });
 
   document.addEventListener("htmx:afterSwap", function (event) {
@@ -1482,7 +1509,17 @@
     form.artist.value = use.dataset.shazamArtist;
     form.title.value = use.dataset.shazamTitle;
     form.cover_art_url.value = use.dataset.shazamCover || "";
-    dirty = true;
+    markDirty();
+
+    // And the block goes, because the fields it was covering are the
+    // ones that just changed — leaving it up would hide the only
+    // evidence that anything happened.
+    const block = document.querySelector("#inspector #shazam");
+
+    if (block) {
+      block.classList.remove("showing");
+      block.innerHTML = "";
+    }
   });
 
   // The ribbon appends, so starting the same job twice would stack two

@@ -3,12 +3,26 @@
 
    The proposal is not applied for you. It fills the form's fields and
    you decide — Shazam is confident about remixes it has never heard. #}
-<div id="shazam" class="job"
+{# `showing` is what tells the inspector's slot to hide its fields: the
+   block takes their place rather than pushing them down. The workbench
+   uses this same fragment and has no such slot, so the class costs it
+   nothing. #}
+<div id="shazam" class="job showing"
      {% if polling %}hx-get="/fragments/shazam/{{ youtube_id }}"
      hx-trigger="every 1s"
+     {# `this`, said out loud. The block lives inside the form now, and
+        htmx inherits `hx-target` from ancestors — so without this it
+        took the form's `#inspector` and each poll replaced the whole
+        panel with this fragment. It swapped itself correctly for as long
+        as it had no ancestor with an opinion. #}
+     hx-target="this"
      hx-swap="outerHTML"{% endif %}>
   {% if state in ("pending", "running") %}
-    <span class="job-running">Listening…{{ tick }}</span>
+    {# The seconds, not an ellipsis. Shazam is throttled to one request
+       every fifteen seconds and a refused one waits thirty-five more, so
+       a wait here can be long enough that a reader wants to know whether
+       it is progressing or stuck. #}
+    <span class="job-running">Listening {{ elapsed }}s</span>
   {% elif state == "completed" %}
     {% if result and result.matched %}
       {# The score is a judgement, not a number: 92% and 54% call for
@@ -22,18 +36,28 @@
           {%- elif score >= 60 %} score-mid
           {%- else %} score-low{% endif %}">{{ score }}% match</span>
         <div class="proposal-value">{{ result.artist }} - {{ result.title }}</div>
-        <button type="button"
-                data-shazam-artist="{{ result.artist }}"
-                data-shazam-title="{{ result.title }}"
-                data-shazam-cover="{{ result.cover_art_url }}"
-        >Use this</button>
+        {# Two ways out, and both give the fields back. Taking the
+           answer fills them and lets Save through; dismissing leaves
+           them as they were. Without the second, the only way to refuse
+           was to reload the panel. #}
+        <span class="proposal-actions">
+          <button type="button"
+                  data-shazam-artist="{{ result.artist }}"
+                  data-shazam-title="{{ result.title }}"
+                  data-shazam-cover="{{ result.cover_art_url }}"
+          >Use this</button>
+          <button type="button" data-shazam-dismiss>Dismiss</button>
+        </span>
       </div>
     {% else %}
       <span class="job-none">Shazam does not recognise it.</span>
+      <button type="button" data-shazam-dismiss>Dismiss</button>
     {% endif %}
   {% elif state == "failed" %}
     <span class="job-error">Shazam failed: {{ error }}</span>
+    <button type="button" data-shazam-dismiss>Dismiss</button>
   {% elif state == "cancelled" %}
     <span class="job-error">Cancelled</span>
+    <button type="button" data-shazam-dismiss>Dismiss</button>
   {% endif %}
 </div>

@@ -1045,6 +1045,18 @@ tbody tr.playing td.num { color: var(--accent); }
 
 /* Shazam's answer sits above the form: it is what you came for, the
    form is only where you agree with it. */
+/* The Shazam block and the three fields share one grid cell, so asking
+   Shazam replaces them instead of pushing them down the panel. Both stay
+   in the cell whichever is showing — the hidden one is `visibility`, not
+   `display` — so the slot is always as tall as the taller of the two and
+   the panel does not move. The fields are the taller, which is why the
+   block is the one that has to fill the height rather than the reverse. */
+.inspector-slot { display: grid; }
+.inspector-slot > * { grid-area: 1 / 1; }
+#shazam.showing + .inspector-fields { visibility: hidden; }
+/* Hidden inputs still submit, which is what makes taking Shazam's answer
+   work while the block is still up: the values go in behind it. */
+
 .proposal {
   border: 1px solid var(--line);
   border-left: 2px solid var(--accent);
@@ -1060,6 +1072,21 @@ tbody tr.playing td.num { color: var(--accent); }
 .score-low { color: var(--score-low); }
 .proposal-value { font-weight: 600; margin: 0.2rem 0 0.5rem;
                   font-size: var(--fs-base); }
+.proposal-actions { display: flex; gap: var(--space-2); }
+/* The block fills the height the fields left, rather than sitting at the
+   top of an empty cell. */
+#shazam.showing { display: flex; flex-direction: column; }
+#shazam.showing .proposal { flex: 1; display: flex; flex-direction: column;
+                            justify-content: center; }
+
+/* Nothing to save yet. Kept legible rather than greyed to the floor: it
+   is not broken, it is waiting, and a control the eye cannot find is
+   worse than one it can see is inactive. */
+#inspector button[type="submit"]:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+#inspector button[type="submit"]:disabled:hover { background: var(--accent); }
 
 /* ------------------------------------------------------------------
    Jobs
