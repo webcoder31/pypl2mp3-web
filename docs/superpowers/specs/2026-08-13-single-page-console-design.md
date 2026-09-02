@@ -193,20 +193,38 @@ mesuré est chiffré, ce qui est un choix est motivé.
 
 ## Reste à faire
 
-### 1. Revoir l'UI de l'inspecteur
+### 1. Finir l'UI de l'inspecteur
 
-**La prochaine étape.** Décidée sans être encore spécifiée : le panneau
-porte aujourd'hui trois champs, une ligne à trois faces, quatre boutons
-et une ligne de provenance, et la question de ce qu'il devrait montrer
-n'a jamais été reprise depuis la passe « look ». Elle s'est posée deux
-fois en chemin — quand les quatre champs de sortie ont voulu y entrer, et
-quand la provenance a voulu s'y dire — et les deux fois la réponse a été
-une ligne plutôt qu'un champ, faute d'avoir tranché le fond.
+**En cours.** Deux morceaux sont livrés — la ligne à quatre faces
+(`5261d85`) et le bloc Shazam qui prend la place des champs (`8f5c412`) —
+et le reste tient à une proposition faite mais pas encore tranchée.
 
-Ce que le document sait et que l'inspecteur ne montre pas encore, pour
-mémoire : les identifiants et la fiche Shazam (797 morceaux), la palette
-de la pochette (768), le code d'enregistrement (768), l'empreinte de
-l'image embarquée.
+Le panneau **n'a aucune place libre** : pochette 280 px, colonne de
+détail 283 avant restructuration. Une ligne de champ coûte 37 px, donc
+faire entrer les quatre champs de sortie coûte 74 px pris à la liste.
+
+La proposition s'appuie sur les trois registres que le document porte
+déjà, et c'est là qu'est l'idée : `fields` est ce que le fichier affirme,
+donc **éditable** ; `sources` est ce qu'un tiers a répondu, donc **preuve
+en lecture** ; `embedded` est ce que le fichier porte, donc **fait en
+lecture**. Trois natures, trois traitements — plutôt que tout faire
+entrer dans un formulaire.
+
+D'où : le formulaire garde ses trois champs, ceux qu'on corrige en
+jugeant ; les quatre champs de sortie deviennent éditables **dans
+l'établi**, plein cadre et large de 488 px ; et un **tiroir de preuve**
+replié sous le formulaire, dont la ligne de repli est un résumé compact
+— `Shazam 100% · ISRC · fiche · palette` — où un manque se voit comme un
+trou. Ouvert, il montre tout en lecture ; replié, il ne coûte rien.
+
+Ce dernier point n'est pas cosmétique : **770 documents ont été amputés
+pendant deux jours sans que rien ne le montre**, parce que rien à
+l'écran n'affiche `sources.shazam`.
+
+Ce que le document sait et que l'inspecteur ne montre toujours pas : les
+identifiants et la fiche Shazam (797 morceaux), la palette de la pochette
+(768), l'empreinte de l'image embarquée. Le code d'enregistrement, lui,
+est désormais une face du tableau.
 
 ### 2. Le mode interactif de `import -p`
 
@@ -802,6 +820,9 @@ octet** — le padding ID3 a absorbé, comme pour les crêtes du waveform.
 
 ### La ligne à deux faces — `503fb06` à `d5dc369`
 
+*Elle en porte quatre depuis `5261d85` ; ce qui suit décrit le mécanisme,
+qui n'a pas bougé.*
+
 Deux lignes sous le titre, c'était une de trop. Il n'en reste qu'une : la
 playlist toujours, la sortie Shazam quand il y en a une, dix secondes
 chacune. La durée du morceau est partie avec la seconde ligne — la rangée
@@ -848,6 +869,89 @@ seconde face. Le refroidissement relevé fente par fente :
 `fadeMillis` est devenu `transitionMillis` au passage : il sert au fondu
 de la pochette *et* au point de bascule des fentes, et « fade » était
 devenu faux.
+
+### La ligne passe à quatre faces — `5261d85`, `58aa7f8`
+
+Sortie, code d'enregistrement, playlist, origine — dans cet ordre, et
+chacune dit désormais ce qu'elle est :
+
+    Album: Lust for Life · 2017 · Alternative · Polydor Records
+    Recording (ISRC): GB · 2017 · UM7 · 01858
+    Playlist: Thierry Thiers - What I listen now
+    From: Raul Paşcalău · Lana Del Rey - When The World Was at War…
+
+**Les libellés cessent d'être une exception pour devenir la règle.** Le
+`from` avait été ajouté seul, parce que deux lignes jointes par des
+points médians se confondaient. À quatre, aucune ne se distingue plus par
+sa forme : une ligne à points médians peut être une sortie, une origine,
+ou un code éclaté. Tout ce qui a besoin d'être nommé finit par l'être.
+
+**Le code est ouvert plutôt qu'imprimé.** `FRZ031900123` est quatre
+choses collées et personne ne le lit comme quatre : pays du déclarant,
+année de référence, déclarant, numérotation. L'année est montrée telle
+que le déclarant l'a écrite, ce qui est le point — 38 codes de cette
+bibliothèque précèdent la norme, et un code de 1973 sur une sortie 2025
+dit que la réédition a gardé la prise. Une chaîne qui n'est pas un code
+est affichée entière plutôt que découpée en quatre parties qu'elle n'a
+pas.
+
+Le libellé a bougé deux fois. `ISRC:` seul ne disait pas de quoi il
+parle ; `Release (ISRC)` disait faux, puisque le code désigne un
+enregistrement et pas une sortie — c'est toute la raison pour laquelle il
+a tranché Chill Rob G contre Snap!. `Recording` est le mot de la norme
+elle-même : *International Standard **Recording** Code*. `Record` aurait
+été pire, se lisant d'abord comme l'objet.
+
+**La playlist n'est plus la face de repos.** Elle est la seule toujours
+présente mais elle est troisième, donc au repos le tableau montre
+l'album ; un morceau sans album s'ouvre sur son code, un morceau sans ni
+l'un ni l'autre sur sa playlist. Conséquence directe de l'ordre demandé.
+
+L'ordre vit à **deux endroits qui doivent s'accorder** — les attributs du
+gabarit et le tableau dans `boardFaces` — et les deux sont tenus. Une
+première contre-épreuve ne tenait que le gabarit : permuter le tableau du
+script réordonnait l'écran sans qu'aucun test ne tombe.
+
+### Le bloc Shazam prend la place des champs — `8f5c412`
+
+Interroger Shazam insérait la réponse **au-dessus** du formulaire, ce qui
+poussait les trois champs vers le bas au moment précis où on allait les
+lire, puis les remontait quand elle partait. Le bloc et les champs
+partagent maintenant une cellule de grille : le caché l'est en
+`visibility` et non en `display`, donc il reste dans la cellule et la
+hauteur est celle du plus grand des deux. Mesuré au navigateur, **280 px
+de panneau avant, pendant et après**.
+
+**L'attente se compte.** « Listening 3s » plutôt que des points de
+suspension : Shazam est limité à une requête toutes les quinze secondes
+et un refus en attend trente-cinq de plus, de sorte qu'un compteur est la
+différence entre attendre et s'inquiéter.
+
+**La réponse a deux sorties.** La prendre remplit les champs, referme le
+bloc et débloque Save ; la refuser rend les champs intacts. Sur **tous**
+les états terminaux, pas seulement celui qui propose quelque chose :
+« Shazam does not recognise it » était un cul-de-sac dont on ne sortait
+qu'en rechargeant le panneau.
+
+**Et Save part désactivé.** Un Save toujours disponible invite le clic
+qui réécrit un fichier avec exactement ce qu'il portait déjà — un
+renommage, un horodatage, et l'adresse en cache de la pochette, pour
+rien. Deux portes l'ouvrent, la frappe et la reprise de la réponse, et
+c'est pour ça que l'effet est écrit dans une fonction plutôt que répété :
+un second appelant s'apprêtait à l'oublier.
+
+Rien de tout cela n'a touché l'établi. Son bloc se déclenche au
+chargement, donc y cacher les champs les cacherait pour de bon ; et son
+« Save & next » désactivé casserait le flux, où accepter un morceau tel
+quel et avancer est une action légitime.
+
+**Un défaut créé en chemin, que seul un navigateur pouvait montrer.**
+Déplacer le bloc dans le formulaire l'a fait **hériter du
+`hx-target="#inspector"`** de celui-ci : chaque sondage remplaçait la
+section entière par le fragment. Le premier échange avait l'air juste, le
+second mangeait la page. Le fragment était correct tant qu'il n'avait
+aucun ancêtre ayant un avis sur la cible ; il dit `hx-target="this"`
+maintenant.
 
 ### Le rattrapage des 804 — `a9164eb`, `13bed8c`
 
@@ -1365,6 +1469,9 @@ distinction. Une face vide ne prend pas son tour, donc un morceau sans
 origine récupérée garde deux faces, et un morceau qui n'en a qu'une ne
 tourne pas du tout.
 
+*L'exception est devenue la règle depuis : à quatre faces (`5261d85`)
+aucune ne se distingue plus par sa forme, et toutes sont étiquetées.*
+
 **Les onze vidéos disparues, marquées.** Le lien passait 404 en silence ;
 il est maintenant ambre — le même que les junks, parce qu'il dit la même
 chose — avec un signe et une infobulle. **Il reste un lien** : trois des
@@ -1681,7 +1788,7 @@ fois pendant une contre-épreuve, pour restaurer un fichier modifié
 exprès. Les contre-épreuves passent maintenant par une copie hors de
 git.
 
-Les contre-épreuves, elles, ont payé : elles ont attrapé douze tests
+Les contre-épreuves, elles, ont payé : elles ont attrapé quatorze tests
 creux, dont un `outline:\s*[^;n]` qui reconnaissait `outline: none` à
 travers l'espace et comptait donc chaque suppression comme un anneau, un
 `".t" in selector` qui attrapait aussi `.track`, et une regex cherchant la
@@ -1706,6 +1813,15 @@ rattrapait la sonde par l'autre clause. Il passait donc avec la garde
 supprimée. Il a fallu le poser dans l'état d'après le nettoyage — aucune
 trame du tout — pour que la garde visée soit la seule à pouvoir
 répondre. Un fixture peut sauver la garde qu'on essaie de tester.
+
+Les treizième et quatorzième sont de la même veine, et tous deux sur le
+bloc Shazam : l'un cherchait le bouton *Dismiss* n'importe où dans le
+gabarit, alors que chaque branche en porte un — le retirer de celle qui
+propose ne cassait donc rien ; l'autre ne vérifiait nulle part que le
+fragment porte la classe que la feuille attend pour cacher les champs.
+Et en affûtant le premier j'ai écrit une regex fausse, `(.*?)</div>`, qui
+s'arrêtait au premier `</div>` interne, avant les boutons : la suite l'a
+signalée aussitôt, ce qui est exactement le service qu'on lui demande.
 
 Le dixième cherchait la phrase « set by hand » dans la page pour vérifier
 qu'elle ne s'affiche que là où il y a lieu. Rendre le paragraphe sans
