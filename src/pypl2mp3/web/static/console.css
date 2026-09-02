@@ -951,10 +951,21 @@ tbody tr.playing td.num { color: var(--accent); }
    it. A class cannot outrank that, so the rule was there and did
    nothing — the computed value stayed at the 0.5rem the id had set. */
 .inspector-tools { display: flex; align-items: center; gap: 0.75rem; }
-#inspector .inspector-tools { margin: 0.85rem 0 1rem; }
+
+/* These three margins are a budget, not three independent choices: the
+   detail column has to land exactly on the cover's 280px, so air added
+   to one has to come off another. Measured at 280 against 280, with the
+   Shazam block up as well — it shares the fields' cell, so it costs the
+   column nothing.
+   
+   The one state that overruns is the provenance line, which adds 25px
+   when a field was set by hand. It appears on no song in this library
+   yet and will appear on few; the panel grows for it rather than the
+   line being denied its own row. */
+#inspector .inspector-tools { margin: 0.85rem 0 0.6rem; }
 .inspector-actions { display: flex; align-items: baseline; gap: 0.7rem;
                      min-width: 0; }
-#inspector .inspector-actions { margin-top: 1.4rem; }
+#inspector .inspector-actions { margin-top: 0.8rem; }
 /* Takes what is left and truncates: a filename can run to a hundred
    characters and must not push the button it belongs to off the row. */
 .inspector-actions .filename { flex: 1; min-width: 0; overflow: hidden;
