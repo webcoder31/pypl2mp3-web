@@ -706,7 +706,7 @@ async def test_the_answer_shows_what_it_says_about_the_release(
     assert "#shazam.showing .proposal { margin: 0; }" in css, (
         "the block's old margin is back, and the gap goes with it"
     )
-    assert (
-        "#shazam.showing .proposal .proposal-actions { margin-top: auto; }"
-        in css
-    ), "the buttons no longer sit at the foot of the block"
+    assert re.search(
+        r"#shazam\.showing \.proposal \.proposal-actions \{ margin-top: [\d.]+rem; \}",
+        css,
+    ), "the row of actions has no gap of its own before it"

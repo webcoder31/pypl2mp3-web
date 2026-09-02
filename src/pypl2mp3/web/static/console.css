@@ -1198,7 +1198,8 @@ tbody tr.playing td.num { color: var(--accent); }
 /* The block fills the height the fields left, rather than sitting at the
    top of an empty cell. */
 #shazam.showing { display: flex; flex-direction: column; }
-#shazam.showing .proposal { flex: 1; display: flex; flex-direction: column; }
+#shazam.showing .proposal { flex: 1; display: flex; flex-direction: column;
+                            justify-content: center; }
 /* The block fills the cell and its slack goes between the text and the
    buttons, which is the one place it is worth anything.
 
@@ -1210,7 +1211,7 @@ tbody tr.playing td.num { color: var(--accent); }
    Removed, the block is the cell, and `margin-top: auto` hands the whole
    difference to the row of actions. */
 #shazam.showing .proposal { margin: 0; }
-#shazam.showing .proposal .proposal-actions { margin-top: auto; }
+#shazam.showing .proposal .proposal-actions { margin-top: 0.6rem; }
 
 /* Nothing to save yet. Kept legible rather than greyed to the floor: it
    is not broken, it is waiting, and a control the eye cannot find is
