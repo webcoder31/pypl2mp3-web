@@ -16,49 +16,31 @@
   </div>
 
   <div class="workbench-detail">
-    <p class="id">
-      {# One line, two faces. The playlist is always one of them; the release
-         Shazam answered with is the other, when there is one. Two lines
-         was one too many, and the duration went with them — the listing
-         row and the player both carry it already.
-
-         The faces travel as attributes and the slots are built by the
-         page: a split-flap board needs as many slots as the longer face
-         and they must not move when the content changes, which is a
-         measurement the server cannot make. #}
-      {# Whatever shares this line comes before the board, never after:
-         the shorter face is padded out to the width of the longer one so
-         the slots hold still, and those trailing spaces are real. A
-         middot after them floated half the panel away. #}
-      <span id="workbench-position"></span>
-      {# Four faces, in the order they turn: the release, the recording
-         code opened out, the playlist, then where the file came from.
-         Each is labelled, because at four they can no longer be told
-         apart by their shape — a middot-joined line could be any of
-         them. The attribute order is the turning order; the page reads
-         them in the order written here.
-
-         The playlist is the only one always present. Whichever face
-         comes first is what shows at rest, so a song with no release
-         opens on its code, and one with neither opens on its playlist. #}
-      <span class="board"
-            {%- if song.release %} data-release="{{ song.release }}"{% endif
-            %}{% if song.recording %} data-recording="{{ song.recording }}"{% endif
-            %} data-playlist="{{ song.playlist_face }}"
-            {%- if song.origin %} data-origin="{{ song.origin }}"{% endif
-            %}>{{ song.release or song.recording or song.playlist_face }}</span>
-    </p>
-    <h2 class="inspector-title">
+    {# Where you are in the run. Written by the page, which is the only
+       side that knows: the queue lives in the browser. #}
+    <p class="id" id="workbench-position"></p>
+    {# One line, cut with an ellipsis. A remix title that runs to two
+       pushes forty pixels through the rest of the column and past the
+       bottom of the picture, and the whole of it is in the Title field
+       two rows down. The attribute is the rest of it. #}
+    <h2 class="inspector-title" title="{{ song.label }}">
       {% if song.is_junk %}<span class="junk">⚠</span> {% endif %}
       {{ song.label }}
     </h2>
+    {# All four at once, and not a board that turns.
 
-    {# Fires immediately. If a prefetch already ran, the job is finished
-       and this first poll returns the answer at once. #}
-    <div id="shazam" class="job"
-         hx-post="/songs/{{ song.youtube_id }}/shazam"
-         hx-trigger="load"
-         hx-swap="outerHTML"></div>
+       A listing row has one line to spare and a panel not many more,
+       which is what the split-flap is for. Here there is a column, and
+       a face you have to wait four seconds for is a face you judge the
+       song without — which is the opposite of what this mode is. The
+       labels are a column of their own so the values share a left edge;
+       run together they read as four sentences rather than a table. #}
+    <dl class="workbench-facts">
+      {% for label, value, known in song.facts %}
+        <dt{% if not known %} class="unknown"{% endif %}>{{ label }}</dt>
+        <dd{% if not known %} class="unknown"{% endif %}>{{ value }}</dd>
+      {% endfor %}
+    </dl>
 
     {# Nothing is swapped in: advancing to the next song is the
        confirmation, and painting the ordinary inspector first would
@@ -66,26 +48,71 @@
     <form hx-post="/songs/{{ song.youtube_id }}/fix"
           hx-target="#prefetch"
           hx-swap="none">
-      {# Labels beside the fields, not above them: three stacked pairs
-         cost twice the height for a form that already competes with the
-         listing underneath it. #}
-      <label>Artist
-        <input type="text" name="artist" value="{{ song.artist }}"></label>
-      <label>Title
-        <input type="text" name="title" value="{{ song.title }}"></label>
-      <label>Cover
-        <input type="url" name="cover_art_url"
-               placeholder="https://… — leave empty to keep the current one">
-      </label>
+      {# One cell for the answer and the fields, as in the panel. Stacked
+         rather than one above the other: Shazam is asked on sight here,
+         so a block that pushed the form down would move it on every
+         song, and the column would be one height while listening and
+         another once the answer landed — the cover beside it changing
+         from too tall to too short. The slot is the height of the
+         fields, whichever is showing.
+
+         Reading them side by side is not what this mode is for. The
+         answer is the proposal and the fields are what you fall back on
+         when you disagree, which is what Dismiss is for. #}
+      <div class="inspector-slot">
+        {# Fires immediately. If a prefetch already ran, the job is
+           finished and this first poll returns the answer at once.
+
+           `hx-target` on itself, explicitly: inside the form it would
+           otherwise inherit the form's, and the answer would be swapped
+           into #prefetch.
+
+           The delay is a dwell, not a pause: a card stepped past inside
+           a third of a second is a card nobody read, and htmx drops a
+           delayed trigger when the element goes. Without it, skipping
+           through ten songs started ten identifications, each taking the
+           fifteen-second throttle in turn ahead of the one you stopped
+           on. #}
+        <div id="shazam" class="job"
+             hx-post="/songs/{{ song.youtube_id }}/shazam"
+             hx-trigger="load delay:600ms"
+             hx-target="this"
+             hx-swap="outerHTML"></div>
+
+        {# Labels beside the fields, not above them: three stacked pairs
+           cost twice the height for a form that already competes with the
+           listing underneath it. #}
+        <div class="inspector-fields">
+          <label>Artist
+            <input type="text" name="artist" value="{{ song.artist }}"></label>
+          <label>Title
+            <input type="text" name="title" value="{{ song.title }}"></label>
+          <label>Cover
+            <input type="url" name="cover_art_url"
+                   placeholder="https://… — leave empty to keep the current one">
+          </label>
+        </div>
+      </div>
       <p class="workbench-actions">
         <button type="submit">Save &amp; next</button>
         <button type="button" data-player-action="next">Skip</button>
         <button type="button" data-workbench="exit">Done</button>
+        {# The same link the panel carries, and marked the same way. The
+           keyboard could already open it — tab, which the legend says —
+           but nothing on the card said the address existed, and a run
+           where you cannot see what the file was made from is a run
+           judged on the picture alone.
+
+           Kept rather than removed when the video is gone: one pulled
+           for a regional block or set to private can come back, and the
+           address is still the only way to find out. Marked, so the
+           click is a choice. #}
+        <a href="https://youtu.be/{{ song.youtube_id }}" target="_blank"
+           rel="noopener noreferrer"
+           {%- if song.video_gone %} class="gone"
+           title="This video was gone the last time it was asked for"
+           {%- endif %}>video{% if song.video_gone %} ⚠{% endif %}</a>
       </p>
     </form>
-
-    <p class="id">
-      enter save · → skip · ← back · space pause · tab video · esc leave
-    </p>
   </div>
 </div>

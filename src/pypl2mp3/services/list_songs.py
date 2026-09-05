@@ -228,6 +228,50 @@ class SongSummary:
         return f"From: {line}" if line else ""
 
     @property
+    def facts(self) -> list[tuple[str, str, bool]]:
+        """The four faces as label, value, and whether it is known.
+
+        The board turns because a listing row and a panel have one line
+        to spare. The workbench has a column, and there a face you have
+        to wait four seconds for is a face you judge the song without.
+        Same four, same order, same strings — split at the colon each one
+        already carries rather than formatted a second way, so the board
+        and the table can never come to disagree.
+
+        The board drops a face with nothing to say, because a slot that
+        turns to a blank is a slot wasted. The table does the opposite
+        for the two that matter: a song with no release and no code is
+        the song this mode exists for, and saying so is the point —
+        marked, and in the colour the rest of the page uses for a file
+        that still wants work. The origin keeps the board's rule: it is
+        where the file came from, not something to go and find.
+
+        The label is shortened here, too. The board says "Recording
+        (ISRC)" because a face there shares its line with three others
+        and has to name itself twice over — once for what it is, once for
+        what it is called. In the table the label has a column of its own
+        and the four are read down rather than one at a time, so the
+        code's own name is enough.
+        """
+
+        def split(face: str) -> str:
+            return face.partition(": ")[2]
+
+        album, code = split(self.release), split(self.recording)
+        playlist, origin = split(self.playlist_face), split(self.origin)
+
+        facts = [
+            ("Album", album or "unknown", bool(album)),
+            ("ISRC", code or "unknown", bool(code)),
+            ("Playlist", playlist, True),
+        ]
+
+        if origin:
+            facts.append(("From", origin, True))
+
+        return facts
+
+    @property
     def label(self) -> str:
         """Artist and title as one line, for a single-column display."""
 

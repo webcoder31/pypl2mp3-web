@@ -93,14 +93,30 @@
         </span>
       </div>
     {% else %}
-      <span class="job-none">Shazam does not recognise it.</span>
-      <button type="button" data-shazam-dismiss>Dismiss</button>
+      {# An answer that is not one still wears the box. Loose in the slot
+         these three had none: the message sat at the top of an empty
+         cell and the button, the only child of a column, stretched to
+         its whole width. #}
+      <div class="proposal blank">
+        <span class="job-none">Shazam does not recognise it.</span>
+        <span class="proposal-actions">
+          <button type="button" data-shazam-dismiss>Dismiss</button>
+        </span>
+      </div>
     {% endif %}
   {% elif state == "failed" %}
-    <span class="job-error">Shazam failed: {{ error }}</span>
-    <button type="button" data-shazam-dismiss>Dismiss</button>
+    <div class="proposal blank">
+      <span class="job-error">Shazam failed: {{ error }}</span>
+      <span class="proposal-actions">
+        <button type="button" data-shazam-dismiss>Dismiss</button>
+      </span>
+    </div>
   {% elif state == "cancelled" %}
-    <span class="job-error">Cancelled</span>
-    <button type="button" data-shazam-dismiss>Dismiss</button>
+    <div class="proposal blank">
+      <span class="job-error">Cancelled</span>
+      <span class="proposal-actions">
+        <button type="button" data-shazam-dismiss>Dismiss</button>
+      </span>
+    </div>
   {% endif %}
 </div>

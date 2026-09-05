@@ -1010,10 +1010,6 @@ tbody tr.playing td.num { color: var(--accent); }
    falls forward from its own top like a hinged flap, rather than
    spinning about its middle. */
 .board { white-space: pre; }
-/* The separator belongs to the count, not to the line: the count is
-   filled by the page and is empty until something plays, which left a
-   middot leading the line with nothing in front of it. */
-#workbench-position:not(:empty)::after { content: " · "; }
 .slot {
   display: inline-block;
   transform-origin: 50% 0;
@@ -1171,6 +1167,25 @@ tbody tr.playing td.num { color: var(--accent); }
   background: var(--sunken);
   border-left-color: var(--line-strong);
 }
+
+/* The three answers that are not one — not recognised, failed,
+   cancelled — in the same box, on the same ground as the wait. Grey and
+   not the accent tint for the reason written above it: a green pad
+   saying "does not recognise it" has promised something it cannot keep.
+
+   Both ways centred. The column already centres what is in it; this
+   adds the cross axis, which also stops the button — sole child of a
+   column — from stretching to the width of the cell. */
+#shazam.showing .proposal.blank {
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  text-align: center;
+  background: var(--sunken);
+  border-left-color: var(--line-strong);
+}
+/* The gap above already spaces them; the row's own margin would double it. */
+#shazam.showing .proposal.blank .proposal-actions { margin-top: 0; }
 
 /* Six bars breathing out of phase. An equaliser rather than a spinner:
    the thing being waited on is listening to audio, and the shape says so
@@ -1535,21 +1550,250 @@ tbody tr.playing td.num { color: var(--accent); }
    Workbench: the inspector, full frame
    ------------------------------------------------------------------ */
 
-body.workbench-mode { grid-template-columns: minmax(0, 1fr) 0; }
+/* The picture is the fastest way to know which song this is, and this
+   mode has the room the panel never had. Tied to the window's height
+   rather than fixed, because the height is what the card has to fit
+   inside.
+
+   Its own token and not `--cover-size`, deliberately. Moving that one
+   would take the volume track with it — its width is the cover less the
+   transport — and a wash 182px long is a volume control that looks like
+   a second seek bar. */
+body.workbench-mode { grid-template-columns: minmax(0, 1fr) 0;
+                      --workbench-cover: min(34vh, 330px); }
+body.workbench-mode .workbench-cover { flex-basis: var(--workbench-cover); }
 body.workbench-mode #nav,
 body.workbench-mode #list { display: none; }
-body.workbench-mode #main { grid-template-rows: minmax(0, 1fr) auto; }
 body.workbench-mode #toolbar { display: none; }
-body.workbench-mode #inspector { border-bottom: none; overflow-y: auto;
-                                 padding: var(--space-5); }
 
-.workbench { display: flex; gap: 2.25rem; align-items: flex-start;
-             max-width: 56rem; margin: 0 auto; }
-.workbench-detail { flex: 1; min-width: 0; }
+/* The tabs choose between two panes, and neither is on screen here. */
+body.workbench-mode #tabs { display: none; }
+
+/* The card and the transport are one object, centred in the frame.
+   Both rows take the height they need and the pair is placed in the
+   middle, rather than the card pinned to the top with the player at the
+   far edge of the window — 408px of nothing between a song and the
+   means to hear it.
+
+   `safe`, so that a window too short for the card overflows downward
+   from the top instead of centring its middle and putting the title out
+   of reach above the edge. */
+body.workbench-mode #main {
+  grid-template-rows: minmax(0, auto) auto;
+  align-content: safe center;
+  /* The inset lives here rather than on the panel, so the panel, the
+     transport and the shortcuts are three children of one padded box:
+     `max-width: 56rem; margin: 0 auto` then lines all three up at every
+     width, including the ones too narrow for the cap to bite. */
+  padding: 0 var(--space-5);
+}
+/* No padding under the card: the transport is the panel's own footer
+   and the two have to meet, or the hairline between them is a gap with
+   the page showing through it. */
+body.workbench-mode #inspector { border-bottom: none; overflow-y: auto;
+                                 padding: var(--space-5) 0 0; }
+
+/* The player, brought under the card and squared with it: the cap is
+   the card's width plus the padding, so the *content* spans 56rem and
+   the transport starts where the cover starts. Capping the border box
+   instead would inset the row by that padding — and would move the
+   volume track, whose width is measured from the cover's right edge. */
+/* The transport, as the panel's footer: same width, same surface, same
+   padding, and a hairline where the two meet. One object — the song,
+   and the means to hear it — rather than a card with a toolbar adrift
+   under it. */
+body.workbench-mode #player {
+  max-width: 56rem;
+  width: 100%;
+  margin: 0 auto;
+  /* The same multiple, and the same horizontal value as the card, or
+     the transport would no longer start under the cover. */
+  padding: calc(var(--space-4) * 1.5) calc(var(--space-5) * 1.5);
+  background: var(--frame-bg);
+  border: 1px solid var(--line);
+  /* Over the card's bottom edge, so the two share one line rather than
+     drawing two a pixel apart. */
+  margin-top: -1px;
+}
+
+/* A panel, not a group of things on the page background. The mode
+   clears the frame and leaves one song in it, and with nothing drawn
+   around it the card had no edges — a cover, some text and three inputs
+   floating in the middle of an empty screen. A surface a shade off the
+   ground and a hairline give it a shape to sit inside.
+
+   The width is the panel's, padding included, so the transport below —
+   which carries the same padding — starts its row exactly under the
+   cover. */
+.workbench {
+  max-width: 56rem;
+  margin: 0 auto;
+  /* Half again the block padding the rest of the page uses. This mode
+     has one song in a cleared frame and can afford the room; the panel,
+     which shares its column with the listing, cannot. */
+  padding: calc(var(--space-5) * 1.5);
+  background: var(--frame-bg);
+  border: 1px solid var(--line);
+}
+
+/* Centred against the cover, not hung from its top edge: with the
+   picture and the fields beside it rarely the same height, aligning the
+   tops leaves one column short and the card reads as unfinished.
+
+   Under the id, because the card is also `#inspector-body` and that
+   rule sets `display`, `gap` and `align-items` for the panel. A bare
+   `.workbench` saying otherwise loses all three, silently — the gap
+   stayed 24px while the stylesheet said 36 and the waveform was lined
+   up against the number in the file rather than the one on screen. */
+#inspector-body.workbench { gap: 2.25rem; align-items: center; }
+/* As tall as the picture, and no taller. The column's own content runs
+   to between 300 and 345 depending on how many of the four facts the
+   song has, so left to itself one side of the card always ended before
+   the other. The floor makes them meet.
+
+   `min-height` and not `height`: a song carrying all four facts *and* a
+   title that runs to two lines cannot be squeezed into 330, and a card
+   that grows by fifteen pixels is better than three buttons clipped off
+   its bottom edge. */
+.workbench-detail {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: var(--workbench-cover);
+}
+
+/* The slack goes here, above the buttons rather than below them, so the
+   row of buttons keeps its own margin and the column still ends where
+   the picture does. `flex: 1 0 auto` — it grows into the room and never
+   gives up any of its own. */
+#inspector .workbench-detail .inspector-slot { flex: 1 0 auto; }
+/* Set off from the table under it. The four lines are one block and
+   the title is not: run close they read as five lines of the same
+   thing, and the name of the song is the one you look for first. */
 .workbench-detail .inspector-title { font-size: var(--fs-xl);
-                                     letter-spacing: -0.015em; }
-.workbench-detail input { max-width: 28rem; }
-.workbench-actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
+                                     letter-spacing: -0.015em;
+                                     margin: 0 0 0.7rem;
+                                     white-space: nowrap;
+                                     overflow: hidden;
+                                     text-overflow: ellipsis; }
+
+/* No cap on the fields here. The panel needs one — it is as wide as the
+   window — but this column is 56rem less the cover, and a cap inside it
+   only stops the inputs short of an edge everything else reaches. */
+.workbench-detail input { max-width: none; }
+
+/* Room, which the panel does not have and this mode does: the same
+   column of content in a card with 400px of air around it was set to
+   the panel's spacing, where every row is fighting the listing for
+   height. Here nothing is. */
+/* Written under `#inspector` because that is what it has to outrank:
+   `#inspector p { margin: 0.5rem 0 }` carries an id, and a class
+   selector saying otherwise does nothing at all. */
+#inspector #workbench-position { margin: 0 0 0.15rem; color: var(--text-3); }
+
+/* The four faces as a table. The labels are a column of their own, so
+   the values share a left edge and the eye runs down them; set inline
+   they read as four sentences that happen to start with a word in
+   caps.
+
+   Every value truncates. Three of the four are short and the fourth —
+   the channel and the video's own title — is not, and a line that wraps
+   moves the three under it and the cover beside them. */
+.workbench-facts {
+  display: grid;
+  /* Fixed, and wide enough for the longest of the four labels — which
+     is Playlist, the code being called by its own name here rather than
+     by what it is. Sized to the content it would shift with the song: a
+     junk file has no album and no code, so its table is Playlist and
+     From, and the values slid fifty pixels left every time the run
+     reached one. Steady beats snug — the eye runs down a column that
+     holds still. */
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.14rem 0.75rem;
+  margin: 0 0 0.75rem;
+}
+.workbench-facts dt {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  font-weight: 600;
+  color: var(--text-3);
+}
+/* Both halves of the row, so the label carries the mark as much as the
+   word does: the colour is the page's own for a file that still wants
+   work, and it is the label you are scanning down the column for. */
+.workbench-facts .unknown { color: var(--junk); }
+
+.workbench-facts dd {
+  margin: 0;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#inspector .workbench-detail label { margin-top: 0.55rem; }
+/* These two and the one under the table are what pay for the column
+   fitting the picture: a song carrying all four facts ran thirteen
+   pixels past its bottom edge, and thirteen pixels of air spread over
+   three joins is not a rhythm anyone can see going. */
+/* `align-items` because the row is not all buttons: the video link is
+   a bare anchor, and stretched to the row's height its text sits on the
+   top edge while the buttons' sits in the middle. */
+#inspector .workbench-actions { display: flex; align-items: center;
+                                gap: 0.5rem; margin: 1.05rem 0 0; }
+
+/* To the far end of the row. It is not one of the three things you do
+   with this song — save it, skip it, be done — it is where the song
+   came from, so it sits apart from them and against the same right edge
+   the pad above it keeps. */
+#inspector .workbench-actions a { margin-left: auto; }
+#inspector .workbench-keys { margin: 1.15rem 0 0; }
+
+/* The shortcuts, drawn as keys. Uppercase on a bordered box, the
+   bottom edge heavier than the other three so the box reads as a thing
+   with a top rather than as a tag.
+
+   Outside the panel and under it, aligned with its left edge: they are
+   what the mode answers to, not part of the song. */
+#workbench-keys { display: none; }
+body.workbench-mode #workbench-keys {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem 1.15rem;
+  max-width: 56rem;
+  width: 100%;
+  /* Padded like the panel, so the first key starts under the cover
+     rather than under the panel's own edge — and set well below it: the
+     line is a legend for the mode, not the panel's last row, and close
+     under the transport it read as one. The same 36 as the padding. */
+  margin: calc(var(--space-5) * 1.5) auto 0;
+  padding: 0 calc(var(--space-5) * 1.5);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+#workbench-keys span { display: inline-flex; align-items: center;
+                       gap: 0.4rem; }
+#workbench-keys kbd {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1;
+  padding: 0.3em 0.45em;
+  min-width: 1.5em;
+  text-align: center;
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  /* 2px, like everything else here. The page has no pills. */
+  border-radius: 2px;
+  letter-spacing: 0.06em;
+}
 
 @media (max-width: 60rem) {
   .workbench { flex-direction: column; }

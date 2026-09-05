@@ -1,5 +1,7 @@
 """The workbench: judging a run of songs one at a time."""
 
+import asyncio
+import contextlib
 import re
 from pathlib import Path
 
@@ -7,6 +9,7 @@ import httpx
 from mutagen.id3 import ID3, TXXX
 
 from pypl2mp3.web.app import create_app
+from pypl2mp3.web.jobs import JobState
 
 PLAYLIST = "Owner - Alpha [PL0000000000000000000000000000001]"
 HX = {"HX-Request": "true"}
@@ -42,9 +45,15 @@ async def test_the_listing_offers_a_way_into_the_workbench(tmp_path):
     assert 'data-queue-action="workbench"' in body
 
 
-async def test_the_card_asks_shazam_on_sight(tmp_path):
+async def test_the_card_asks_shazam_once_it_has_been_looked_at(tmp_path):
     """The opposite of the inspector, and deliberately so: here,
-    identifying the song is the work."""
+    identifying the song is the work.
+
+    On sight, but after a dwell. The model waits fifteen seconds between
+    calls, so a card stepped past in a third of a second used to leave a
+    job holding that wait in front of the song you actually stopped on —
+    ten skips, a minute and a half. htmx drops a delayed trigger when the
+    element goes, so the run places no calls at all."""
 
     _make_junk(tmp_path, "aaaaaaaaaaa")
 
@@ -52,10 +61,15 @@ async def test_the_card_asks_shazam_on_sight(tmp_path):
         card = (await client.get("/fragments/workbench/aaaaaaaaaaa")).text
         panel = (await client.get("/fragments/inspector/aaaaaaaaaaa")).text
 
-    assert 'hx-trigger="load"' in card, "the card waits to be asked"
+    trigger = re.search(r'hx-trigger="load([^"]*)"', card)
+    assert trigger, "the card waits to be asked"
+    delay = re.match(r" delay:(\d+)ms$", trigger.group(1))
+    assert delay, f"asked on sight, with nothing to cancel: {trigger.group(0)}"
+    # Long enough to outlast a step, short enough not to read as a pause.
+    assert 200 <= int(delay.group(1)) <= 800, delay.group(1)
     assert "/songs/aaaaaaaaaaa/shazam" in card
 
-    assert 'hx-trigger="load"' not in panel, (
+    assert "hx-trigger=\"load" not in panel, (
         "the ordinary inspector must not spend a Shazam call on every "
         "song you click"
     )
@@ -111,7 +125,9 @@ async def test_saving_from_the_card_paints_nothing_and_moves_on(tmp_path):
     assert 'hx-swap="none"' in form, form
     assert 'hx-target="#inspector"' not in form
 
-    assert "move(1)" in script
+    # Asked for, not passive: the save means done with this one, so it
+    # steps the way Skip does — and lets go of the edits the same way.
+    assert "move(1, true)" in script
     assert "event.detail.successful" in script, (
         "a failed save would advance and lose the correction"
     )
@@ -178,21 +194,130 @@ async def test_the_ordinary_inspector_never_prefetches(tmp_path, monkeypatch):
     assert called == []
 
 
-async def test_the_card_states_its_keys(tmp_path):
+async def test_the_mode_states_its_keys(tmp_path):
+    """In the frame, not in the card. Nothing in the line changes with
+    the song, and rendering it inside the swapped region redrew it on
+    every one — and put it between the form and the timeline, which cut
+    the card in two."""
+
     _make_junk(tmp_path, "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
+        page = (await client.get("/")).text
         card = (await client.get("/fragments/workbench/aaaaaaaaaaa")).text
         script = (await client.get("/static/console.js")).text
 
+    keys = re.search(r'<p id="workbench-keys">(.*?)</p>', page, re.S)
+    assert keys, "the mode says nothing about its keys"
     for key in ("enter", "esc", "space", "tab"):
-        assert key in card.lower(), key
+        assert key in keys.group(1).lower(), key
+
+    assert "workbench-keys" not in card, "the card carries them again"
 
     # Enter is handled apart from the other keys: the shared handler
     # ignores anything typed in a field, and the fast path here is
     # correct-then-enter without reaching for the mouse.
     assert 'event.key !== "Enter" || !inWorkbench()' in script
     assert "form.requestSubmit()" in script
+
+
+async def test_a_card_you_left_gives_up_its_place_in_the_queue(tmp_path):
+    """The model waits fifteen seconds between calls to Shazam, and a job
+    for a card that is gone spends that wait in front of the song you
+    actually stopped on. Six skips used to cost a minute and a half.
+
+    Cancelling reaches the job inside `asyncio.sleep`, so the place is
+    free at once rather than when the abandoned call finishes.
+    """
+
+    _make_junk(tmp_path, "aaaaaaaaaaa")
+    app = create_app(tmp_path)
+
+    started = asyncio.Event()
+
+    async def waits_forever(job):
+        started.set()
+        await asyncio.sleep(3600)
+
+    async with _client(app) as client:
+        # Nothing to cancel is not an error: the caller is saying "not
+        # wanted", and a job that never started is not wanted either.
+        answer = await client.post("/songs/bbbbbbbbbbb/shazam/cancel")
+        assert answer.status_code == 200, answer.text
+        assert answer.json() == {"cancelled": False}
+
+        job = app.state.jobs.start("shazam:aaaaaaaaaaa", waits_forever)
+        await asyncio.wait_for(started.wait(), 1)
+
+        answer = await client.post("/songs/aaaaaaaaaaa/shazam/cancel")
+        assert answer.json() == {"cancelled": True}, answer.text
+
+        with contextlib.suppress(asyncio.CancelledError):
+            await job.task
+
+        assert job.state is JobState.CANCELLED, job.state
+
+
+async def test_stepping_on_cancels_the_card_it_leaves(tmp_path):
+    """The page is the only side that knows a card has been left: the
+    server sees a job it was asked for and nothing since."""
+
+    async with _client(create_app(tmp_path)) as client:
+        script = (await client.get("/static/console.js")).text
+
+    body = re.search(r"function play\(i\) \{(.*?)\n  \}", script, re.S)
+    assert body, "play() moved"
+    assert "const leaving" in body.group(1), (
+        "play() cannot say which card it is leaving"
+    )
+    assert "/shazam/cancel" in body.group(1), body.group(1)
+    # Not while merely listening: outside the workbench nothing asked.
+    assert "inWorkbench() && leaving" in body.group(1), body.group(1)
+
+    # And the bet on the next song is held back the same way, or walking
+    # a run would place one per step.
+    assert re.search(r"prefetchClock = window\.setTimeout\(placeBets, \d+\)",
+                     script), "the prefetch fires on every step"
+
+
+async def test_an_asked_for_step_leaves_the_edits_behind(tmp_path):
+    """Skip is the answer to "are you done with this one", so it moves
+    whatever is in the fields.
+
+    The panel holds unsaved edits and stops following the player, which
+    is right when a track simply ended — that must not wipe what you were
+    typing. In the workbench it was neither right nor visible: taking
+    Shazam's answer marks the form dirty, so one click on Use this and
+    then Skip left the audio walking on with the card stuck behind it,
+    and the card has no room for the line that says the panel is holding.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        script = (await client.get("/static/console.js")).text
+
+    body = re.search(r"function move\(step, asked\) \{(.*?)\n  \}",
+                     script, re.S)
+    assert body, "move cannot tell an asked-for step from a track ending"
+    assert "asked && inWorkbench()" in body.group(1), body.group(1)
+    assert "forgetEdits()" in body.group(1), body.group(1)
+
+    # Every caller that is the user asking says so; the one that is a
+    # track ending does not.
+    assert "move(1)" not in script and "move(-1)" not in script, (
+        "a step the user asked for still goes through as a passive one"
+    )
+    assert script.count("move(1, true)") == 3, (
+        "Skip, the right arrow, and the save that means done with this one"
+    )
+    assert script.count("move(-1, true)") == 2, "previous and the left arrow"
+    assert "move(direction)" in script, "a track ending must still hold"
+
+    # And letting go is one function, so the flag and the sign it puts on
+    # the panel cannot come apart. Twice: the declaration and the one
+    # place that clears it.
+    assert script.count("dirty = false") == 2, (
+        "a second place lets go of the flag without clearing the sign"
+    )
 
 
 async def test_the_panel_wanted_counts_as_much_as_the_song(tmp_path):

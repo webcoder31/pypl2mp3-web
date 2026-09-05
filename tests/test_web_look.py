@@ -1522,7 +1522,13 @@ async def test_the_meta_line_holds_its_faces_and_only_one_line(tmp_path):
 
     # Rendered from the console, so read the fragment the panel is built
     # from rather than the shell.
-    for name in ("_inspector.html", "_workbench.html"):
+    #
+    # The panel only. The workbench had a board too and no longer does:
+    # a column has room for all four faces at once, and there a face you
+    # wait four seconds for is a face you judge the song without. Its
+    # table is held to the same four, in the same order, by
+    # `test_the_workbench_shows_the_same_four_at_once`.
+    for name in ("_inspector.html",):
         markup = (
             Path("src/pypl2mp3/web/templates") / name
         ).read_text()

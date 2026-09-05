@@ -794,6 +794,24 @@ def create_app(repository_path: Path) -> FastAPI:
 
         return {"job_id": job.job_id}
 
+    @app.post("/songs/{youtube_id}/shazam/cancel")
+    async def cancel_shazam(youtube_id: str):
+        """Drop an identification nobody is going to read.
+
+        The model waits fifteen seconds between calls, and that wait is
+        the whole cost of skipping: six cards stepped past leave six jobs
+        taking the throttle in turn, and the song you actually stopped on
+        queues behind every one of them — a minute and a half before it
+        is even asked. The card is gone; so is the reason for the job.
+
+        Cancelling reaches it inside `asyncio.sleep`, so the place it was
+        holding is free at once. Silent about an id it does not know: the
+        caller is saying "not wanted", and a job that never started or
+        has already finished is not wanted either.
+        """
+
+        return {"cancelled": app.state.jobs.cancel(f"shazam:{youtube_id}")}
+
     @app.post("/songs/{youtube_id}/fix")
     async def submit_fix(youtube_id: str, request: Request):
         """Write the metadata the user settled on."""

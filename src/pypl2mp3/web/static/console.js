@@ -147,6 +147,15 @@
   const seek = document.getElementById("seek");
   const waveform = document.getElementById("waveform");
   const position = document.getElementById("player-position");
+
+  // Where you are in the run, repeated inside the workbench card. The
+  // toolbar's own readout is off screen in that mode.
+  function showPosition() {
+    const inCard = document.getElementById("workbench-position");
+
+    if (inCard) inCard.textContent = bar.classList.contains("idle")
+      ? "" : position.textContent;
+  }
   const transport = document.getElementById("transport");
   const toggle = document.querySelector('[data-player-action="toggle"]');
   const volume = document.getElementById("volume");
@@ -258,8 +267,7 @@
     if (toolbar) toolbar.classList.remove("idle");
     position.textContent = index + 1 + " / " + queue.length;
 
-    const inCard = document.getElementById("workbench-position");
-    if (inCard) inCard.textContent = position.textContent;
+    showPosition();
 
     // What is playing is already the inspector's whole job. What the bar
     // can say that nothing else does is what comes next.
@@ -303,7 +311,26 @@
   // order. Three is about as far as a listener gets ahead of the worker.
   const PREFETCH = 3;
 
+  // Held back for the same reason the card's own request is: a bet that
+  // you will stay long enough to read the answer. Stepping again before
+  // it fires cancels it, so walking through a run places no bets at all.
+  //
+  // Long, and deliberately longer than the card's own dwell. One caller
+  // reaches Shazam at a time and the next may not go for fifteen
+  // seconds, so a bet placed too eagerly is not free — it is fifteen
+  // seconds in front of the song you are actually looking at.
+  let prefetchClock = 0;
+
   function prefetch() {
+    if (prefetchClock) window.clearTimeout(prefetchClock);
+    prefetchClock = 0;
+
+    if (!inWorkbench()) return;
+
+    prefetchClock = window.setTimeout(placeBets, 2500);
+  }
+
+  function placeBets() {
     if (!inWorkbench()) return;
 
     for (let step = 1; step <= PREFETCH; step++) {
@@ -455,8 +482,21 @@
   function play(i) {
     if (!queue.length) return;
 
+    const leaving = queue[index] ? queue[index].id : null;
+
     // Wrap rather than stop, the way the CLI's play loops its selection.
     index = (i + queue.length) % queue.length;
+
+    // The card you just left is not going to be read, and its
+    // identification would take the fifteen-second throttle in front of
+    // the one you stopped on. Told to the server rather than left to
+    // finish: cancelling reaches the job inside its wait.
+    if (inWorkbench() && leaving && leaving !== queue[index].id) {
+      window.htmx.ajax("POST", "/songs/" + leaving + "/shazam/cancel", {
+        target: "#prefetch",
+        swap: "none",
+      });
+    }
     audio.src = "/songs/" + queue[index].id + "/audio";
     loadWaveform(queue[index].id);
     warmWaveform();
@@ -473,8 +513,21 @@
     });
   }
 
-  function move(step) {
+  // `asked` is the user stepping — Skip, the transport, the arrows — as
+  // against a track simply ending.
+  function move(step, asked) {
     if (!queue.length) return;
+
+    // In the workbench an asked-for step is the answer to "are you done
+    // with this one": Skip means do not save it, so whatever is in the
+    // fields goes with it. The hold is for the passive case, where a
+    // track ending mid-sentence must not wipe what you were typing.
+    //
+    // It mattered most here. Taking Shazam's answer marks the form
+    // dirty, so Use this and then Skip left the audio walking on with
+    // the card stuck behind it — and the card has no room for the line
+    // that tells the panel's reader it is holding, so nothing said so.
+    if (asked && inWorkbench()) forgetEdits();
 
     // Stepping sets the direction, so the preview and what a finishing
     // track does next agree with each other.
@@ -745,6 +798,14 @@
     if (event.target && event.target.querySelector
         && event.target.querySelector(".board")) {
       restartBoards();
+    }
+    // The card is swapped in after the refresh that wrote the counter,
+    // so every fresh one arrived empty and the run never said where it
+    // was. Nothing has changed but the card — same queue, same cursor —
+    // so the number is copied rather than worked out again.
+    if (event.target && event.target.querySelector
+        && event.target.querySelector("#workbench-position")) {
+      showPosition();
     }
   });
 
@@ -1305,8 +1366,8 @@
     const playerButton = event.target.closest("[data-player-action]");
     if (playerButton) {
       const action = playerButton.dataset.playerAction;
-      if (action === "next") move(1);
-      else if (action === "previous") move(-1);
+      if (action === "next") move(1, true);
+      else if (action === "previous") move(-1, true);
       else if (action === "toggle") {
         if (!queue.length) {
           const entries = queueFromRows();
@@ -1403,11 +1464,11 @@
     switch (event.key) {
       case "ArrowRight":
         event.preventDefault();
-        move(1);
+        move(1, true);
         break;
       case "ArrowLeft":
         event.preventDefault();
-        move(-1);
+        move(-1, true);
         break;
       case "ArrowUp":
         event.preventDefault();
@@ -1459,6 +1520,14 @@
   // stops following the player, and Save becomes available. They were
   // one flag and one side effect before; now the side effect is written
   // down, because a second caller was about to forget it.
+  // Nothing left to hold: the flag and the sign it puts on the panel.
+  function forgetEdits() {
+    dirty = false;
+
+    const panel = document.getElementById("inspector");
+    if (panel) panel.classList.remove("holding-edits");
+  }
+
   function markDirty() {
     dirty = true;
 
@@ -1492,8 +1561,7 @@
     if (event.target.id !== "inspector") return;
 
     // A fresh panel carries no unsaved edits, and nothing left to hold.
-    dirty = false;
-    event.target.classList.remove("holding-edits");
+    forgetEdits();
   });
 
   // Shazam proposes; you decide. Filling the fields rather than writing
@@ -1587,8 +1655,10 @@
     if (event.detail.requestConfig.verb !== "post") return;
     if (!event.detail.successful) return;
 
-    dirty = false;
-    move(1);
+    // Through `move`, which lets go of the edits itself — this path
+    // used to clear the flag on its own and leave the sign it puts on
+    // the panel standing.
+    move(1, true);
   });
 
   // Keep the address bar on the current selection so a reload restores

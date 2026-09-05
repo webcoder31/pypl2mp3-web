@@ -199,6 +199,23 @@
         <audio id="audio"></audio>
       </footer>
 
+      {# The shortcuts, below the transport rather than above it: they
+         belong to the mode and not to the song, and sitting between the
+         form and the timeline they cut the card in two.
+
+         Here rather than in the workbench template for the same reason:
+         nothing in this line changes with the song, and rendering it
+         inside the swapped region redrew it on every one. Hidden until
+         the mode opens. #}
+      <p id="workbench-keys">
+        <span><kbd>ENTER</kbd> save</span>
+        <span><kbd>&rarr;</kbd> skip</span>
+        <span><kbd>&larr;</kbd> back</span>
+        <span><kbd>SPACE</kbd> pause</span>
+        <span><kbd>TAB</kbd> video</span>
+        <span><kbd>ESC</kbd> leave</span>
+      </p>
+
       {# Two views of the same column. The playlist is what you listen
          to; imports are what you are adding to it. They are tabs rather
          than one scrolling page because an import runs for minutes and

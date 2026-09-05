@@ -10,6 +10,7 @@ Neither is editable. They are evidence, and the panel shows them the way
 it shows a duration: read, never typed.
 """
 
+import dataclasses
 import re
 from pathlib import Path
 
@@ -139,7 +140,7 @@ class TestTheTemplates:
     def _markup(self, name):
         return (Path("src/pypl2mp3/web/templates") / name).read_text()
 
-    @pytest.mark.parametrize("name", ["_inspector.html", "_workbench.html"])
+    @pytest.mark.parametrize("name", ["_inspector.html"])
     def test_the_board_turns_its_faces_in_the_written_order(self, name):
         """Release, recording code, playlist, origin. The attribute order
         in the markup is the turning order — the page reads them in the
@@ -157,6 +158,72 @@ class TestTheTemplates:
             assert f"song.{face if face != 'release' else 'release'} %}}" in markup \
                 or f"if song.{face}" in markup, f"{face} is unconditional"
 
+    def test_the_workbench_shows_the_same_four_at_once(self, tmp_path):
+        """No board there: a column has room for all four, and a face you
+        wait four seconds for is a face you judge the song without.
+
+        Same four and the same order as the board turns them in, which is
+        what this holds — the two are one set of strings, split at the
+        colon each already carries, so they cannot come to disagree."""
+
+        path = _song(
+            tmp_path, origin={"author": "Chill Masters", "title": "Djon Maya"})
+        found = summarize(SongModel(path))
+        summary = dataclasses.replace(
+            found, album="Alpha", year="2019", isrc="FRZ031900123")
+
+        assert [label for label, _, _ in summary.facts] == [
+            "Album", "ISRC", "Playlist", "From"
+        ], summary.facts
+        assert all(known for _, _, known in summary.facts), summary.facts
+        assert 'class="board"' not in self._markup("_workbench.html")
+
+        # Shortened for the table only. The board still names the code
+        # for what it is, because there the line is shared and "ISRC"
+        # alone could be any of the four.
+        assert summary.recording.startswith("Recording (ISRC): ")
+
+    def test_a_release_nobody_knows_still_takes_its_row(self, tmp_path):
+        """The opposite of the board, and for the two that matter. A song
+        with no release and no code is the song this mode exists for, so
+        the table says so rather than quietly leaving the rows out — and
+        says it in the colour the page uses for a file that wants work.
+
+        The origin keeps the board's rule: it is where the file came
+        from, not something to go and find."""
+
+        path = _song(tmp_path)
+        summary = summarize(SongModel(path))
+
+        assert summary.release == "" and summary.recording == ""
+        assert summary.origin == ""
+
+        assert summary.facts[:2] == [
+            ("Album", "unknown", False),
+            ("ISRC", "unknown", False),
+        ], summary.facts
+        assert [label for label, _, _ in summary.facts] == [
+            "Album", "ISRC", "Playlist"
+        ], "the origin took a row it has nothing to put in"
+
+        # And the page marks both halves of the row, not only the word.
+        markup = self._markup("_workbench.html")
+        assert markup.count('{% if not known %} class="unknown"{% endif %}') == 2, (
+            "the label is what you scan the column for, and it carries no mark"
+        )
+
+        # Painted, and not merely classed. Markup carrying a class no
+        # rule answers is the one failure this project keeps meeting:
+        # everything looks right in the template and nothing changes on
+        # screen.
+        css = Path("src/pypl2mp3/web/static/console.css").read_text()
+        rule = re.search(r"\n\.workbench-facts \.unknown \{([^}]*)\}", css)
+        assert rule, "the mark is a class nothing paints"
+        assert "var(--junk)" in rule.group(1), (
+            f"marked in some colour of its own rather than the page's: "
+            f"{rule.group(1)}"
+        )
+
     async def test_a_gone_video_is_marked_and_still_linked(self, tmp_path):
         """Asked of the rendered page and not of the template source: a
         first version of this test looked for "song.video_gone" anywhere
@@ -173,20 +240,27 @@ class TestTheTemplates:
         _song(tmp_path, vid="bbbbbbbbbbb",
               origin={"author": "c", "title": "t"})
 
+        # Both panels: the card carries the same link, marked the same
+        # way. It had none for a while — the keyboard could open the
+        # address and nothing on screen said it existed.
         async with _client(create_app(tmp_path)) as client:
-            gone = (await client.get(
-                "/fragments/inspector/aaaaaaaaaaa", headers=HX)).text
-            alive = (await client.get(
-                "/fragments/inspector/bbbbbbbbbbb", headers=HX)).text
+            fragments = {}
+            for panel in ("inspector", "workbench"):
+                for vid, expected in (("aaaaaaaaaaa", True),
+                                      ("bbbbbbbbbbb", False)):
+                    fragments[panel, expected] = (await client.get(
+                        f"/fragments/{panel}/{vid}", headers=HX)).text
 
-        for markup, expected in ((gone, True), (alive, False)):
+        for (panel, expected), markup in fragments.items():
             link = re.search(
                 r'<a href="https://youtu\.be/[^"]+"[^>]*>.*?</a>',
                 markup, re.DOTALL,
             )
 
-            assert link, "the video link is gone from the inspector"
-            assert ('class="gone"' in link.group(0)) is expected, link.group(0)
+            assert link, f"the video link is gone from the {panel}"
+            assert ('class="gone"' in link.group(0)) is expected, (
+                f"{panel}: {link.group(0)}"
+            )
 
 
 class TestTheBoardIsBounded:
