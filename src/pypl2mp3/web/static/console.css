@@ -965,6 +965,12 @@ td.rank-cell { width: 1%; padding-left: 0; padding-right: 0; }
   font-variant-numeric: tabular-nums;
   color: var(--text-3);
   margin-left: var(--row-pad-x);
+  /* And a gap on the other side. The cell that follows starts flush —
+     it is right-aligned and pads only its far edge — so the number ran
+     straight into the badge beside it, and into the buttons on hover.
+     Carried by the number and not by the cell, so a row with nothing to
+     show still takes no width. */
+  margin-right: var(--space-3);
 }
 
 /* The rank in the run asked for by hand. Not hidden with the buttons
