@@ -305,10 +305,20 @@
          and stops on its own the moment neither is — same rule as every
          other self-polling fragment here: the returned markup simply
          carries no hx-trigger. #}
+      {# `hx-disinherit`, because htmx hands `hx-include` down to every
+         descendant the way it hands down `hx-target`. This section needs
+         the filters for its own refetch — it follows the playlist you
+         are filtering by — and the pane inside it must not: the pane
+         polls `?playlist=<the run it is watching>`, and the filters carry
+         a `playlist` field of their own, so the two arrived together and
+         the form's empty value won. Starting an import on a playlist the
+         listing was not filtered by then showed the pane for one second
+         and fell back to the inventory, with the run still going. #}
       <section id="imports" data-swap-region
                hx-get="/fragments/imports"
                hx-trigger="playlistChanged from:body, importsChanged from:body"
-               hx-include="#filters">{% include "_imports.html" %}</section>
+               hx-include="#filters"
+               hx-disinherit="hx-include">{% include "_imports.html" %}</section>
     </div>
 
     <nav id="nav" data-swap-region

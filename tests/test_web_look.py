@@ -731,32 +731,34 @@ async def test_every_main_block_shares_one_inset(tmp_path):
     assert "--row-pad-x: var(--block-pad-x)" in css
 
 
-async def test_the_playlist_buttons_say_what_they_do(tmp_path):
-    """Side by side in a 16rem column they came out as "Check fo…" and
-    "Import n…", which is two truncations and no information."""
+async def test_the_import_button_says_what_it_does(tmp_path):
+    """Side by side in the nav's 16rem column these came out as "Check
+    fo…" and "Import n…", which is two truncations and no information —
+    hence a rule stacking them, and hence this test.
+
+    The column is gone: the button is one per row of a table as wide as
+    the pane, so nothing splits the width any more. What is left to hold
+    is the label staying on one line, because the cell is sized to its
+    contents and a wrap there would take the row's height with it.
+    """
 
     async with _client(create_app(tmp_path)) as client:
         css = (await client.get("/static/console.css")).text
+        page = (await client.get("/")).text
 
-    block = re.search(
-        r"#nav \.playlist-actions \{([^}]*)\}", css
-    ).group(1)
-    assert "flex-direction: column" in block, block
-
-    # They inherit the nav's flex: 1, which is what split the width.
-    # Read every rule that names them, not the first: they are also
-    # filled by a rule they share with Save, and which of the two comes
-    # first in the file is not what this test is about.
     declared = "".join(
         body
         for selector, body in re.findall(
             r"\n([^\n{}]+(?:,\n[^\n{}]+)*)\{([^}]*)\}", css
         )
-        if "#nav .playlist-actions button" in selector
+        if ".playlists td button" in selector
     )
-    assert "flex: none" in declared, declared
+    assert "white-space: nowrap" in declared, declared
 
-
+    assert ".playlist-actions" not in css, (
+        "the nav still dresses a block that is no longer rendered"
+    )
+    assert ".playlist-actions" not in page
 
 def _block(markup: str, opening: str) -> str:
     """The element's own contents, nested elements and all.
@@ -1121,7 +1123,10 @@ async def test_the_filter_button_is_not_filled(tmp_path):
 async def test_a_playlist_button_is_filled_like_save(tmp_path):
     """Fetching a playlist's new songs is the point of the pane it sits
     in, the way saving is the point of the inspector. The two share one
-    rule rather than two matching ones, so they cannot drift apart."""
+    rule rather than two matching ones, so they cannot drift apart.
+
+    It used to sit in the nav, under whichever playlist the listing was
+    filtered by; it is one per row of the imports inventory now."""
 
     async with _client(create_app(tmp_path)) as client:
         css = (await client.get("/static/console.css")).text
@@ -1129,12 +1134,12 @@ async def test_a_playlist_button_is_filled_like_save(tmp_path):
     filled = _filled_selectors(css)
     save = '#inspector button[type="submit"]'
     assert save in filled, filled
-    assert "#nav .playlist-actions button" in filled, (
-        "Check and Import are as quiet as the artist rows above them"
+    assert ".playlists td button" in filled, (
+        "the one thing the imports tab is for is as quiet as a row action"
     )
 
     rules = re.findall(r"\n([^\n{}]+(?:,\n[^\n{}]+)*)\{", css)
-    shared = [r for r in rules if save in r and ".playlist-actions" in r]
+    shared = [r for r in rules if save in r and ".playlists td button" in r]
     assert shared, "they are filled by two separate rules that can drift"
 
 
@@ -3142,12 +3147,19 @@ async def test_the_last_field_leads_somewhere_visible(tmp_path):
     async with _client(create_app(tmp_path)) as client:
         css = (await client.get("/static/console.css")).text
 
-    rule = re.search(
-        r'#inspector button\[type="submit"\]:focus-visible,\s*\n'
-        r'\.workbench-detail button\[type="submit"\]:focus-visible \{'
-        r"([^}]*)\}",
-        css,
-    )
+    # Every button drawn in the accent, read off whichever rule names
+    # them: pinning the list meant a third one could not be added
+    # without this failing for having found nothing.
+    rule = None
+    for selector, body in re.findall(
+        r"\n([^\n{}]+(?:,\n[^\n{}]+)*)\{([^}]*)\}", css
+    ):
+        if '#inspector button[type="submit"]:focus-visible' in selector:
+            assert '.workbench-detail button[type="submit"]:focus-visible' \
+                in selector, selector
+            rule = re.match(r"(?s)(.*)", body)
+            break
+
     assert rule, "the step out of the fields is invisible again"
     assert "solid var(--accent-text)" in rule.group(1), rule.group(1)
     # Negative, not an exact figure: how thick the ring reads and how much

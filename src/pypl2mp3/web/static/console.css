@@ -289,7 +289,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 #inspector .play-this,
 .workbench-detail button[type="submit"],
 #import-form button[type="submit"],
-#nav .playlist-actions button {
+.playlists td button {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-text);
@@ -299,7 +299,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 #inspector .play-this:hover,
 .workbench-detail button[type="submit"]:hover,
 #import-form button[type="submit"]:hover,
-#nav .playlist-actions button:hover {
+.playlists td button:hover {
   background: var(--accent);
   filter: brightness(1.08);
 }
@@ -365,7 +365,8 @@ input::placeholder { color: var(--text-3); }
    the four-pixel band around it was the thickest line of the three —
    the frame louder than what it framed. */
 #inspector button[type="submit"]:focus-visible,
-.workbench-detail button[type="submit"]:focus-visible {
+.workbench-detail button[type="submit"]:focus-visible,
+.playlists td button:focus-visible {
   outline: 2px solid var(--accent-text);
   outline-offset: -3px;
 }
@@ -582,15 +583,6 @@ button:has(.icon) { display: inline-flex; align-items: center;
    and then a separate remark. */
 #nav .scope { margin: calc(-1 * var(--space-1)) var(--space-1) var(--space-2);
               font-size: var(--fs-xs); color: var(--text-3); }
-/* Stacked, not side by side. They inherit the nav's `flex: 1`, and in a
-   column this narrow that splits the width in two and truncates both
-   labels — "Check fo…" and "Import n…" say nothing. */
-#nav .playlist-actions { margin: var(--space-2) 0 var(--nav-gap);
-                         display: flex; flex-direction: column;
-                         align-items: stretch; gap: var(--space-1); }
-#nav .playlist-actions button { flex: none; padding: var(--btn-pad);
-                                justify-content: center; }
-
 #artist-filter { width: 100%; margin: 0 0 var(--space-2); }
 #artist-list li[hidden] { display: none; }
 
@@ -718,8 +710,75 @@ body[data-tab="imports"] #list { display: none; }
 body[data-tab="imports"] #imports { display: block; }
 #imports { overflow-y: auto; min-height: 0; }
 
-#imports-body { padding: var(--space-4) var(--block-pad-x); }
+/* No side padding: the inventory below is a table, and a table whose
+   rows stop short of the frame reads as a panel floating inside the
+   pane rather than as the pane's own content. The listing solves it the
+   same way — #list has no padding either, and the cells carry it — so
+   everything here that is not a table asks for it by name. */
+/* Set down from the tab strip, whichever of the pane's faces is
+   showing. It was the inventory's own top margin, which left the run's
+   heading starting twelve pixels higher than the table it replaces —
+   the same pane, jumping when it changed what it was showing. */
+#imports-body { padding: calc(var(--space-4) + var(--space-3)) 0
+                         var(--space-4); }
+.imports-empty, .imports-head, .imports-actions {
+  padding-left: var(--block-pad-x);
+  padding-right: var(--block-pad-x);
+}
 .imports-empty { color: var(--text-3); }
+
+/* The inventory the pane shows at rest. Laid out like the listing below
+   it — the same row rhythm, the same right-aligned numbers — because it
+   is the same kind of thing read the same way: a table of what there is,
+   with the one action per row at the end of it. */
+/* The table rules at the foot of this file already give it its width,
+   its collapsed borders, its cell padding and the line under each row.
+   Only what differs is said here: the heading, and rows that are not
+   themselves a target. */
+.playlists th {
+  text-align: left;
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  font-weight: 600;
+  color: var(--text-3);
+  padding: 0 var(--row-pad-x) var(--space-2);
+  border-bottom: 1px solid var(--line);
+}
+.playlists th.num { text-align: right; }
+.playlists td { vertical-align: baseline; }
+.playlists td.num { text-align: right; font-variant-numeric: tabular-nums;
+                    white-space: nowrap; }
+/* The listing's rows are clickable and say so. These are not: the one
+   thing to do with a playlist is the button at the end of the row. */
+.playlists tbody tr { cursor: default; }
+
+/* The title carries the row; the owner and the address sit under it in
+   the meta size, the way a song's id sits under its name. */
+/* The nav clips these because its column is narrow. This one is not, so
+   the name is shown whole — "Petite soeur..." is what the playlist is
+   called, and an ellipsis on top of it reads as a second truncation. */
+.playlists .pl-title { font-size: var(--fs-md); overflow: visible;
+                       text-overflow: clip; white-space: normal; }
+.playlists .row-meta { display: block; margin-top: 0.1rem; }
+.playlists .pl-owner { display: inline; margin-right: var(--space-2); }
+.playlists .junk { color: var(--junk); }
+/* A date is read as a date, not compared digit by digit — but it shares
+   a column edge with two counts, so it is set in the same figures. */
+.playlists .changed { color: var(--text-3); font-size: var(--fs-sm); }
+
+/* Always there, unlike the listing's row actions. Those are second
+   thoughts about a row you came to read; this is the whole reason the
+   tab exists, and a table of counts with no visible way to act on it is
+   the confusion this replaced. */
+/* Green, like every other button on this page that commits to work.
+   The ones it sits beside in the listing are second thoughts about a row
+   — Junkize, Fix — and are drawn to stay out of the way; this is the one
+   thing the tab is for. */
+.playlists td button { white-space: nowrap; padding: var(--btn-pad); }
+
+/* Back to the inventory, before the name of what you are looking at. */
+.back-to-playlists { font-size: var(--fs-sm); }
 .imports-head {
   display: flex;
   align-items: baseline;
@@ -747,12 +806,13 @@ body[data-tab="imports"] #imports { display: block; }
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  /* Inset by the pane's own padding and pulled back out by the same
-     amount, so the hover background spans the full width the way the
-     nav's rows do. Stopping at the text would light a rectangle
-     narrower than the thing being pointed at. */
+  /* Its own padding, and the row itself full width: the hover
+     background and the line under it reach the frame while the text is
+     inset, which is how the listing's cells do it. It used to inset
+     itself and pull back out by the same amount to escape the pane's
+     padding — and when the pane stopped having any, that pull took the
+     row twenty-four pixels off the left edge. */
   padding: var(--space-2) var(--block-pad-x);
-  margin: 0 calc(-1 * var(--block-pad-x));
   border-bottom: 1px solid var(--line);
   min-width: 0;
 }
@@ -820,7 +880,11 @@ body[data-tab="imports"] #imports { display: block; }
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--space-1) var(--space-4);
-  padding: var(--space-2) 0 var(--space-3) var(--space-5);
+  /* Indented past the row's checkbox, so the bars start under the name
+     of the song they are measuring. The pane's padding is now the row's,
+     so this carries both: the frame's inset, and the indent. */
+  padding: var(--space-2) var(--block-pad-x) var(--space-3)
+           calc(var(--block-pad-x) + var(--space-5));
   border-bottom: 1px solid var(--line);
 }
 .stage {

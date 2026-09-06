@@ -564,6 +564,15 @@ def create_app(repository_path: Path) -> FastAPI:
             "playlist_id": playlist,
             "playlist_name": _playlist_name(playlist) if playlist else "",
             "phase": phase,
+            # What the pane shows when nothing is in flight: every
+            # playlist there is, not the one the nav happens to be
+            # filtering by. Deciding what to fetch means comparing them,
+            # and the tab used to answer that question with a sentence
+            # telling you to go and press a button somewhere else.
+            "summaries": (
+                list_playlists(app.state.repository_path)
+                if phase == "idle" else []
+            ),
             "items": items,
             "done_count": states.count("done"),
             "failed_count": states.count("failed"),

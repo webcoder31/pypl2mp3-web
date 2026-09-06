@@ -49,24 +49,6 @@
   {% endfor %}
 </ul>
 
-{% if current_playlist %}
-  {# Both jobs land in the header ribbon, not here: this block is rebuilt
-     whenever the playlist changes, and a running import must not vanish
-     with it. #}
-  <p class="playlist-actions">
-    {# One button, not two. Checking and importing were never separate
-       intentions: nobody asks what is new without meaning to decide what
-       to do about it. This looks, then hands you the list and lets you
-       choose — so there is no longer a click that commits you to
-       downloading everything before you have seen what everything is,
-       and no confirmation needed to soften it. #}
-    <button type="button"
-            hx-post="/playlists/{{ playlist }}/check"
-            hx-target="#imports-body"
-            hx-swap="outerHTML"
-            data-open-tab="imports">Import new songs</button>
-  </p>
-{% endif %}
 
 {# Junk songs are left out of this list: their "artist" is whatever
    YouTube called the channel, which is the noise a preset list exists to

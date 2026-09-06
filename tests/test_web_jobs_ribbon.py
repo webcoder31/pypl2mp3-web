@@ -67,9 +67,15 @@ async def test_one_button_starts_the_whole_import(tmp_path):
     """Checking and importing were never separate intentions: nobody asks
     what is new without meaning to decide what to do about it.
 
-    The one button looks, then hands you the list. It targets the imports
-    pane and not a slot beside itself, because the nav is rebuilt on a
-    playlist change and that would take a running import with it.
+    The one button looks, then hands you the list. One per playlist, and
+    they sit in the imports pane itself — it used to sit in the nav,
+    under whichever playlist the listing was filtered by, so starting an
+    import meant picking a playlist in one column and pressing a button
+    in another before the tab you opened would show you anything. In the
+    pane there is no tab to be brought to: you are already in it.
+
+    It targets the pane and not a slot beside itself, because the row it
+    is in is replaced by what comes back.
     """
 
     _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
@@ -81,12 +87,18 @@ async def test_one_button_starts_the_whole_import(tmp_path):
         r"<button[^>]*hx-post=\"/playlists/[^\"]*\"[^>]*>", body, re.DOTALL
     )
     assert len(buttons) == 1, (
-        f"{len(buttons)} playlist buttons; the pair was meant to become one"
+        f"{len(buttons)} buttons for one playlist: {buttons}"
     )
     assert "/check" in buttons[0], buttons[0]
     assert 'hx-target="#imports-body"' in buttons[0], buttons[0]
-    assert 'data-open-tab="imports"' in buttons[0], (
-        "the button starts work in a pane it does not bring you to"
+
+    # In the pane, which is what makes opening a tab unnecessary.
+    pane = re.search(r'<section id="imports".*?</section>', body, re.S)
+    assert pane and buttons[0] in pane.group(0), (
+        "the button starts work somewhere other than where it is watched"
+    )
+    assert "data-open-tab" not in buttons[0], (
+        "it asks to be taken to the pane it is already in"
     )
 
 
@@ -1200,3 +1212,63 @@ async def test_the_pane_follows_the_playlist_you_are_looking_at(tmp_path):
     assert "playlistChanged from:body" in pane.group(1), (
         f"the pane never hears about a playlist change: {pane.group(1)}"
     )
+
+
+async def test_the_imports_tab_is_an_inventory_of_the_playlists(tmp_path):
+    """It used to be a sentence: pick a playlist in one column, then
+    press a button in another. Two places to go before the tab you opened
+    would show you anything, and neither of them was in it.
+
+    At rest the pane is what there is: every playlist, what each holds,
+    when it last changed, where it lives, and the button that asks
+    YouTube what it has that this one does not. Deciding what to fetch
+    means comparing them, so they are shown together.
+    """
+
+    _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        pane = (await client.get("/fragments/imports")).text
+
+    assert "Pick a playlist" not in pane, "the sentence is still there"
+
+    table = re.search(r'<table class="playlists">.*?</table>', pane, re.S)
+    assert table, "the pane says nothing about the playlists there are"
+    inside = table.group(1) if table.groups() else table.group(0)
+
+    for wanted, why in (
+        (f"/playlists/{PLAYLIST_ID}/check", "no way to start an import"),
+        (f"youtube.com/playlist?list={PLAYLIST_ID}", "no way to go and look"),
+        (">1<", "the song count is missing"),
+    ):
+        assert wanted in inside, why
+
+    # A date, from the newest song's own timestamp.
+    assert re.search(r"<td class=\"num changed\">\s*\d{4}-\d{2}-\d{2}", inside), (
+        "nothing says when the playlist last changed"
+    )
+
+
+async def test_a_run_is_watched_whatever_the_listing_is_filtered_by(tmp_path):
+    """htmx hands `hx-include` down to every descendant, the way it hands
+    down `hx-target`.
+
+    The pane polls `?playlist=<the run it is watching>` and the filter
+    form carries a `playlist` field of its own, so without this the two
+    arrived together and the form's empty value won: starting an import
+    on a playlist the listing was not filtered by showed the pane for one
+    second and then fell back to the inventory, with the run still going
+    and nothing on screen saying so.
+    """
+
+    _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        body = (await client.get("/")).text
+
+    section = re.search(r'<section id="imports"[^>]*>', body).group(0)
+
+    assert 'hx-include="#filters"' in section, (
+        "the section no longer follows the playlist you are filtering by"
+    )
+    assert 'hx-disinherit="hx-include"' in section, section

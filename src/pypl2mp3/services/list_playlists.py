@@ -6,6 +6,8 @@ neither terminal nor browser; it renders data, the facade takes care of
 presenting it.
 """
 
+import datetime
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,12 +27,42 @@ class PlaylistSummary:
     name: str
     total_songs: int
     junk_songs: int
+    # Epoch seconds, or 0 for a folder holding nothing.
+    last_change: float = 0.0
 
     @property
     def valid_songs(self) -> int:
         """Songs correctly tagged, i.e. not "junk"."""
 
         return self.total_songs - self.junk_songs
+
+    @property
+    def changed_on(self) -> str:
+        """The day this playlist last gained or lost a song, or "".
+
+        The newest mp3's own timestamp, and it says *changed* rather than
+        *imported* deliberately: saving metadata rewrites the file, so
+        this moves for a correction as much as for an arrival. From the
+        folder's side those are one thing — something came in, or
+        something was put right — and a date quietly meaning only the
+        first would be wrong half the time.
+        """
+
+        if not self.last_change:
+            return ""
+
+        return datetime.date.fromtimestamp(self.last_change).isoformat()
+
+    @property
+    def youtube_url(self) -> str:
+        """Where this playlist lives, for going and looking at it.
+
+        Built from the id in the folder's own name, which is the only
+        thing here that came from YouTube — no request is made, and the
+        address is right whether or not the playlist still exists.
+        """
+
+        return f"https://www.youtube.com/playlist?list={self.playlist_id}"
 
     @property
     def owner(self) -> str:
@@ -81,10 +113,29 @@ def list_playlists(repository_path: Path) -> list[PlaylistSummary]:
 def _summarize(playlist_path: Path) -> PlaylistSummary:
     playlist_id = get_song_id_from_filename(playlist_path.name)
 
+    # One pass rather than three. Two globs counted the songs and the
+    # junk among them, and the newest timestamp would have been a third
+    # walk of the same folder — scandir carries the name and the stat
+    # together, so all of it comes off one listing.
+    total = junk = 0
+    newest = 0.0
+
+    with os.scandir(playlist_path) as entries:
+        for entry in entries:
+            if not entry.name.endswith(".mp3"):
+                continue
+
+            total += 1
+            if entry.name.endswith(" (JUNK).mp3"):
+                junk += 1
+
+            newest = max(newest, entry.stat().st_mtime)
+
     return PlaylistSummary(
         path=playlist_path,
         playlist_id=playlist_id,
         name=playlist_path.name.replace(f"[{playlist_id}]", "").strip(),
-        total_songs=len(list(playlist_path.glob("*.mp3"))),
-        junk_songs=len(list(playlist_path.glob("* (JUNK).mp3"))),
+        total_songs=total,
+        junk_songs=junk,
+        last_change=newest,
     )

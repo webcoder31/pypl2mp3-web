@@ -14,13 +14,75 @@
      hx-target="#imports-body"
      hx-swap="outerHTML"{% endif %}>
 
-  {% if not playlist_id %}
-    <p class="imports-empty">
-      Pick a playlist, then use <strong>Import new songs</strong>.
-    </p>
+  {% if phase == "idle" %}
+    {# At rest the pane is the inventory: every playlist there is, what
+       each holds, and the button that goes and asks YouTube what it has
+       that this one does not.
+
+       It used to be a sentence telling you to pick a playlist in one
+       column and press a button in another, which is two places to go
+       before the tab you opened shows you anything. Deciding what to
+       fetch means comparing them, so they are shown together. #}
+    {% if not summaries %}
+      <p class="imports-empty">No playlists in this repository yet.</p>
+    {% else %}
+      <table class="playlists">
+        <thead>
+          <tr>
+            <th>Playlist</th>
+            <th class="num">Songs</th>
+            <th class="num">Junk</th>
+            <th class="num">Changed</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for summary in summaries %}
+            <tr>
+              <td>
+                <span class="pl-title">{{ summary.title }}</span>
+                <span class="row-meta">
+                  {% if summary.owner %}
+                    <span class="pl-owner">{{ summary.owner }}</span>
+                  {% endif %}
+                  {# The address is built from the id in the folder's own
+                     name, so it is right whether or not the playlist is
+                     still there — and going and looking is the only way
+                     to find out. #}
+                  <a href="{{ summary.youtube_url }}" target="_blank"
+                     rel="noopener noreferrer">voir sur YouTube</a>
+                </span>
+              </td>
+              <td class="num">{{ summary.total_songs }}</td>
+              {# Nothing rather than a zero: a column of noughts reads as
+                 a problem measured, and none of them is one. The mark
+                 leads the number, as it does everywhere else here. #}
+              <td class="num {% if summary.junk_songs %}junk{% endif %}">
+                {% if summary.junk_songs %}⚠ {{ summary.junk_songs }}{% endif %}
+              </td>
+              <td class="num changed">{{ summary.changed_on }}</td>
+              <td class="num">
+                <button type="button"
+                        hx-post="/playlists/{{ summary.playlist_id }}/check"
+                        hx-target="#imports-body"
+                        hx-swap="outerHTML">Import new songs</button>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
 
   {% else %}
     <header class="imports-head">
+      {# Back to the inventory. Asking for the pane with no playlist is
+         the whole of it: there is no state to put back, because which
+         run the pane is showing was never held anywhere but in the
+         address it was fetched with. #}
+      <button type="button" class="quiet back-to-playlists"
+              hx-get="/fragments/imports"
+              hx-target="#imports-body"
+              hx-swap="outerHTML">&larr; Playlists</button>
       <h2>{{ playlist_name }}</h2>
       {% if phase == "checking" %}
         <span class="job-running">
@@ -52,13 +114,7 @@
       {% endif %}
     </header>
 
-    {% if phase == "idle" %}
-      <p class="imports-empty">
-        Use <strong>Import new songs</strong> to see what this playlist
-        has and you do not.
-      </p>
-
-    {% elif phase == "choosing" and not items %}
+    {% if phase == "choosing" and not items %}
       <p class="imports-empty">Up to date — nothing to import.</p>
 
     {% else %}
