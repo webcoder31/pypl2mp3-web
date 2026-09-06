@@ -474,6 +474,22 @@ a { color: var(--accent); text-decoration-thickness: 1px;
 button:has(.icon) { display: inline-flex; align-items: center;
                     gap: var(--space-2); }
 
+/* Which order the listing is in. Two named states drawn as text, like
+   the theme switch and for the same reason: a way of looking rather than
+   an action, and a filled segment would give it the weight of the
+   buttons beside it that change what plays. The colour carries the
+   choice. */
+#order { display: flex; gap: var(--space-2); flex: 0 0 auto; }
+#order button {
+  border: none;
+  padding: 0;
+  font-size: var(--fs-sm);
+  background: none;
+  color: var(--text-3);
+}
+#order button:hover { background: none; color: var(--text); }
+#order button.chosen { color: var(--accent); }
+
 /* Shuffle reports what order the queue is in, not what a click will do.
    Text and outline, no fill — the same treatment as the theme switch,
    for the same reason. */
@@ -870,6 +886,17 @@ tbody tr:hover { background: var(--hover); }
                       opacity: 0; }
 tr:hover .row-actions button,
 .row-actions button:focus-visible { opacity: 1; }
+
+/* Where the song falls in the order the queue plays. Numeric and quiet,
+   against the badge beside it which is loud and labelled: one says where
+   the song is, the other says you put it there. Tabular, so a column of
+   them lines up down the listing. */
+.row-actions .rank {
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+  margin-right: var(--space-2);
+}
 
 /* The rank in the run asked for by hand. Not hidden with the buttons
    beside it: they are things to do and appear under the pointer, this

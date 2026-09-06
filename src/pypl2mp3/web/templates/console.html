@@ -246,6 +246,23 @@
            not in every system font, and where they do they render at
            whatever size that font decided — which was too small to
            read. These follow the text colour and the text size. #}
+        {# Which order the listing is in. Two named states drawn as
+           text, like the theme switch and for the same reason: this is a
+           way of looking, not an action, and a filled control would give
+           it the weight of the buttons beside it that change what plays.
+
+           The listing is the selection and the queue is the order it
+           plays in, and those are two different things — shuffling or
+           lining a song up by hand makes them differ, and until now the
+           second was invisible past the one song NEXT names. #}
+        <div id="order" role="group" aria-label="Listing order">
+          <button type="button" data-order="name" aria-pressed="true"
+                  title="List the selection by name">A&ndash;Z</button>
+          <button type="button" data-order="play" aria-pressed="false"
+                  title="List the selection in the order it plays"
+                  data-hint="List the selection in the order it plays"
+          >Play order</button>
+        </div>
         <button type="button" data-queue-action="play">
           <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"
                fill="currentColor"><path d="M5 3.2 13 8l-8 4.8Z"/></svg>

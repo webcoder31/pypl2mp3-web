@@ -757,6 +757,35 @@ async def test_the_playlist_buttons_say_what_they_do(tmp_path):
     assert "flex: none" in declared, declared
 
 
+
+def _block(markup: str, opening: str) -> str:
+    """The element's own contents, nested elements and all.
+
+    A non-greedy regex to the first `</div>` did this until the toolbar
+    grew a group inside it, and then it silently returned the first third
+    of the row — so a test asking whether the toolbar still carries the
+    play button failed for having looked at a slice that stops before it.
+    Counting the tags is the difference between "not there" and "not in
+    the part I read".
+    """
+
+    start = markup.index(opening) + len(opening)
+    depth, at = 1, start
+
+    while depth:
+        nxt = markup.find("<div", at)
+        end = markup.find("</div", at)
+
+        assert end != -1, f"{opening} is never closed"
+
+        if nxt != -1 and nxt < end:
+            depth, at = depth + 1, nxt + 4
+        else:
+            depth, at = depth - 1, end + 5
+
+    return markup[start:markup.rindex("</div", start, at)]
+
+
 async def test_the_toolbar_carries_the_queue_readout(tmp_path):
     """Where you are, what comes next, and what to do with the selection
     — all about the queue, so they share one row. The counter replaces
@@ -768,9 +797,7 @@ async def test_the_toolbar_carries_the_queue_readout(tmp_path):
         body = (await client.get("/")).text
         fragment = (await client.get("/fragments/list")).text
 
-    bar = re.search(r'<div id="toolbar">(.*?)</div>', body, re.DOTALL)
-    assert bar, "no toolbar"
-    inside = bar.group(1)
+    inside = _block(body, '<div id="toolbar">')
 
     for part in ('id="player-position"', 'id="player-next"',
                  'data-queue-action="play"'):
@@ -1180,7 +1207,7 @@ async def test_the_toolbar_icons_are_drawn_not_typed(tmp_path):
         body = (await client.get("/")).text
         css = (await client.get("/static/console.css")).text
 
-    bar = re.search(r'<div id="toolbar">(.*?)</div>', body, re.DOTALL).group(1)
+    bar = _block(body, '<div id="toolbar">')
     assert bar.count("<svg") == 3, "not every action has a drawn icon"
     assert "⤨" not in bar and "⚒" not in bar and "▶" not in bar, bar
 

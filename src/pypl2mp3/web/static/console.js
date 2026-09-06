@@ -217,6 +217,15 @@
     if (badge.hidden !== !rank) badge.hidden = !rank;
   }
 
+  // The same discipline as `showRank` above, and for the same reason:
+  // this writes inside #list, and #list is watched.
+  function showPlace(slot, place) {
+    const label = place ? String(place) : "";
+
+    if (slot.textContent !== label) slot.textContent = label;
+    if (slot.hidden !== !place) slot.hidden = !place;
+  }
+
   function paint() {
     const current = queue[index];
 
@@ -233,11 +242,20 @@
     // next is exactly the song you want to see took.
     const lined = lineupRanks();
 
-    rows().forEach(function (row) {
+    const all = rows();
+
+    if (listOrder === "play") lay(all, inPlayOrder(all));
+
+    const ranked = playRanks(all);
+
+    all.forEach(function (row) {
       row.classList.toggle("playing", row.dataset.songId === currentId);
 
       const badge = row.querySelector(".queued");
       if (badge) showRank(badge, lined.get(row.dataset.songId) || 0);
+
+      const rank = row.querySelector(".rank");
+      if (rank) showPlace(rank, ranked.get(row) || 0);
     });
 
     // Bring the playing row into view — once per song, not on every
@@ -573,6 +591,22 @@
   // shuffled queue from an ordered one.
   let inRandomOrder = false;
 
+  // Which order the listing is drawn in: the selection's own, or the
+  // one it plays in. Remembered across reloads like the theme and the
+  // volume, and for the same reason — it is how you have chosen to look
+  // at the page, not something about this visit.
+  const ORDER_KEY = "pypl2mp3.order";
+
+  let listOrder = "name";
+
+  // Whether the queue's order is anything other than the listing's.
+  // Shuffling makes it so, and so does lining a song up by hand.
+  //
+  // Said rather than worked out by comparing the two: once the listing
+  // has been put in play order they agree by construction, so a
+  // comparison would answer "no" exactly when the ranks are wanted.
+  let orderIsOwn = false;
+
   // The songs asked for by hand, in the order they were asked for. Not a
   // second queue: they are moved into place in the one queue, so the
   // count in the toolbar goes on meaning what it says and no song is
@@ -599,6 +633,83 @@
       })
       .filter(function (song) { return song.at > index; })
       .sort(function (a, b) { return a.at - b.at; });
+  }
+
+  // The rows in the order the queue plays them.
+  //
+  // Walked rather than looked up: eight songs in this library sit in two
+  // playlists at once, so one id names two rows — and in the queue those
+  // are two entries and two places, not one. Each entry claims the next
+  // row still unclaimed that carries its id.
+  //
+  // Whatever the queue does not name goes behind, keeping the order it
+  // had. The queue is a snapshot of the rows at the moment you pressed
+  // play, so a listing filtered since then holds songs it never saw.
+  function inPlayOrder(all) {
+    const waiting = new Map();
+
+    all.forEach(function (row) {
+      const id = row.dataset.songId;
+
+      if (!waiting.has(id)) waiting.set(id, []);
+      waiting.get(id).push(row);
+    });
+
+    const out = [];
+    const claimed = new Set();
+
+    queue.forEach(function (entry) {
+      const rows = waiting.get(entry.id);
+
+      if (rows && rows.length) {
+        const row = rows.shift();
+        out.push(row);
+        claimed.add(row);
+      }
+    });
+
+    all.forEach(function (row) {
+      if (!claimed.has(row)) out.push(row);
+    });
+
+    return out;
+  }
+
+  // Put them there — and only when they are not there already.
+  //
+  // A MutationObserver on #list calls `paint`, so a reorder that runs
+  // whether or not anything moved calls itself for ever: taking a node
+  // out and putting it back where it was is still a childList record.
+  // The whole listing moves in one fragment, so the observer sees one
+  // batch rather than 944.
+  function lay(all, wanted) {
+    let settled = all.length === wanted.length;
+
+    for (let at = 0; settled && at < wanted.length; at++) {
+      settled = all[at] === wanted[at];
+    }
+
+    if (settled || !wanted.length) return;
+
+    const parent = wanted[0].parentNode;
+    const batch = document.createDocumentFragment();
+
+    wanted.forEach(function (row) { batch.appendChild(row); });
+    parent.appendChild(batch);
+  }
+
+  // Where each row falls in the queue, one-based, or an empty map when
+  // saying so would only count the listing back to you.
+  function playRanks(all) {
+    const ranked = new Map();
+
+    if (!queue.length || (listOrder !== "play" && !orderIsOwn)) return ranked;
+
+    inPlayOrder(all).forEach(function (row, at) {
+      if (at < queue.length) ranked.set(row, at + 1);
+    });
+
+    return ranked;
   }
 
   // The run, numbered within itself, as the rows are to show it.
@@ -628,6 +739,7 @@
     // A new selection is a new intent; whatever was lined up in the old
     // one is not in this queue at all.
     lineup = [];
+    orderIsOwn = Boolean(randomOrder);
 
     const button = document.querySelector('[data-queue-action="shuffle"]');
     if (button) button.setAttribute("aria-pressed", String(inRandomOrder));
@@ -706,11 +818,50 @@
     // list from growing for the life of the page.
     lineup = ahead.map(function (song) { return song.id; }).concat(id);
 
+    // The queue is no longer the listing's order, and stays that way
+    // after the run has played out: the songs it moved are still moved.
+    orderIsOwn = true;
+
     // Asked to be played next, so the queue is going forward. A track
     // ending follows `direction`, and walking backwards through a
     // selection would never reach what was just lined up.
     direction = 1;
     paint();
+  }
+
+  function showOrder() {
+    document.querySelectorAll("#order button").forEach(function (button) {
+      const on = button.dataset.order === listOrder;
+
+      button.setAttribute("aria-pressed", String(on));
+      button.classList.toggle("chosen", on);
+    });
+  }
+
+  function chooseOrder(order) {
+    listOrder = order === "play" ? "play" : "name";
+    showOrder();
+
+    // Back to the selection's own order, which only the server knows:
+    // the rows were rearranged in place, so putting them back means
+    // asking for them again.
+    if (listOrder === "name") {
+      window.htmx.ajax("GET", "/fragments/list", {
+        target: "#list",
+        swap: "innerHTML",
+        values: null,
+        source: document.getElementById("filters"),
+      });
+    } else {
+      paint();
+    }
+
+    try {
+      localStorage.setItem(ORDER_KEY, listOrder);
+    } catch (error) {
+      // Private browsing refuses localStorage, the same as the theme and
+      // the volume. The switch still works; it just forgets.
+    }
   }
 
   function shuffled(entries) {
@@ -1586,6 +1737,12 @@
       return;
     }
 
+    const orderButton = event.target.closest("#order button");
+    if (orderButton) {
+      chooseOrder(orderButton.dataset.order);
+      return;
+    }
+
     const lineUp = event.target.closest("[data-play-next]");
     if (lineUp) {
       const row = lineUp.closest("tr[data-song-id]");
@@ -1827,6 +1984,13 @@
   const list = document.getElementById("list");
   if (list) observer.observe(list, { childList: true, subtree: true });
 
+  try {
+    listOrder = localStorage.getItem(ORDER_KEY) === "play" ? "play" : "name";
+  } catch (error) {
+    // As above: refused storage means the default, not a broken page.
+  }
+
+  showOrder();
   paint();
 
   // Arriving, the panel described nothing: "Select a song." The first

@@ -38,6 +38,13 @@
        button, so it does not go with the rest of the cell when the
        pointer leaves the row: it is state, and state that hides itself
        is state nobody can act on. #}
+    {# Where the song falls in the order the queue plays, or nothing.
+       Shown only when that order is not the one the rows are listed in —
+       shuffled, or rearranged by hand — because otherwise it counts the
+       listing back to you. Quiet and numeric, against the badge below it
+       which is loud and labelled: one says where the song is, the other
+       says you put it there. #}
+    <span class="rank" hidden></span>
     <span class="queued" hidden></span>
     {# Jumps the queue rather than starting it. Clicking the row plays
        the song at once and loses whatever you were listening to; this
