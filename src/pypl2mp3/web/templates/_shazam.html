@@ -8,7 +8,7 @@
    uses this same fragment and has no such slot, so the class costs it
    nothing. #}
 <div id="shazam" class="job showing"
-     {% if polling %}hx-get="/fragments/shazam/{{ youtube_id }}"
+     {% if polling %}hx-get="/fragments/shazam/{{ key }}"
      hx-trigger="every 1s"
      {# `this`, said out loud. The block lives inside the form now, and
         htmx inherits `hx-target` from ancestors — so without this it

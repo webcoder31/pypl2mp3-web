@@ -953,13 +953,18 @@ tr:hover .row-actions button,
 
 /* Where the song falls in the order the queue plays. Numeric and quiet,
    against the badge beside it which is loud and labelled: one says where
-   the song is, the other says you put it there. Tabular, so a column of
-   them lines up down the listing. */
-.row-actions .rank {
+   the song is, the other says you put it there.
+
+   The cell carries no padding of its own and the number carries its gap
+   instead, so with nothing to show the column takes no width at all — a
+   cell padded on both sides would open a permanent gap in the middle of
+   every row for a number that is usually not there. */
+td.rank-cell { width: 1%; padding-left: 0; padding-right: 0; }
+.rank {
   font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
   color: var(--text-3);
-  margin-right: var(--space-2);
+  margin-left: var(--row-pad-x);
 }
 
 /* The rank in the run asked for by hand. Not hidden with the buttons

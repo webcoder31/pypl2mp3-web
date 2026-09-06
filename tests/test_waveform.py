@@ -27,6 +27,7 @@ from pypl2mp3.libs.waveform import (
     reduce_to_peaks,
     store_peaks,
 )
+from pypl2mp3.services.find_song import song_key
 from pypl2mp3.web.app import create_app
 
 PLAYLIST = "Owner - Alpha [PL0000000000000000000000000000001]"
@@ -42,6 +43,16 @@ def _make_song(repo: Path, artist, title, vid, junk=False, playlist=PLAYLIST):
         _MP3_FRAME * 8
     )
 
+
+
+def _key(vid, playlist=PLAYLIST):
+    """The address the web uses for one song.
+
+    Not the video: a video held by two playlists is two files, and the
+    routes name the file. `song_key` is the one definition of the pair.
+    """
+
+    return song_key(playlist, vid)
 
 def _client(app):
     return httpx.AsyncClient(
@@ -226,7 +237,7 @@ async def test_the_endpoint_serves_one_value_per_bar(tmp_path):
     _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
-        body = (await client.get("/songs/aaaaaaaaaaa/peaks")).json()
+        body = (await client.get(f"/songs/{_key('aaaaaaaaaaa')}/peaks")).json()
 
     assert len(body) == PEAK_COUNT
     assert all(0 <= value <= 1 for value in body), (
@@ -238,7 +249,7 @@ async def test_an_unknown_song_has_no_peaks(tmp_path):
     _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
-        response = await client.get("/songs/zzzzzzzzzzz/peaks")
+        response = await client.get(f"/songs/{_key('zzzzzzzzzzz')}/peaks")
 
     assert response.status_code == 404
 
@@ -251,7 +262,7 @@ async def test_an_undecodable_song_returns_404_not_500(tmp_path):
     next(tmp_path.rglob("*.mp3")).write_bytes(b"not an mp3")
 
     async with _client(create_app(tmp_path)) as client:
-        response = await client.get("/songs/aaaaaaaaaaa/peaks")
+        response = await client.get(f"/songs/{_key('aaaaaaaaaaa')}/peaks")
 
     assert response.status_code == 404
 
@@ -282,7 +293,7 @@ async def test_simultaneous_requests_decode_the_song_once(tmp_path):
     try:
         async with _client(app) as client:
             responses = await asyncio.gather(
-                *(client.get("/songs/aaaaaaaaaaa/peaks") for _ in range(5))
+                *(client.get(f"/songs/{_key('aaaaaaaaaaa')}/peaks") for _ in range(5))
             )
     finally:
         app_module.peaks_for = original

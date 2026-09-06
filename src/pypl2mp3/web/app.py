@@ -27,7 +27,11 @@ from pypl2mp3.services._song_callbacks import IMPORT_STAGES
 from pypl2mp3.services.check_new_songs import check_new_songs
 from pypl2mp3.services.list_artists import list_artists
 from pypl2mp3.services.list_playlists import list_playlists
-from pypl2mp3.services.find_song import SongNotFound, find_song_file
+from pypl2mp3.services.find_song import (
+    SongNotFound,
+    find_song_file,
+    song_key,
+)
 from pypl2mp3.services.fix_junks import apply_fix, propose_fix
 from pypl2mp3.services.import_playlist import import_playlist
 from pypl2mp3.services.junkize_songs import junkize_song
@@ -115,6 +119,20 @@ def create_app(repository_path: Path) -> FastAPI:
             counts[item.reason] = counts.get(item.reason, 0) + 1
 
         return dict(sorted(counts.items(), key=lambda kv: -kv[1]))
+
+    def _playlist_folder(playlist_id: str) -> str:
+        """The playlist's folder name, brackets and all.
+
+        Which is half of a song's key — the other half being the video —
+        so a row the import has just finished can name the file it made
+        rather than the video it came from.
+        """
+
+        # [[] and []] match literal brackets in fnmatch.
+        for folder in app.state.repository_path.glob(f"*[[]{playlist_id}[]]"):
+            return folder.name
+
+        return ""
 
     def _playlist_name(playlist_id: str) -> str:
         """The playlist's display name, without counting its songs.
@@ -207,14 +225,14 @@ def create_app(repository_path: Path) -> FastAPI:
 
         return True
 
-    def _shazam_fragment(request, youtube_id: str, job):
+    def _shazam_fragment(request, key: str, job):
         """Shazam's answer, or the poll that waits for it."""
 
         return templates.TemplateResponse(
             request,
             "_shazam.html",
             {
-                "youtube_id": youtube_id,
+                "key": key,
                 "state": job.state.value,
                 "result": job.result,
                 "error": job.error,
@@ -560,6 +578,16 @@ def create_app(repository_path: Path) -> FastAPI:
         )
         states = [item.get("state") for item in items]
 
+        # A row that finished is a file now, and clicking it opens that
+        # file rather than whichever copy of the video the repository
+        # lists first. Only the finished ones: nothing has reached the
+        # disk for the others, so there is nothing to name.
+        folder = _playlist_folder(playlist) if playlist else ""
+
+        for item in items:
+            if item.get("state") == "done" and folder:
+                item["key"] = song_key(folder, item["item_id"])
+
         return {
             "playlist_id": playlist,
             "playlist_name": _playlist_name(playlist) if playlist else "",
@@ -712,27 +740,27 @@ def create_app(repository_path: Path) -> FastAPI:
 
         return parse_qs(urlparse(current).query).get("playlist", [""])[0]
 
-    def _summary_or_404(youtube_id: str):
+    def _summary_or_404(key: str):
         try:
             return summarize(SongModel(
-                find_song_file(app.state.repository_path, youtube_id)
+                find_song_file(app.state.repository_path, key)
             ))
         except SongNotFound:
             raise HTTPException(status_code=404, detail="unknown song")
 
-    @app.get("/fragments/inspector/{youtube_id}", response_class=HTMLResponse)
-    def inspector_fragment(youtube_id: str, request: Request) -> HTMLResponse:
+    @app.get("/fragments/inspector/{key}", response_class=HTMLResponse)
+    def inspector_fragment(key: str, request: Request) -> HTMLResponse:
         """One song's details and the form that changes them."""
 
         return templates.TemplateResponse(
             request,
             "_inspector.html",
-            {"song": _summary_or_404(youtube_id)},
+            {"song": _summary_or_404(key)},
         )
 
-    @app.get("/fragments/workbench/{youtube_id}", response_class=HTMLResponse)
+    @app.get("/fragments/workbench/{key}", response_class=HTMLResponse)
     def workbench_fragment(
-        youtube_id: str, request: Request
+        key: str, request: Request
     ) -> HTMLResponse:
         """The same song, laid out for judging a run of them.
 
@@ -743,11 +771,11 @@ def create_app(repository_path: Path) -> FastAPI:
         return templates.TemplateResponse(
             request,
             "_workbench.html",
-            {"song": _summary_or_404(youtube_id)},
+            {"song": _summary_or_404(key)},
         )
 
-    @app.get("/fragments/shazam/{youtube_id}", response_class=HTMLResponse)
-    def shazam_fragment(youtube_id: str, request: Request):
+    @app.get("/fragments/shazam/{key}", response_class=HTMLResponse)
+    def shazam_fragment(key: str, request: Request):
         """Where a running identification has got to.
 
         Nothing while it is still running, and that is the point. The
@@ -758,18 +786,18 @@ def create_app(repository_path: Path) -> FastAPI:
         the element is left alone, and the bars run.
         """
 
-        job = app.state.jobs.get(f"shazam:{youtube_id}")
+        job = app.state.jobs.get(f"shazam:{key}")
         if job is None:
             raise HTTPException(status_code=404, detail="no such job")
 
         if job.state.value in ("pending", "running"):
             return Response(status_code=204)
 
-        return _shazam_fragment(request, youtube_id, job)
+        return _shazam_fragment(request, key, job)
 
 
-    @app.post("/songs/{youtube_id}/shazam")
-    async def shazam_song(youtube_id: str, request: Request):
+    @app.post("/songs/{key}/shazam")
+    async def shazam_song(key: str, request: Request):
         """Ask Shazam what this is. Writes nothing.
 
         A job rather than a held-open request: identification takes
@@ -778,11 +806,11 @@ def create_app(repository_path: Path) -> FastAPI:
 
         loop = asyncio.get_running_loop()
         repository_path = app.state.repository_path
-        job_id = f"shazam:{youtube_id}"
+        job_id = f"shazam:{key}"
 
         async def work(job) -> dict:
             progress = WebProgress(app.state.jobs, job.job_id, loop)
-            proposal = await propose_fix(repository_path, youtube_id, progress)
+            proposal = await propose_fix(repository_path, key, progress)
             return {
                 "matched": proposal.matched,
                 "artist": proposal.shazam_artist,
@@ -799,12 +827,12 @@ def create_app(repository_path: Path) -> FastAPI:
             job = app.state.jobs.get(job_id)
 
         if request.headers.get("HX-Request") is not None:
-            return _shazam_fragment(request, youtube_id, job)
+            return _shazam_fragment(request, key, job)
 
         return {"job_id": job.job_id}
 
-    @app.post("/songs/{youtube_id}/shazam/cancel")
-    async def cancel_shazam(youtube_id: str):
+    @app.post("/songs/{key}/shazam/cancel")
+    async def cancel_shazam(key: str):
         """Drop an identification nobody is going to read.
 
         The model waits fifteen seconds between calls, and that wait is
@@ -819,10 +847,10 @@ def create_app(repository_path: Path) -> FastAPI:
         has already finished is not wanted either.
         """
 
-        return {"cancelled": app.state.jobs.cancel(f"shazam:{youtube_id}")}
+        return {"cancelled": app.state.jobs.cancel(f"shazam:{key}")}
 
-    @app.post("/songs/{youtube_id}/fix")
-    async def submit_fix(youtube_id: str, request: Request):
+    @app.post("/songs/{key}/fix")
+    async def submit_fix(key: str, request: Request):
         """Write the metadata the user settled on."""
 
         form = await request.form()
@@ -830,7 +858,7 @@ def create_app(repository_path: Path) -> FastAPI:
         try:
             result = await apply_fix(
                 app.state.repository_path,
-                youtube_id,
+                key,
                 artist=str(form.get("artist", "")).strip(),
                 title=str(form.get("title", "")).strip(),
                 cover_art_url=str(form.get("cover_art_url", "")).strip(),
@@ -841,7 +869,7 @@ def create_app(repository_path: Path) -> FastAPI:
         # The file was renamed, but it keeps its YouTube id, so the finder
         # locates it again under its new name.
         song = summarize(SongModel(
-            find_song_file(app.state.repository_path, youtube_id)
+            find_song_file(app.state.repository_path, key)
         ))
 
         if request.headers.get("HX-Request") is not None:
@@ -863,13 +891,13 @@ def create_app(repository_path: Path) -> FastAPI:
         # it came from. 303 so a reload does not re-submit the form.
         return RedirectResponse(url="/?junk=1", status_code=303)
 
-    @app.get("/songs/{youtube_id}/cover")
-    def song_cover(youtube_id: str) -> Response:
+    @app.get("/songs/{key}/cover")
+    def song_cover(key: str) -> Response:
         """Serve the embedded cover art, if the file carries one."""
 
         try:
             song = SongModel(
-                find_song_file(app.state.repository_path, youtube_id)
+                find_song_file(app.state.repository_path, key)
             )
         except SongNotFound:
             raise HTTPException(status_code=404, detail="unknown song")
@@ -883,8 +911,8 @@ def create_app(repository_path: Path) -> FastAPI:
             media_type=pictures[0].mime or "image/jpeg",
         )
 
-    @app.get("/songs/{youtube_id}/audio")
-    def song_audio(youtube_id: str) -> FileResponse:
+    @app.get("/songs/{key}/audio")
+    def song_audio(key: str) -> FileResponse:
         """Stream one song's MP3.
 
         FileResponse handles Range requests, which is what lets the
@@ -893,7 +921,7 @@ def create_app(repository_path: Path) -> FastAPI:
         """
 
         try:
-            song_file = find_song_file(app.state.repository_path, youtube_id)
+            song_file = find_song_file(app.state.repository_path, key)
         except SongNotFound:
             raise HTTPException(status_code=404, detail="unknown song")
 
@@ -901,8 +929,8 @@ def create_app(repository_path: Path) -> FastAPI:
             song_file, media_type="audio/mpeg", filename=song_file.name
         )
 
-    @app.get("/songs/{youtube_id}/peaks")
-    async def song_peaks(youtube_id: str) -> Response:
+    @app.get("/songs/{key}/peaks")
+    async def song_peaks(key: str) -> Response:
         """Serve one song's waveform, as one loudness per bar.
 
         Values run 0 to 1 rather than the 0 to 255 stored in the file:
@@ -914,16 +942,16 @@ def create_app(repository_path: Path) -> FastAPI:
         """
 
         try:
-            song_file = find_song_file(app.state.repository_path, youtube_id)
+            song_file = find_song_file(app.state.repository_path, key)
         except SongNotFound:
             raise HTTPException(status_code=404, detail="unknown song")
 
         jobs = app.state.peak_jobs
-        task = jobs.get(youtube_id)
+        task = jobs.get(key)
         if task is None:
             task = asyncio.create_task(asyncio.to_thread(peaks_for, song_file))
-            jobs[youtube_id] = task
-            task.add_done_callback(lambda _: jobs.pop(youtube_id, None))
+            jobs[key] = task
+            task.add_done_callback(lambda _: jobs.pop(key, None))
 
         try:
             # Shielded so that a listener skipping to the next song — which
@@ -937,8 +965,8 @@ def create_app(repository_path: Path) -> FastAPI:
 
         return JSONResponse([round(value / 255, 3) for value in peaks])
 
-    @app.post("/songs/{youtube_id}/junkize")
-    def junkize(youtube_id: str, request: Request):
+    @app.post("/songs/{key}/junkize")
+    def junkize(key: str, request: Request):
         """Clear one song's metadata and mark it as junk.
 
         Destructive and not undoable, so the button carries an hx-confirm.
@@ -948,7 +976,7 @@ def create_app(repository_path: Path) -> FastAPI:
         """
 
         try:
-            result = junkize_song(app.state.repository_path, youtube_id)
+            result = junkize_song(app.state.repository_path, key)
         except SongNotFound:
             raise HTTPException(status_code=404, detail="unknown song")
 

@@ -6,6 +6,7 @@ from pathlib import Path
 import httpx
 from mutagen.id3 import ID3, TXXX
 
+from pypl2mp3.services.find_song import song_key
 from pypl2mp3.web.app import create_app
 
 PLAYLIST = "Owner - Alpha [PL0000000000000000000000000000001]"
@@ -28,6 +29,16 @@ def _make_song(repo: Path, artist, title, vid, junk=False):
     return path
 
 
+
+def _key(vid, playlist=PLAYLIST):
+    """The address the web uses for one song.
+
+    Not the video: a video held by two playlists is two files, and the
+    routes name the file. `song_key` is the one definition of the pair.
+    """
+
+    return song_key(playlist, vid)
+
 def _client(app):
     return httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
@@ -38,9 +49,9 @@ async def test_the_inspector_carries_the_song_and_its_form(tmp_path):
     _make_song(tmp_path, "UNKNOWN", "Something", "aaaaaaaaaaa", junk=True)
 
     async with _client(create_app(tmp_path)) as client:
-        body = (await client.get("/fragments/inspector/aaaaaaaaaaa")).text
+        body = (await client.get(f"/fragments/inspector/{_key('aaaaaaaaaaa')}")).text
 
-    assert "/songs/aaaaaaaaaaa/cover" in body, "no cover art"
+    assert f"/songs/{_key('aaaaaaaaaaa')}/cover" in body, "no cover art"
     assert 'name="artist"' in body
     assert 'name="title"' in body
     assert 'name="cover_art_url"' in body
@@ -55,7 +66,7 @@ async def test_the_inspector_is_a_fragment_and_holds_no_player(tmp_path):
     _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
-        body = (await client.get("/fragments/inspector/aaaaaaaaaaa")).text
+        body = (await client.get(f"/fragments/inspector/{_key('aaaaaaaaaaa')}")).text
 
     assert "<audio" not in body, "the inspector brought its own player back"
     for tag in ("<html", "<body", "<head"):
@@ -75,7 +86,7 @@ async def test_the_inspector_does_not_call_shazam_on_load(tmp_path, monkeypatch)
 
     async with _client(create_app(tmp_path)) as client:
         assert (
-            await client.get("/fragments/inspector/aaaaaaaaaaa")
+            await client.get(f"/fragments/inspector/{_key('aaaaaaaaaaa')}")
         ).status_code == 200
 
     assert called == [], "opening the panel must not identify the song"
@@ -86,7 +97,7 @@ async def test_an_unknown_song_has_no_inspector(tmp_path):
 
     async with _client(create_app(tmp_path)) as client:
         assert (
-            await client.get("/fragments/inspector/zzzzzzzzzzz")
+            await client.get(f"/fragments/inspector/{_key('zzzzzzzzzzz')}")
         ).status_code == 404
 
 
@@ -99,7 +110,7 @@ async def test_saving_tells_the_listing_to_refetch(tmp_path):
 
     async with _client(create_app(tmp_path)) as client:
         response = await client.post(
-            "/songs/aaaaaaaaaaa/fix",
+            f"/songs/{_key('aaaaaaaaaaa')}/fix",
             headers=HX,
             data={"artist": "THE PHARCYDE", "title": "Passin Me By"},
         )
@@ -114,7 +125,7 @@ async def test_saving_returns_the_updated_panel_not_a_row(tmp_path):
     async with _client(create_app(tmp_path)) as client:
         body = (
             await client.post(
-                "/songs/aaaaaaaaaaa/fix",
+                f"/songs/{_key('aaaaaaaaaaa')}/fix",
                 headers=HX,
                 data={"artist": "THE PHARCYDE", "title": "Passin Me By"},
             )
@@ -176,7 +187,7 @@ async def test_shazam_answers_in_the_panel_rather_than_as_json(
     _make_song(tmp_path, "UNKNOWN", "Something", "aaaaaaaaaaa", junk=True)
 
     async with _client(create_app(tmp_path)) as client:
-        started = await client.post("/songs/aaaaaaaaaaa/shazam", headers=HX)
+        started = await client.post(f"/songs/{_key('aaaaaaaaaaa')}/shazam", headers=HX)
 
         assert started.status_code == 200
         assert "job_id" not in started.text, "raw JSON is back"
@@ -185,7 +196,7 @@ async def test_shazam_answers_in_the_panel_rather_than_as_json(
         # Poll until the job settles, the way the fragment does.
         for _ in range(60):
             body = (
-                await client.get("/fragments/shazam/aaaaaaaaaaa", headers=HX)
+                await client.get(f"/fragments/shazam/{_key('aaaaaaaaaaa')}", headers=HX)
             ).text
             if "Listening" not in body:
                 break
@@ -209,10 +220,10 @@ async def test_the_proposal_fills_the_form_instead_of_writing_the_tags(
     path = _make_song(tmp_path, "UNKNOWN", "Something", "aaaaaaaaaaa", junk=True)
 
     async with _client(create_app(tmp_path)) as client:
-        await client.post("/songs/aaaaaaaaaaa/shazam", headers=HX)
+        await client.post(f"/songs/{_key('aaaaaaaaaaa')}/shazam", headers=HX)
         for _ in range(60):
             body = (
-                await client.get("/fragments/shazam/aaaaaaaaaaa", headers=HX)
+                await client.get(f"/fragments/shazam/{_key('aaaaaaaaaaa')}", headers=HX)
             ).text
             if "Listening" not in body:
                 break
@@ -239,10 +250,10 @@ async def test_polling_stops_once_shazam_has_answered(
     _make_song(tmp_path, "UNKNOWN", "Something", "aaaaaaaaaaa", junk=True)
 
     async with _client(create_app(tmp_path)) as client:
-        await client.post("/songs/aaaaaaaaaaa/shazam", headers=HX)
+        await client.post(f"/songs/{_key('aaaaaaaaaaa')}/shazam", headers=HX)
         for _ in range(60):
             body = (
-                await client.get("/fragments/shazam/aaaaaaaaaaa", headers=HX)
+                await client.get(f"/fragments/shazam/{_key('aaaaaaaaaaa')}", headers=HX)
             ).text
             if "Listening" not in body:
                 break
@@ -255,7 +266,7 @@ async def test_shazam_without_a_job_is_a_404_not_an_empty_panel(tmp_path):
 
     async with _client(create_app(tmp_path)) as client:
         assert (
-            await client.get("/fragments/shazam/aaaaaaaaaaa")
+            await client.get(f"/fragments/shazam/{_key('aaaaaaaaaaa')}")
         ).status_code == 404
 
 
@@ -274,7 +285,7 @@ async def test_the_script_guards_unsaved_edits_before_following_the_player(
         script = (await client.get("/static/console.js")).text
 
     assert "/fragments/inspector/" in script, "the panel never follows"
-    guard = script[script.index("function inspect(id)"):]
+    guard = script[script.index("function inspect(key)"):]
     guard = guard[: guard.index("\n  }")]
     assert "if (dirty)" in guard, "no guard on unsaved edits"
     assert "return" in guard, guard[:200]
@@ -301,7 +312,7 @@ async def test_the_panel_offers_to_play_what_it_shows(tmp_path):
     _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
-        panel = (await client.get("/fragments/inspector/aaaaaaaaaaa")).text
+        panel = (await client.get(f"/fragments/inspector/{_key('aaaaaaaaaaa')}")).text
         css = (await client.get("/static/console.css")).text
         script = (await client.get("/static/console.js")).text
 
@@ -368,7 +379,7 @@ async def test_the_shazam_block_says_which_element_it_replaces(tmp_path):
 
     async with _client(create_app(tmp_path)) as client:
         panel = (await client.get(
-            "/fragments/inspector/aaaaaaaaaaa", headers=HX)).text
+            f"/fragments/inspector/{_key('aaaaaaaaaaa')}", headers=HX)).text
 
     form = re.search(r"<form[^>]*>", panel).group(0)
     assert 'hx-target="#inspector"' in form, (
@@ -400,7 +411,7 @@ async def test_the_block_takes_the_fields_place_rather_than_pushing_them(
 
     async with _client(create_app(tmp_path)) as client:
         panel = (await client.get(
-            "/fragments/inspector/aaaaaaaaaaa", headers=HX)).text
+            f"/fragments/inspector/{_key('aaaaaaaaaaa')}", headers=HX)).text
         css = (await client.get("/static/console.css")).text
 
     slot = re.search(
@@ -468,7 +479,7 @@ async def test_save_waits_for_a_change(tmp_path):
 
     async with _client(create_app(tmp_path)) as client:
         panel = (await client.get(
-            "/fragments/inspector/aaaaaaaaaaa", headers=HX)).text
+            f"/fragments/inspector/{_key('aaaaaaaaaaa')}", headers=HX)).text
         js = (await client.get("/static/console.js")).text
 
     submit = re.search(r"<button type=\"submit\"[^>]*>Save MP3</button>", panel)
@@ -580,7 +591,7 @@ async def test_a_running_identification_answers_with_nothing(
     _make_song(tmp_path, "UNKNOWN", "Something", "aaaaaaaaaaa", junk=True)
 
     async with _client(create_app(tmp_path)) as client:
-        started = await client.post("/songs/aaaaaaaaaaa/shazam", headers=HX)
+        started = await client.post(f"/songs/{_key('aaaaaaaaaaa')}/shazam", headers=HX)
 
         assert started.status_code == 200
         assert "Listening" in started.text, (
@@ -588,7 +599,7 @@ async def test_a_running_identification_answers_with_nothing(
         )
 
         polled = await client.get(
-            "/fragments/shazam/aaaaaaaaaaa", headers=HX
+            f"/fragments/shazam/{_key('aaaaaaaaaaa')}", headers=HX
         )
 
         assert polled.status_code == 204, (
@@ -602,7 +613,7 @@ async def test_a_running_identification_answers_with_nothing(
 
         for _ in range(60):
             done = await client.get(
-                "/fragments/shazam/aaaaaaaaaaa", headers=HX
+                f"/fragments/shazam/{_key('aaaaaaaaaaa')}", headers=HX
             )
             if done.status_code == 200:
                 break
@@ -658,14 +669,14 @@ async def test_the_answer_shows_what_it_says_about_the_release(
 
     async with _client(create_app(tmp_path)) as client:
         body = (await client.post(
-            "/songs/aaaaaaaaaaa/shazam", headers=HX
+            f"/songs/{_key('aaaaaaaaaaa')}/shazam", headers=HX
         )).text
 
         for _ in range(60):
             if "Listening" not in body:
                 break
             answer = await client.get(
-                "/fragments/shazam/aaaaaaaaaaa", headers=HX
+                f"/fragments/shazam/{_key('aaaaaaaaaaa')}", headers=HX
             )
             if answer.status_code == 200:
                 body = answer.text

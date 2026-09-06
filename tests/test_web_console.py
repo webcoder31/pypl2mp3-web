@@ -590,8 +590,11 @@ async def test_nothing_is_marked_playing_when_nothing_plays(tmp_path):
             "optional boolean, which toggles instead of setting"
         )
 
-    assert "row.dataset.songId === currentId" in script, (
-        "the row-marking comparison is no longer strict"
+    # By the key, not the video: a video held by two playlists is two
+    # rows, and marking both said the song was playing twice.
+    assert "row.dataset.songKey === currentKey" in script, (
+        "the row-marking comparison is no longer strict, or is back on "
+        "the video id that names two rows"
     )
 
 
@@ -648,7 +651,7 @@ async def test_the_panel_describes_the_first_song_on_arrival(tmp_path):
     # its own guard rather than from a nearby landmark, which caught the
     # rest of the file the first time this was written.
     start = script.index(
-        'if (!document.querySelector("#inspector [data-song-id]"))'
+        'if (!document.querySelector("#inspector [data-song-key]"))'
     )
     arrival = script[start:]
     arrival = arrival[: arrival.index("\n  }") + 4]
@@ -656,7 +659,7 @@ async def test_the_panel_describes_the_first_song_on_arrival(tmp_path):
     assert "rows()[0]" in arrival, (
         "nothing picks the first row when the panel arrives empty"
     )
-    assert "inspect(first.dataset.songId)" in arrival, arrival
+    assert "inspect(first.dataset.songKey)" in arrival, arrival
 
     # Describing, not starting: no queue is built and no audio is set.
     assert "setQueue" not in arrival, "arriving on the page starts playing"
@@ -673,7 +676,7 @@ async def test_a_panel_the_server_already_filled_is_left_alone(tmp_path):
     async with _client(create_app(tmp_path)) as client:
         script = (await client.get("/static/console.js")).text
 
-    guard = script[script.index('if (!document.querySelector("#inspector [data-song-id]"))'):]
+    guard = script[script.index('if (!document.querySelector("#inspector [data-song-key]"))'):]
     guard = guard[: guard.index("\n  }")]
     assert "rows()[0]" in guard, (
         "the first row is chosen whatever the panel already holds"

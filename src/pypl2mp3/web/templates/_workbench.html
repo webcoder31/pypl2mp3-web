@@ -4,13 +4,14 @@
    identifying *is* the work, and the answer for this song was very
    likely started while you were deciding on the previous one. #}
 <div id="inspector-body" class="workbench"
-     data-song-id="{{ song.youtube_id }}">
+     data-song-id="{{ song.youtube_id }}"
+     data-song-key="{{ song.key }}">
   <div class="workbench-cover">
     {# ?v= the file's timestamp: the address is otherwise the same
        forever, the response carries no validator, and a browser
        that has seen the picture once keeps showing it. Saving a new
        cover left the old one on screen. #}
-    <img src="/songs/{{ song.youtube_id }}/cover?v={{ song.cover_version }}"
+    <img src="/songs/{{ song.key }}/cover?v={{ song.cover_version }}"
          alt="" class="cover"
          onerror="this.style.display='none'">
   </div>
@@ -45,7 +46,7 @@
     {# Nothing is swapped in: advancing to the next song is the
        confirmation, and painting the ordinary inspector first would
        flash the wrong panel on the way there. #}
-    <form hx-post="/songs/{{ song.youtube_id }}/fix"
+    <form hx-post="/songs/{{ song.key }}/fix"
           hx-target="#prefetch"
           hx-swap="none">
       {# One cell for the answer and the fields, as in the panel. Stacked
@@ -74,7 +75,7 @@
            fifteen-second throttle in turn ahead of the one you stopped
            on. #}
         <div id="shazam" class="job"
-             hx-post="/songs/{{ song.youtube_id }}/shazam"
+             hx-post="/songs/{{ song.key }}/shazam"
              hx-trigger="load delay:600ms"
              hx-target="this"
              hx-swap="outerHTML"></div>

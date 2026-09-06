@@ -29,24 +29,26 @@ class JunkizeResult:
     path: Path
 
 
-def junkize_song(repository_path: Path, youtube_id: str) -> JunkizeResult:
+def junkize_song(repository_path: Path, key: str) -> JunkizeResult:
     """Clear one song's metadata and rename it as junk.
 
     Args:
         repository_path: folder where playlists are stored.
-        youtube_id: identifies the song; it is the one field junkizing
-            preserves.
+        key: names the file — the playlist and the video. Not the video
+            alone: one held by two playlists is two files, and this
+            renames the one it is given.
 
     Returns:
         The filename before and after.
 
     Raises:
-        SongNotFound: if no song in the repository has that id.
+        SongNotFound: if no song in the repository answers to that key.
     """
 
-    song_file = find_song_file(repository_path, youtube_id)
+    song_file = find_song_file(repository_path, key)
     song = SongModel(song_file)
     previous_filename = song_file.name
+    youtube_id = song.youtube_id
 
     song.reset_state()
     song.fix_filename()

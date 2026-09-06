@@ -21,6 +21,7 @@ from mutagen.id3 import ID3, TPE1, TIT2, TXXX
 from pypl2mp3.libs import metadata
 from pypl2mp3.services.list_songs import SongSummary, summarize
 from pypl2mp3.libs.song import SongModel
+from pypl2mp3.services.find_song import song_key
 from pypl2mp3.web.app import create_app
 
 HX = {"HX-Request": "true"}
@@ -33,6 +34,16 @@ def _client(app):
 
 _FRAME = b"\xff\xfb\x90\xc0" + b"\x00" * 413
 PLAYLIST = "Owner - Alpha [PL0000000000000000000000000000001]"
+
+def _key(vid, playlist=PLAYLIST):
+    """The address the web uses for one song.
+
+    Not the video: a video held by two playlists is two files, and the
+    routes name the file. `song_key` is the one definition of the pair.
+    """
+
+    return song_key(playlist, vid)
+
 
 
 def _song(repo: Path, vid="aaaaaaaaaaa", origin=None) -> Path:
@@ -249,7 +260,7 @@ class TestTheTemplates:
                 for vid, expected in (("aaaaaaaaaaa", True),
                                       ("bbbbbbbbbbb", False)):
                     fragments[panel, expected] = (await client.get(
-                        f"/fragments/{panel}/{vid}", headers=HX)).text
+                        f"/fragments/{panel}/{_key(vid)}", headers=HX)).text
 
         for (panel, expected), markup in fragments.items():
             link = re.search(
@@ -487,9 +498,9 @@ class TestWhatWasTypedRatherThanFound:
 
         async with _client(create_app(tmp_path)) as client:
             marked = (await client.get(
-                "/fragments/inspector/aaaaaaaaaaa", headers=HX)).text
+                f"/fragments/inspector/{_key('aaaaaaaaaaa')}", headers=HX)).text
             plain = (await client.get(
-                "/fragments/inspector/bbbbbbbbbbb", headers=HX)).text
+                f"/fragments/inspector/{_key('bbbbbbbbbbb')}", headers=HX)).text
 
         for markup, expected in ((marked, True), (plain, False)):
             shazam = re.search(
@@ -541,7 +552,7 @@ class TestWhatWasTypedRatherThanFound:
 
         async with _client(create_app(tmp_path)) as client:
             markup = (await client.get(
-                "/fragments/inspector/aaaaaaaaaaa", headers=HX)).text
+                f"/fragments/inspector/{_key('aaaaaaaaaaa')}", headers=HX)).text
 
         assert "set by hand" not in markup
 

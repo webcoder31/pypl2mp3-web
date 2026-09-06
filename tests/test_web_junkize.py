@@ -2,10 +2,12 @@
 
 from pathlib import Path
 
+import re
 import httpx
 from mutagen.easyid3 import EasyID3
 from mutagen.id3 import ID3
 
+from pypl2mp3.services.find_song import song_key
 from pypl2mp3.web.app import create_app
 
 PLAYLIST = "Owner - Alpha [PL0000000000000000000000000000001]"
@@ -28,6 +30,16 @@ def _make_song(repo: Path, artist: str, title: str, vid: str) -> Path:
     return path
 
 
+
+def _key(vid, playlist=PLAYLIST):
+    """The address the web uses for one song.
+
+    Not the video: a video held by two playlists is two files, and the
+    routes name the file. `song_key` is the one definition of the pair.
+    """
+
+    return song_key(playlist, vid)
+
 def _client(app):
     return httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
@@ -40,13 +52,13 @@ async def test_the_listing_offers_junkize_only_for_tagged_songs(tmp_path):
 
     async with _client(app) as client:
         body = (await client.get("/fragments/list")).text
-        assert "/songs/aaaaaaaaaaa/junkize" in body
+        assert f"/songs/{_key('aaaaaaaaaaa')}/junkize" in body
 
-        await client.post("/songs/aaaaaaaaaaa/junkize", headers=HX)
+        await client.post(f"/songs/{_key('aaaaaaaaaaa')}/junkize", headers=HX)
 
         after = (await client.get("/fragments/list")).text
 
-    assert "/songs/aaaaaaaaaaa/junkize" not in after, (
+    assert f"/songs/{_key('aaaaaaaaaaa')}/junkize" not in after, (
         "an already-junk song must not offer the button again"
     )
 
@@ -55,7 +67,7 @@ async def test_it_clears_the_tags_on_disk(tmp_path):
     _make_song(tmp_path, "THE PHARCYDE", "Passin Me By", "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
-        response = await client.post("/songs/aaaaaaaaaaa/junkize", headers=HX)
+        response = await client.post(f"/songs/{_key('aaaaaaaaaaa')}/junkize", headers=HX)
 
     assert response.status_code == 200
 
@@ -70,10 +82,13 @@ async def test_the_row_comes_back_marked_as_junk(tmp_path):
 
     async with _client(create_app(tmp_path)) as client:
         row = (
-            await client.post("/songs/aaaaaaaaaaa/junkize", headers=HX)
+            await client.post(f"/songs/{_key('aaaaaaaaaaa')}/junkize", headers=HX)
         ).text
 
-    assert 'id="song-aaaaaaaaaaa"' in row, (
+    # The row is named by its file, not by the video — eight songs sit in
+    # two playlists at once — and junkizing renames the file, so the key
+    # is the playlist and the video, which a rename cannot move.
+    assert re.search(r'id="song-[0-9a-f]{16}"', row), (
         "the fragment must carry the id it replaces, or the swap misses"
     )
     assert "⚠" in row, "the row should now show the junk marker"
@@ -97,7 +112,7 @@ async def test_an_unknown_song_is_a_404(tmp_path):
     spared = next((tmp_path / PLAYLIST).glob("*.mp3"))
 
     async with _client(create_app(tmp_path)) as client:
-        response = await client.post("/songs/zzzzzzzzzzz/junkize", headers=HX)
+        response = await client.post(f"/songs/{_key('zzzzzzzzzzz')}/junkize", headers=HX)
 
     assert response.status_code == 404
     assert spared.exists()
@@ -108,7 +123,7 @@ async def test_without_the_htmx_header_it_answers_json(tmp_path):
     _make_song(tmp_path, "ARTIST", "Title", "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
-        response = await client.post("/songs/aaaaaaaaaaa/junkize")
+        response = await client.post(f"/songs/{_key('aaaaaaaaaaa')}/junkize")
 
     assert response.headers["content-type"].startswith("application/json")
     payload = response.json()

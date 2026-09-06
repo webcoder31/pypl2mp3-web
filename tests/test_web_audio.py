@@ -4,6 +4,7 @@ from pathlib import Path
 
 import httpx
 
+from pypl2mp3.services.find_song import song_key
 from pypl2mp3.web.app import create_app
 
 PLAYLIST = "Owner - Alpha [PL0000000000000000000000000000001]"
@@ -20,6 +21,16 @@ def _make_song(repo: Path, vid: str) -> Path:
     return path
 
 
+
+def _key(vid, playlist=PLAYLIST):
+    """The address the web uses for one song.
+
+    Not the video: a video held by two playlists is two files, and the
+    routes name the file. `song_key` is the one definition of the pair.
+    """
+
+    return song_key(playlist, vid)
+
 def _client(app):
     return httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
@@ -30,7 +41,7 @@ async def test_it_serves_the_file_as_audio(tmp_path):
     path = _make_song(tmp_path, "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
-        response = await client.get("/songs/aaaaaaaaaaa/audio")
+        response = await client.get(f"/songs/{_key('aaaaaaaaaaa')}/audio")
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "audio/mpeg"
@@ -44,7 +55,7 @@ async def test_it_supports_range_requests(tmp_path):
 
     async with _client(create_app(tmp_path)) as client:
         response = await client.get(
-            "/songs/aaaaaaaaaaa/audio", headers={"Range": "bytes=0-99"}
+            f"/songs/{_key('aaaaaaaaaaa')}/audio", headers={"Range": "bytes=0-99"}
         )
 
     assert response.status_code == 206
@@ -56,7 +67,7 @@ async def test_an_unknown_id_is_a_404(tmp_path):
     _make_song(tmp_path, "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
-        response = await client.get("/songs/zzzzzzzzzzz/audio")
+        response = await client.get(f"/songs/{_key('zzzzzzzzzzz')}/audio")
 
     assert response.status_code == 404
 

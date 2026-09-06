@@ -82,7 +82,7 @@ class FixProposal:
 
 async def propose_fix(
     repository_path: Path,
-    youtube_id: str,
+    key: str,
     progress: ProgressPort,
     shazam_threshold: float = DEFAULT_SHAZAM_THRESHOLD,
 ) -> FixProposal:
@@ -92,14 +92,15 @@ async def propose_fix(
     Nothing reaches the file until `apply_fix`.
 
     Raises:
-        SongNotFound: if no song carries that id.
+        SongNotFound: if no song answers to that key.
         Exception: whatever Shazam raises. Not swallowed — an empty
             proposal would read as "Shazam found nothing", which is a
             different answer from "Shazam could not be reached".
     """
 
-    song_file = find_song_file(repository_path, youtube_id)
+    song_file = find_song_file(repository_path, key)
     song = SongModel(song_file)
+    youtube_id = song.youtube_id
 
     progress.stage_started(SHAZAM_STAGE, "Shazam-ing audio track")
     await song.shazam_song(shazam_match_threshold=shazam_threshold)
@@ -129,7 +130,7 @@ async def propose_fix(
 
 async def apply_fix(
     repository_path: Path,
-    youtube_id: str,
+    key: str,
     artist: str,
     title: str,
     cover_art_url: str = "",
@@ -165,14 +166,15 @@ async def apply_fix(
     drops the suffix. The CLI does the same after a successful fix.
 
     Raises:
-        SongNotFound: if no song carries that id.
+        SongNotFound: if no song answers to that key.
         Exception: if the cover art cannot be fetched. Nothing has been
             written at that point, so the caller can report the failure
             and the song is as it was.
     """
 
-    song_file = find_song_file(repository_path, youtube_id)
+    song_file = find_song_file(repository_path, key)
     song = SongModel(song_file)
+    youtube_id = song.youtube_id
 
     if cover_art_url:
         song.cover_art_url = cover_art_url

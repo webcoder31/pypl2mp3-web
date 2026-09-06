@@ -8,6 +8,7 @@ from pathlib import Path
 import httpx
 from mutagen.id3 import ID3, TXXX
 
+from pypl2mp3.services.find_song import song_key
 from pypl2mp3.web.app import create_app
 from pypl2mp3.web.jobs import JobState
 
@@ -29,6 +30,16 @@ def _make_junk(repo: Path, vid: str):
 
     return path
 
+
+
+def _key(vid, playlist=PLAYLIST):
+    """The address the web uses for one song.
+
+    Not the video: a video held by two playlists is two files, and the
+    routes name the file. `song_key` is the one definition of the pair.
+    """
+
+    return song_key(playlist, vid)
 
 def _client(app):
     return httpx.AsyncClient(
@@ -58,8 +69,8 @@ async def test_the_card_asks_shazam_once_it_has_been_looked_at(tmp_path):
     _make_junk(tmp_path, "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
-        card = (await client.get("/fragments/workbench/aaaaaaaaaaa")).text
-        panel = (await client.get("/fragments/inspector/aaaaaaaaaaa")).text
+        card = (await client.get(f"/fragments/workbench/{_key('aaaaaaaaaaa')}")).text
+        panel = (await client.get(f"/fragments/inspector/{_key('aaaaaaaaaaa')}")).text
 
     trigger = re.search(r'hx-trigger="load([^"]*)"', card)
     assert trigger, "the card waits to be asked"
@@ -67,7 +78,7 @@ async def test_the_card_asks_shazam_once_it_has_been_looked_at(tmp_path):
     assert delay, f"asked on sight, with nothing to cancel: {trigger.group(0)}"
     # Long enough to outlast a step, short enough not to read as a pause.
     assert 200 <= int(delay.group(1)) <= 800, delay.group(1)
-    assert "/songs/aaaaaaaaaaa/shazam" in card
+    assert f"/songs/{_key('aaaaaaaaaaa')}/shazam" in card
 
     assert "hx-trigger=\"load" not in panel, (
         "the ordinary inspector must not spend a Shazam call on every "
@@ -79,11 +90,11 @@ async def test_the_card_carries_the_form_and_the_song(tmp_path):
     _make_junk(tmp_path, "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
-        card = (await client.get("/fragments/workbench/aaaaaaaaaaa")).text
+        card = (await client.get(f"/fragments/workbench/{_key('aaaaaaaaaaa')}")).text
 
     assert 'name="artist"' in card
     assert 'name="title"' in card
-    assert "/songs/aaaaaaaaaaa/cover" in card
+    assert f"/songs/{_key('aaaaaaaaaaa')}/cover" in card
     assert 'data-song-id="aaaaaaaaaaa"' in card, (
         "console.js needs this to know which song is on show"
     )
@@ -95,7 +106,7 @@ async def test_the_card_holds_no_player_of_its_own(tmp_path):
     _make_junk(tmp_path, "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
-        card = (await client.get("/fragments/workbench/aaaaaaaaaaa")).text
+        card = (await client.get(f"/fragments/workbench/{_key('aaaaaaaaaaa')}")).text
 
     assert "<audio" not in card
     for tag in ("<html", "<body", "<head"):
@@ -107,7 +118,7 @@ async def test_an_unknown_song_has_no_card(tmp_path):
 
     async with _client(create_app(tmp_path)) as client:
         assert (
-            await client.get("/fragments/workbench/zzzzzzzzzzz")
+            await client.get(f"/fragments/workbench/{_key('zzzzzzzzzzz')}")
         ).status_code == 404
 
 
@@ -118,7 +129,7 @@ async def test_saving_from_the_card_paints_nothing_and_moves_on(tmp_path):
     _make_junk(tmp_path, "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
-        card = (await client.get("/fragments/workbench/aaaaaaaaaaa")).text
+        card = (await client.get(f"/fragments/workbench/{_key('aaaaaaaaaaa')}")).text
         script = (await client.get("/static/console.js")).text
 
     form = re.search(r"<form[^>]*>", card).group(0)
@@ -141,7 +152,7 @@ async def test_the_save_still_tells_the_listing_to_refetch(tmp_path):
 
     async with _client(create_app(tmp_path)) as client:
         response = await client.post(
-            "/songs/aaaaaaaaaaa/fix",
+            f"/songs/{_key('aaaaaaaaaaa')}/fix",
             headers=HX,
             data={"artist": "THE PHARCYDE", "title": "Passin Me By"},
         )
@@ -189,7 +200,7 @@ async def test_the_ordinary_inspector_never_prefetches(tmp_path, monkeypatch):
     _make_junk(tmp_path, "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
-        await client.get("/fragments/inspector/aaaaaaaaaaa")
+        await client.get(f"/fragments/inspector/{_key('aaaaaaaaaaa')}")
 
     assert called == []
 
@@ -204,7 +215,7 @@ async def test_the_mode_states_its_keys(tmp_path):
 
     async with _client(create_app(tmp_path)) as client:
         page = (await client.get("/")).text
-        card = (await client.get("/fragments/workbench/aaaaaaaaaaa")).text
+        card = (await client.get(f"/fragments/workbench/{_key('aaaaaaaaaaa')}")).text
         script = (await client.get("/static/console.js")).text
 
     keys = re.search(r'<p id="workbench-keys">(.*?)</p>', page, re.S)
@@ -242,14 +253,16 @@ async def test_a_card_you_left_gives_up_its_place_in_the_queue(tmp_path):
     async with _client(app) as client:
         # Nothing to cancel is not an error: the caller is saying "not
         # wanted", and a job that never started is not wanted either.
-        answer = await client.post("/songs/bbbbbbbbbbb/shazam/cancel")
+        answer = await client.post(f"/songs/{_key('bbbbbbbbbbb')}/shazam/cancel")
         assert answer.status_code == 200, answer.text
         assert answer.json() == {"cancelled": False}
 
-        job = app.state.jobs.start("shazam:aaaaaaaaaaa", waits_forever)
+        # Named by the file, like the route that cancels it.
+        job = app.state.jobs.start(
+            f"shazam:{_key('aaaaaaaaaaa')}", waits_forever)
         await asyncio.wait_for(started.wait(), 1)
 
-        answer = await client.post("/songs/aaaaaaaaaaa/shazam/cancel")
+        answer = await client.post(f"/songs/{_key('aaaaaaaaaaa')}/shazam/cancel")
         assert answer.json() == {"cancelled": True}, answer.text
 
         with contextlib.suppress(asyncio.CancelledError):
@@ -332,7 +345,7 @@ async def test_the_panel_wanted_counts_as_much_as_the_song(tmp_path):
     async with _client(create_app(tmp_path)) as client:
         script = (await client.get("/static/console.js")).text
 
-    body = script[script.index("function inspect(id)"):]
+    body = script[script.index("function inspect(key)"):]
     body = body[: body.index("\n  }")]
 
     assert "showing === wanted" in body, (

@@ -7,6 +7,7 @@ from mutagen.id3 import ID3, APIC, TXXX
 
 from pypl2mp3.libs import metadata
 
+from pypl2mp3.services.find_song import song_key
 from pypl2mp3.services.fix_junks import (
     FixProposal,
     SongNotFound,
@@ -21,6 +22,15 @@ PLAYLIST = "Owner - Alpha [PL0000000000000000000000000000001]"
 
 _MP3_FRAME = b"\xff\xfb\x90\xc0" + b"\x00" * 413
 
+
+def _key(vid, playlist=PLAYLIST):
+    """The address a caller uses for one song: the playlist and the video.
+
+    Not the video alone — one held by two playlists is two files, and
+    these functions act on the one they are given.
+    """
+
+    return song_key(playlist, vid)
 
 def _make_junk(repo: Path, vid: str = "aaaaaaaaaaa") -> Path:
     folder = repo / PLAYLIST
@@ -57,7 +67,7 @@ async def test_the_proposal_reports_what_shazam_heard(tmp_path, monkeypatch):
     )
     _make_junk(tmp_path)
 
-    proposal = await propose_fix(tmp_path, "aaaaaaaaaaa", FakeProgress())
+    proposal = await propose_fix(tmp_path, _key("aaaaaaaaaaa"), FakeProgress())
 
     assert isinstance(proposal, FixProposal)
     assert proposal.shazam_artist == "THE PHARCYDE"
@@ -76,7 +86,7 @@ async def test_proposing_writes_nothing(tmp_path, monkeypatch):
     path = _make_junk(tmp_path)
     before = path.read_bytes()
 
-    await propose_fix(tmp_path, "aaaaaaaaaaa", FakeProgress())
+    await propose_fix(tmp_path, _key("aaaaaaaaaaa"), FakeProgress())
 
     assert path.exists(), "the file was renamed by a read-only operation"
     assert path.read_bytes() == before, "the file was rewritten"
@@ -90,7 +100,7 @@ async def test_an_unmatched_song_says_so_rather_than_proposing_blanks(
     )
     _make_junk(tmp_path)
 
-    proposal = await propose_fix(tmp_path, "aaaaaaaaaaa", FakeProgress())
+    proposal = await propose_fix(tmp_path, _key("aaaaaaaaaaa"), FakeProgress())
 
     assert proposal.matched is False
 
@@ -99,8 +109,7 @@ async def test_applying_writes_the_tags_and_drops_the_junk_suffix(tmp_path):
     _make_junk(tmp_path)
     assert len(list_songs(tmp_path, junk_only=True)) == 1
 
-    result = await apply_fix(
-        tmp_path, "aaaaaaaaaaa", "THE PHARCYDE", "Passin Me By"
+    result = await apply_fix(tmp_path, _key("aaaaaaaaaaa"), "THE PHARCYDE", "Passin Me By"
     )
 
     assert "(JUNK)" not in result.filename
@@ -117,8 +126,7 @@ async def test_the_user_can_override_what_shazam_proposed(tmp_path):
 
     _make_junk(tmp_path)
 
-    result = await apply_fix(
-        tmp_path, "aaaaaaaaaaa", "MY ARTIST", "My Title"
+    result = await apply_fix(tmp_path, _key("aaaaaaaaaaa"), "MY ARTIST", "My Title"
     )
 
     assert result.current_artist == "MY ARTIST"
@@ -151,7 +159,7 @@ async def test_an_empty_cover_field_leaves_the_stored_url_alone(tmp_path):
     ))
     frames.save(path)
 
-    result = await apply_fix(tmp_path, "aaaaaaaaaaa", "THE PHARCYDE",
+    result = await apply_fix(tmp_path, _key("aaaaaaaaaaa"), "THE PHARCYDE",
                              "Passin Me By", cover_art_url="")
 
     kept = metadata.value(
@@ -168,9 +176,9 @@ async def test_an_empty_name_still_means_empty(tmp_path):
     the same "or None" that was wrong for the cover is right here."""
 
     _make_junk(tmp_path)
-    await apply_fix(tmp_path, "aaaaaaaaaaa", "THE PHARCYDE", "Passin Me By")
+    await apply_fix(tmp_path, _key("aaaaaaaaaaa"), "THE PHARCYDE", "Passin Me By")
 
-    result = await apply_fix(tmp_path, "aaaaaaaaaaa", "", "")
+    result = await apply_fix(tmp_path, _key("aaaaaaaaaaa"), "", "")
 
     written = ID3(tmp_path / PLAYLIST / result.filename)
     assert not written.getall("TPE1"), "the artist could not be cleared"
@@ -220,11 +228,11 @@ async def test_a_new_cover_url_actually_fetches_the_picture(
     _make_junk(tmp_path)
     calls = _catch_downloads(monkeypatch)
 
-    await apply_fix(tmp_path, "aaaaaaaaaaa", "A", "B",
+    await apply_fix(tmp_path, _key("aaaaaaaaaaa"), "A", "B",
                     cover_art_url="https://example.invalid/first.jpg")
     assert calls == ["https://example.invalid/first.jpg"]
 
-    await apply_fix(tmp_path, "aaaaaaaaaaa", "A", "B",
+    await apply_fix(tmp_path, _key("aaaaaaaaaaa"), "A", "B",
                     cover_art_url="https://example.invalid/second.jpg")
     assert calls[-1] == "https://example.invalid/second.jpg", (
         "a changed cover URL did not fetch anything"
@@ -242,7 +250,7 @@ async def test_the_same_cover_url_twice_fetches_once(
     calls = _catch_downloads(monkeypatch)
 
     for _ in range(3):
-        await apply_fix(tmp_path, "aaaaaaaaaaa", "A", "B",
+        await apply_fix(tmp_path, _key("aaaaaaaaaaa"), "A", "B",
                         cover_art_url="https://example.invalid/same.jpg")
 
     assert len(calls) == 1, f"the same picture was fetched {len(calls)} times"
@@ -259,7 +267,7 @@ async def test_a_cover_that_cannot_be_fetched_leaves_the_song_alone(
     _catch_downloads(monkeypatch, fail=True)
 
     with pytest.raises(Exception):
-        await apply_fix(tmp_path, "aaaaaaaaaaa", "THE PHARCYDE",
+        await apply_fix(tmp_path, _key("aaaaaaaaaaa"), "THE PHARCYDE",
                         "Passin Me By",
                         cover_art_url="https://example.invalid/gone.jpg")
 
@@ -291,7 +299,7 @@ async def test_the_file_records_where_its_picture_came_from(
     _make_junk(tmp_path)
     calls = _catch_downloads(monkeypatch)
 
-    await apply_fix(tmp_path, "aaaaaaaaaaa", "A", "B",
+    await apply_fix(tmp_path, _key("aaaaaaaaaaa"), "A", "B",
                     cover_art_url="https://example.invalid/one.jpg")
 
     embedded = metadata.read(next(tmp_path.rglob("*.mp3")))["embedded"]
@@ -318,18 +326,18 @@ async def test_the_record_survives_a_save_that_is_not_about_the_cover(
     _make_junk(tmp_path)
     calls = _catch_downloads(monkeypatch)
 
-    await apply_fix(tmp_path, "aaaaaaaaaaa", "A", "B",
+    await apply_fix(tmp_path, _key("aaaaaaaaaaa"), "A", "B",
                     cover_art_url="https://example.invalid/one.jpg")
 
     # A save about the names only.
-    await apply_fix(tmp_path, "aaaaaaaaaaa", "OTHER", "NAME")
+    await apply_fix(tmp_path, _key("aaaaaaaaaaa"), "OTHER", "NAME")
 
     assert metadata.read(next(tmp_path.rglob("*.mp3")))["embedded"].get(
         "cover_url"
     ), "an ordinary save dropped the record"
 
     # And the same picture is still not fetched again.
-    await apply_fix(tmp_path, "aaaaaaaaaaa", "A", "B",
+    await apply_fix(tmp_path, _key("aaaaaaaaaaa"), "A", "B",
                     cover_art_url="https://example.invalid/one.jpg")
 
     assert len(calls) == 1, f"the picture was fetched {len(calls)} times"
@@ -357,11 +365,11 @@ async def test_a_picture_of_unknown_origin_is_fetched_once(
 
     calls = _catch_downloads(monkeypatch)
 
-    await apply_fix(tmp_path, "aaaaaaaaaaa", "A", "B",
+    await apply_fix(tmp_path, _key("aaaaaaaaaaa"), "A", "B",
                     cover_art_url="https://example.invalid/one.jpg")
     assert len(calls) == 1, "an unknown origin was taken on trust"
 
-    await apply_fix(tmp_path, "aaaaaaaaaaa", "A", "B",
+    await apply_fix(tmp_path, _key("aaaaaaaaaaa"), "A", "B",
                     cover_art_url="https://example.invalid/one.jpg")
     assert len(calls) == 1, "the file did not learn"
 
@@ -370,7 +378,7 @@ async def test_an_unknown_song_raises_rather_than_touching_anything(tmp_path):
     spared = _make_junk(tmp_path)
 
     with pytest.raises(SongNotFound):
-        await apply_fix(tmp_path, "zzzzzzzzzzz", "A", "B")
+        await apply_fix(tmp_path, _key("zzzzzzzzzzz"), "A", "B")
 
     assert spared.exists()
 
@@ -385,7 +393,7 @@ async def test_the_proposal_reports_progress(tmp_path, monkeypatch):
     _make_junk(tmp_path)
     progress = FakeProgress()
 
-    await propose_fix(tmp_path, "aaaaaaaaaaa", progress)
+    await propose_fix(tmp_path, _key("aaaaaaaaaaa"), progress)
 
     kinds = [event[0] for event in progress.events]
     assert "stage_started" in kinds

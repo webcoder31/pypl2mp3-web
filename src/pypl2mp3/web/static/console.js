@@ -183,7 +183,13 @@
   function queueFromRows() {
     return rows().map(function (row) {
       return {
+        // Two, and they answer different questions. `id` is the video,
+        // which is what the server is asked about this song. `key` is
+        // the playlist and the video together, which is what says *which
+        // row* — eight songs here sit in two playlists at once, and
+        // everything keyed on the video treated the pair as one.
         id: row.dataset.songId,
+        key: row.dataset.songKey,
         label: row.dataset.label || "",
         duration: row.dataset.duration || "",
         junk: row.dataset.junk === "1",
@@ -235,7 +241,10 @@
     // nothing playing — which is every page load — that added `playing`
     // to all 927 rows at once. A strict comparison can only ever be true
     // or false, so the trap is gone rather than merely avoided.
-    const currentId = current ? current.id : null;
+    //
+    // The key and not the id: a video held by two playlists is two rows,
+    // and lighting both said the song was playing twice.
+    const currentKey = current ? current.key : null;
 
     // The run asked for by hand, numbered within itself. The queue is an
     // order the listing does not otherwise show, and a song told to play
@@ -249,10 +258,10 @@
     const ranked = playRanks(all);
 
     all.forEach(function (row) {
-      row.classList.toggle("playing", row.dataset.songId === currentId);
+      row.classList.toggle("playing", row.dataset.songKey === currentKey);
 
       const badge = row.querySelector(".queued");
-      if (badge) showRank(badge, lined.get(row.dataset.songId) || 0);
+      if (badge) showRank(badge, lined.get(row.dataset.songKey) || 0);
 
       const rank = row.querySelector(".rank");
       if (rank) showPlace(rank, ranked.get(row) || 0);
@@ -265,8 +274,8 @@
     // off to look at something else; `nearest` then does nothing at all
     // when the row is already visible, so it never moves a list that
     // does not need moving.
-    if (currentId !== followed) {
-      followed = currentId;
+    if (currentKey !== followed) {
+      followed = currentKey;
       const playing = document.querySelector("#list tr.playing");
       if (playing) playing.scrollIntoView({ block: "nearest" });
     }
@@ -385,7 +394,7 @@
       const entry = queue[(index + step + queue.length) % queue.length];
       // Starting a job that is already running or finished is a no-op
       // server-side, so this needs no bookkeeping of its own.
-      if (entry) window.htmx.ajax("POST", "/songs/" + entry.id + "/shazam", {
+      if (entry) window.htmx.ajax("POST", "/songs/" + entry.key + "/shazam", {
         target: "#prefetch",
         swap: "none",
       });
@@ -408,10 +417,10 @@
     // evaluate to undefined makes it toggle instead of set. Nothing
     // playing gives null, nothing shown gives "", and neither can equal
     // the other by accident.
-    const currentId = current ? current.id : null;
-    const shownId = shown ? shown.dataset.songId : "";
+    const currentKey = current ? current.key : null;
+    const shownKey = shown ? shown.dataset.songKey : "";
 
-    panel.classList.toggle("is-playing", shownId === currentId);
+    panel.classList.toggle("is-playing", shownKey === currentKey);
   }
 
   document.body.addEventListener("htmx:afterSwap", markInspectorCursor);
@@ -503,7 +512,7 @@
     if (box) crossfadeCover(box);
   });
 
-  function inspect(id) {
+  function inspect(key) {
     // Held back by an edit nobody has saved. The panel deliberately
     // stops following the player here — but it used to do it in
     // silence, so the panel simply looked stuck on the wrong song.
@@ -517,20 +526,20 @@
     // load nothing at all: you got the plain panel full frame, with no
     // listing, no nav, and no Done — nothing on screen could leave the
     // mode, so the page had to be reloaded.
-    const shown = document.querySelector("#inspector [data-song-id]");
+    const shown = document.querySelector("#inspector [data-song-key]");
     const showing = document.querySelector("#inspector .workbench")
       ? "workbench"
       : "inspector";
     const wanted = inWorkbench() ? "workbench" : "inspector";
-    if (shown && shown.dataset.songId === id && showing === wanted) return;
+    if (shown && shown.dataset.songKey === key && showing === wanted) return;
 
-    window.htmx.ajax("GET", "/fragments/" + wanted + "/" + id, "#inspector");
+    window.htmx.ajax("GET", "/fragments/" + wanted + "/" + key, "#inspector");
   }
 
   function play(i) {
     if (!queue.length) return;
 
-    const leaving = queue[index] ? queue[index].id : null;
+    const leaving = queue[index] ? queue[index].key : null;
 
     // Wrap rather than stop, the way the CLI's play loops its selection.
     index = (i + queue.length) % queue.length;
@@ -539,19 +548,19 @@
     // identification would take the fifteen-second throttle in front of
     // the one you stopped on. Told to the server rather than left to
     // finish: cancelling reaches the job inside its wait.
-    if (inWorkbench() && leaving && leaving !== queue[index].id) {
+    if (inWorkbench() && leaving && leaving !== queue[index].key) {
       window.htmx.ajax("POST", "/songs/" + leaving + "/shazam/cancel", {
         target: "#prefetch",
         swap: "none",
       });
     }
-    audio.src = "/songs/" + queue[index].id + "/audio";
-    loadWaveform(queue[index].id);
+    audio.src = "/songs/" + queue[index].key + "/audio";
+    loadWaveform(queue[index].key);
     warmWaveform();
     paint();
 
     // The song being judged is the song being heard: one cursor, not two.
-    inspect(queue[index].id);
+    inspect(queue[index].key);
     markInspectorCursor();
     prefetch();
 
@@ -607,6 +616,11 @@
   // comparison would answer "no" exactly when the ranks are wanted.
   let orderIsOwn = false;
 
+  // The rows asked for by hand, in the order they were asked for. Keys
+  // and not video ids: two copies of one video are two rows and two
+  // places in the queue, and a run holding the video could not say which
+  // of them it meant.
+  //
   // The songs asked for by hand, in the order they were asked for. Not a
   // second queue: they are moved into place in the one queue, so the
   // count in the toolbar goes on meaning what it says and no song is
@@ -625,10 +639,10 @@
   // moved, or went with the selection that held it.
   function lineupAhead() {
     return lineup
-      .map(function (id) {
+      .map(function (key) {
         return {
-          id: id,
-          at: queue.findIndex(function (entry) { return entry.id === id; }),
+          key: key,
+          at: queue.findIndex(function (entry) { return entry.key === key; }),
         };
       })
       .filter(function (song) { return song.at > index; })
@@ -649,17 +663,17 @@
     const waiting = new Map();
 
     all.forEach(function (row) {
-      const id = row.dataset.songId;
+      const key = row.dataset.songKey;
 
-      if (!waiting.has(id)) waiting.set(id, []);
-      waiting.get(id).push(row);
+      if (!waiting.has(key)) waiting.set(key, []);
+      waiting.get(key).push(row);
     });
 
     const out = [];
     const claimed = new Set();
 
     queue.forEach(function (entry) {
-      const rows = waiting.get(entry.id);
+      const rows = waiting.get(entry.key);
 
       if (rows && rows.length) {
         const row = rows.shift();
@@ -725,10 +739,10 @@
   // past is no longer in it.
   function lineupRanks() {
     const ahead = lineupAhead();
-    lineup = ahead.map(function (song) { return song.id; });
+    lineup = ahead.map(function (song) { return song.key; });
 
     const lined = new Map();
-    ahead.forEach(function (song, rank) { lined.set(song.id, rank + 1); });
+    ahead.forEach(function (song, rank) { lined.set(song.key, rank + 1); });
 
     return lined;
   }
@@ -759,7 +773,7 @@
     // does not stop: leaving a mode is not leaving the queue.
     if (queue[index]) {
       window.htmx.ajax(
-        "GET", "/fragments/inspector/" + queue[index].id, "#inspector"
+        "GET", "/fragments/inspector/" + queue[index].key, "#inspector"
       );
     }
   }
@@ -767,18 +781,18 @@
   // Play this one after the one playing — and after the last one asked
   // for before it, so picking three songs out of a listing plays them in
   // the order they were picked rather than in reverse.
-  function playNext(id) {
+  function playNext(key) {
     // Nothing playing, so there is no "next" for it to come after. Take
     // the listing and start there, exactly as clicking the row does.
     if (!queue.length) {
       const entries = queueFromRows();
       setQueue(entries, entries.findIndex(function (entry) {
-        return entry.id === id;
+        return entry.key === key;
       }), false);
       return;
     }
 
-    const from = queue.findIndex(function (entry) { return entry.id === id; });
+    const from = queue.findIndex(function (entry) { return entry.key === key; });
 
     // Already the one playing: nothing to line up.
     if (from === index) return;
@@ -788,7 +802,7 @@
     if (from === -1) {
       // Not in the queue at all — a row from a listing that has been
       // filtered since the queue was taken.
-      entry = queueFromRows().find(function (row) { return row.id === id; });
+      entry = queueFromRows().find(function (row) { return row.key === key; });
       if (!entry) return;
     } else {
       // Moved and not copied. A copy would play the song twice and make
@@ -805,7 +819,7 @@
 
     // Asked for again: it keeps one place in the run, and that place is
     // the newest — a second request is a request.
-    lineup = lineup.filter(function (other) { return other !== id; });
+    lineup = lineup.filter(function (other) { return other !== key; });
 
     // Behind the last one still ahead of the playing song, or behind the
     // playing song when the run has none left. Worked out after the
@@ -816,7 +830,7 @@
     queue.splice(at, 0, entry);
     // Rebuilt from what is still standing, which is also what keeps the
     // list from growing for the life of the page.
-    lineup = ahead.map(function (song) { return song.id; }).concat(id);
+    lineup = ahead.map(function (song) { return song.key; }).concat(key);
 
     // The queue is no longer the listing's order, and stays that way
     // after the run has played out: the songs it moved are still moved.
@@ -1533,9 +1547,9 @@
 
     const following =
       queue[(index + direction + queue.length) % queue.length];
-    if (!following || following.id === queue[index].id) return;
+    if (!following || following.key === queue[index].key) return;
 
-    window.fetch("/songs/" + following.id + "/peaks").catch(function () {
+    window.fetch("/songs/" + following.key + "/peaks").catch(function () {
       // Nothing to do and nothing to show: this is work done early, and
       // failing to do it early only means doing it on time.
     });
@@ -1691,13 +1705,13 @@
     // queue is on — that is the whole point of being able to inspect a
     // song without cutting the one you are listening to.
     if (event.target.closest("#inspector .play-this")) {
-      const shown = document.querySelector("#inspector [data-song-id]");
+      const shown = document.querySelector("#inspector [data-song-key]");
       if (!shown) return;
 
-      const wanted = shown.dataset.songId;
+      const wanted = shown.dataset.songKey;
       const entries = queueFromRows();
       const at = entries.findIndex(function (entry) {
-        return entry.id === wanted;
+        return entry.key === wanted;
       });
 
       if (at >= 0) {
@@ -1727,13 +1741,13 @@
     // finished carry an id: nothing reached the disk for the others, so
     // there is nothing to open, and a row that answers a click by doing
     // nothing is worse than one that plainly does not.
-    const imported = event.target.closest(".import-row[data-song-id]");
+    const imported = event.target.closest(".import-row[data-song-key]");
     if (imported && !event.target.closest("button, a, input, label")) {
       // Staying put. The inspector sits above the tabs and is visible
       // from either of them, so switching would take you away from the
       // list you are reading to show you something you could already
       // see — and lose your place in a run of thirty rows.
-      inspect(imported.dataset.songId);
+      inspect(imported.dataset.songKey);
       return;
     }
 
@@ -1746,7 +1760,7 @@
     const lineUp = event.target.closest("[data-play-next]");
     if (lineUp) {
       const row = lineUp.closest("tr[data-song-id]");
-      if (row) playNext(row.dataset.songId);
+      if (row) playNext(row.dataset.songKey);
       return;
     }
 
@@ -1758,7 +1772,7 @@
       setQueue(
         entries,
         entries.findIndex(function (entry) {
-          return entry.id === row.dataset.songId;
+          return entry.key === row.dataset.songKey;
         }),
         false
       );
@@ -2007,8 +2021,8 @@
   // Kept rather than dropped, because that is a template's behaviour and
   // not this function's: the day the shell ships a song, this check is
   // what stops the first row from overwriting it.
-  if (!document.querySelector("#inspector [data-song-id]")) {
+  if (!document.querySelector("#inspector [data-song-key]")) {
     const first = rows()[0];
-    if (first) inspect(first.dataset.songId);
+    if (first) inspect(first.dataset.songKey);
   }
 })();

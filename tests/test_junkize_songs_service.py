@@ -6,6 +6,7 @@ import pytest
 from mutagen.easyid3 import EasyID3
 from mutagen.id3 import ID3NoHeaderError
 
+from pypl2mp3.services.find_song import song_key
 from pypl2mp3.services.junkize_songs import (
     JunkizeResult,
     SongNotFound,
@@ -19,6 +20,15 @@ PLAYLIST = "Owner - Alpha [PL0000000000000000000000000000001]"
 # not do — SongModel opens it with mutagen.
 _MP3_FRAME = b"\xff\xfb\x90\xc0" + b"\x00" * 413
 
+
+def _key(vid, playlist=PLAYLIST):
+    """The address a caller uses for one song: the playlist and the video.
+
+    Not the video alone — one held by two playlists is two files, and
+    these functions act on the one they are given.
+    """
+
+    return song_key(playlist, vid)
 
 def _make_tagged_song(repo: Path, artist: str, title: str, vid: str) -> Path:
     folder = repo / PLAYLIST
@@ -37,7 +47,7 @@ def _make_tagged_song(repo: Path, artist: str, title: str, vid: str) -> Path:
 def test_it_clears_the_tags_and_renames_the_file(tmp_path):
     path = _make_tagged_song(tmp_path, "THE PHARCYDE", "Passin Me By", "aaaaaaaaaaa")
 
-    result = junkize_song(tmp_path, "aaaaaaaaaaa")
+    result = junkize_song(tmp_path, _key("aaaaaaaaaaa"))
 
     assert isinstance(result, JunkizeResult)
     assert result.previous_filename == path.name
@@ -59,7 +69,7 @@ def test_the_song_is_afterwards_reported_as_junk(tmp_path):
     _make_tagged_song(tmp_path, "ARTIST", "Title", "aaaaaaaaaaa")
     assert list_songs(tmp_path, junk_only=True) == []
 
-    junkize_song(tmp_path, "aaaaaaaaaaa")
+    junkize_song(tmp_path, _key("aaaaaaaaaaa"))
 
     junk = list_songs(tmp_path, junk_only=True)
     assert len(junk) == 1
@@ -70,7 +80,7 @@ def test_it_leaves_every_other_song_untouched(tmp_path):
     _make_tagged_song(tmp_path, "TARGET", "Doomed", "aaaaaaaaaaa")
     spared = _make_tagged_song(tmp_path, "SPARED", "Intact", "bbbbbbbbbbb")
 
-    junkize_song(tmp_path, "aaaaaaaaaaa")
+    junkize_song(tmp_path, _key("aaaaaaaaaaa"))
 
     # Not byte equality: get_repository_song_files builds a SongModel per
     # candidate to sort them, and that constructor rewrites the ID3 header
@@ -86,7 +96,7 @@ def test_an_unknown_id_raises_rather_than_touching_anything(tmp_path):
     spared = _make_tagged_song(tmp_path, "SPARED", "Intact", "aaaaaaaaaaa")
 
     with pytest.raises(SongNotFound):
-        junkize_song(tmp_path, "zzzzzzzzzzz")
+        junkize_song(tmp_path, _key("zzzzzzzzzzz"))
 
     assert spared.exists()
     assert EasyID3(spared)["artist"] == ["SPARED"]
@@ -94,9 +104,9 @@ def test_an_unknown_id_raises_rather_than_touching_anything(tmp_path):
 
 def test_junkizing_an_already_junk_song_is_harmless(tmp_path):
     _make_tagged_song(tmp_path, "ARTIST", "Title", "aaaaaaaaaaa")
-    first = junkize_song(tmp_path, "aaaaaaaaaaa")
+    first = junkize_song(tmp_path, _key("aaaaaaaaaaa"))
 
-    second = junkize_song(tmp_path, "aaaaaaaaaaa")
+    second = junkize_song(tmp_path, _key("aaaaaaaaaaa"))
 
     assert second.filename == first.filename
     assert len(list_songs(tmp_path, junk_only=True)) == 1
@@ -117,7 +127,7 @@ def test_the_title_frame_is_actually_removed(tmp_path):
 
     _make_tagged_song(tmp_path, "THE PHARCYDE", "Passin Me By", "aaaaaaaaaaa")
 
-    result = junkize_song(tmp_path, "aaaaaaaaaaa")
+    result = junkize_song(tmp_path, _key("aaaaaaaaaaa"))
 
     frames = ID3(tmp_path / PLAYLIST / result.filename)
     assert frames.getall("TIT2") == [], "the title frame survived the reset"

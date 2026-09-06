@@ -149,7 +149,7 @@
           {% for item in items %}
             <li class="import-row {{ item.state }}"
                 {% if item.state == "done" %}
-                  data-song-id="{{ item.item_id }}"
+                  data-song-key="{{ item.key }}"
                   title="Open this song in the inspector"
                 {% endif %}>
               {# Laid out like a row of the listing: the name, then the

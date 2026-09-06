@@ -9,13 +9,14 @@
    when it is not in the listing: without it the readout fell back to the
    youtube id, which is the bug the queue entries were built to avoid. #}
 <div id="inspector-body" data-song-id="{{ song.youtube_id }}"
+     data-song-key="{{ song.key }}"
      data-label="{{ song.label }}">
   <div class="inspector-cover">
     {# ?v= the file's timestamp: the address is otherwise the same
        forever, the response carries no validator, and a browser
        that has seen the picture once keeps showing it. Saving a new
        cover left the old one on screen. #}
-    <img src="/songs/{{ song.youtube_id }}/cover?v={{ song.cover_version }}"
+    <img src="/songs/{{ song.key }}/cover?v={{ song.cover_version }}"
          alt="" class="cover"
          onerror="this.style.display='none'">
   </div>
@@ -91,15 +92,15 @@
       <button type="button"
               {%- if song.by_hand %} class="armed"
               title="{{ song.by_hand }}"{% endif %}
-              hx-post="/songs/{{ song.youtube_id }}/shazam"
+              hx-post="/songs/{{ song.key }}/shazam"
               hx-target="#shazam"
               hx-swap="outerHTML">Ask Shazam</button>
       {% if not song.is_junk %}
         {# Beside Ask Shazam rather than beside Save: neither of them
            submits the form, and both act on the song as it stands. #}
         <button type="button"
-          hx-post="/songs/{{ song.youtube_id }}/junkize"
-          hx-target="#song-{{ song.youtube_id }}"
+          hx-post="/songs/{{ song.key }}/junkize"
+          hx-target="#song-{{ song.key }}"
           hx-swap="outerHTML"
           hx-confirm="Clear this song's metadata and mark it as junk? This cannot be undone."
         >Junkize</button>
@@ -115,7 +116,7 @@
          {%- endif %}>video{% if song.video_gone %} ⚠{% endif %}</a>
     </p>
 
-    <form hx-post="/songs/{{ song.youtube_id }}/fix"
+    <form hx-post="/songs/{{ song.key }}/fix"
           hx-target="#inspector"
           hx-swap="innerHTML">
       {# The block and the fields share one cell. Asking Shazam used to

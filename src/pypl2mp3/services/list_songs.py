@@ -16,6 +16,7 @@ from typing import Optional
 
 from pypl2mp3.libs.repository import get_repository_songs
 from pypl2mp3.libs.song import SongModel
+from pypl2mp3.services.find_song import song_key
 
 DEFAULT_MATCH_THRESHOLD = 45
 
@@ -114,6 +115,33 @@ class SongSummary:
     # And whether asking YouTube about it is still worth a click. Eleven
     # videos have gone; the link to them answers 404 without saying so.
     video_gone: bool = False
+
+    @property
+    def key(self) -> str:
+        """What names this file, as against the video it was made from.
+
+        Eight songs in this repository sit in two playlists at once, so a
+        video id names two rows and the page could not tell them apart:
+        the song playing lit both, and lining the second one up lined up
+        the first. The folder and the filename do tell them apart, and
+        they are what the listing is made of.
+
+        The playlist and the video, and not the filename: junkizing
+        renames the file, and the row that comes back to replace the one
+        you clicked has to carry the id it was aimed at. A playlist holds
+        a video once, so the pair is as unique as the path and it
+        survives every rename the file will ever get.
+
+        Hashed rather than spelled out because this is also the row's DOM
+        id and an htmx target: a playlist folder carries spaces and
+        brackets, and both of those end a CSS selector early.
+
+        Not an address. The server still answers for a song by its video
+        id — /songs/<id>/audio, /fix, /junkize — and cannot tell two
+        copies apart either. This is the page saying which row it means.
+        """
+
+        return song_key(self.playlist, self.youtube_id)
 
     @property
     def cover_version(self) -> int:

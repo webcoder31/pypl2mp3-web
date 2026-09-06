@@ -272,7 +272,7 @@ async def test_a_junk_import_is_fixable_from_its_row(tmp_path, monkeypatch):
 
     row = re.search(r'<li class="import-row done"(.*?)</li>', pane, re.DOTALL)
     assert row, pane[-400:]
-    assert 'data-song-id="aaaaaaaaaaa"' in row.group(1), (
+    assert re.search(r'data-song-key="[0-9a-f]{16}"', row.group(1)), (
         f"the finished row does not say which song it is: {row.group(1)[:200]}"
     )
 
@@ -820,8 +820,8 @@ async def test_only_a_song_that_arrived_answers_a_click(tmp_path, monkeypatch):
     rows = dict(
         re.findall(r'<li class="import-row (\w+)"([^>]*)>', pane)
     )
-    assert "data-song-id" in rows["done"], rows
-    assert "data-song-id" not in rows["failed"], (
+    assert "data-song-key" in rows["done"], rows
+    assert "data-song-key" not in rows["failed"], (
         "a row that failed offers to open a song that was never written"
     )
 
@@ -847,7 +847,7 @@ async def test_the_pane_says_what_a_click_will_do(tmp_path):
 
     # And the click is wired to the rows that carry an id, not to every
     # row in the pane.
-    assert '.import-row[data-song-id]' in script, (
+    assert '.import-row[data-song-key]' in script, (
         "nothing acts on the row, so it lights up and does nothing"
     )
 

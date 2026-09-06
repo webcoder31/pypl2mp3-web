@@ -17,6 +17,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import httpx
 import pytest
 
 SCRIPT = Path("src/pypl2mp3/web/static/console.js")
@@ -59,7 +60,12 @@ def _run(setup: str, steps: str) -> dict:
     harness = f"""
 let queue = [], index = 0, direction = 1, orderIsOwn = false;
 let rows = [];
-function queueFromRows() {{ return rows.map(id => ({{ id }})); }}
+// A row's key is what says which row; its id is what the server is
+// asked about the song. They differ only where one video is held twice,
+// which the duplicate tests below spell out — everywhere else one
+// letter stands for both.
+function entry(key, id) {{ return {{ key, id: id || key }}; }}
+function queueFromRows() {{ return rows.map(id => entry(id)); }}
 function setQueue(entries, startAt, randomOrder) {{
   queue = entries;
   lineup = [];
@@ -75,8 +81,8 @@ let lineup = [];
 {steps}
 paint();
 console.log(JSON.stringify({{
-  queue: queue.map(e => e.id),
-  playing: queue[index] ? queue[index].id : null,
+  queue: queue.map(e => e.key),
+  playing: queue[index] ? queue[index].key : null,
   index, lineup, direction, orderIsOwn,
   // Read off the page's own ranking, not worked out a second time here.
   ranks: [...lineupRanks()].map(([id, rank]) => id + ":" + rank),
@@ -92,7 +98,7 @@ console.log(JSON.stringify({{
 
 FIVE = """
 rows = ["a", "b", "c", "d", "e"];
-queue = rows.map(id => ({ id }));
+queue = rows.map(id => entry(id));
 index = 0;
 """
 
@@ -177,27 +183,28 @@ def test_once_the_run_has_played_the_next_request_starts_a_new_one():
 
 
 @needs_node
-def test_a_song_that_is_in_the_listing_twice_still_takes_one_place():
-    """Eight songs sit in two playlists at once, so the queue holds two
-    entries carrying one id — the rows are named by the video, not by the
-    file, exactly as the playing highlight already is.
+def test_two_copies_of_one_video_are_two_places_in_the_run():
+    """Eight songs sit in two playlists at once. The rows used to be
+    named by the video, so the two were one thing to the page: the one
+    playing lit both, and lining up the second lined up the first.
 
-    Taking the first copy out does not take the id out of the queue, so
-    without dropping it from the run by hand the second request finds its
-    own other copy still ahead and lines up behind *that*: the song goes
-    to the end instead of the front, and the run numbers one id twice,
-    which on screen is a rank with no rank before it."""
+    Named by the playlist and the video they are two, and the run holds
+    them apart — asked for in the order second, first, they play in that
+    order."""
 
-    twice = 'rows = ["a", "b", "x", "c"]; queue = ["a", "b", "x", "c", "x"]'
-    twice += '.map(id => ({ id })); index = 0;'
-
-    out = _run(twice, 'playNext("x"); playNext("x");')
-
-    assert out["queue"][:2] == ["a", "x"], (
-        f"asking twice sent it to the back: {out['queue']}"
+    twice = (
+        'rows = ["a", "b", "x1", "c", "x2"];'
+        'queue = [entry("a"), entry("b"), entry("x1", "x"),'
+        '         entry("c"), entry("x2", "x")];'
+        "index = 0;"
     )
-    assert out["ranks"] == ["x:1"], out
-    assert out["lineup"] == ["x"], "one song, two places in the run"
+
+    out = _run(twice, 'playNext("x2"); playNext("x1");')
+
+    assert out["queue"] == ["a", "x2", "x1", "b", "c"], out
+    assert out["ranks"] == ["x2:1", "x1:2"], (
+        f"one video, one place in the run: {out['ranks']}"
+    )
 
 
 @needs_node
@@ -365,7 +372,7 @@ async def test_the_row_offers_it_and_has_somewhere_to_show_it(tmp_path):
     ) as client:
         page = (await client.get("/")).text
 
-    row = re.search(r'<tr id="song-aaaaaaaaaaa".*?</tr>', page, re.S)
+    row = re.search(r'<tr id="song-[0-9a-f]{16}".*?</tr>', page, re.S)
     assert row, "no song row on the page"
 
     assert "data-play-next" in row.group(0), (
@@ -413,12 +420,15 @@ const bench = {
   appendChild(batch) { bench.children = batch.taken.slice(); bench.laid += 1; },
   laid: 0,
 };
-function row(id) { return { dataset: { songId: id }, parentNode: bench }; }
+function row(key, id) {
+  return { dataset: { songId: id || key, songKey: key }, parentNode: bench };
+}
+function entry(key, id) { return { key, id: id || key }; }
 """ + _source("inPlayOrder") + _source("lay") + """
 """ + setup + """
 """ + steps + """
 console.log(JSON.stringify({
-  order: bench.children.map(r => r.dataset.songId),
+  order: bench.children.map(r => r.dataset.songKey),
   laid: bench.laid,
 }));
 """
@@ -431,8 +441,8 @@ console.log(JSON.stringify({
 
 
 LISTING = """
-bench.children = ["a", "b", "c", "d", "e"].map(row);
-queue = ["c", "a", "e", "b", "d"].map(id => ({ id }));
+bench.children = ["a", "b", "c", "d", "e"].map(k => row(k));
+queue = ["c", "a", "e", "b", "d"].map(k => entry(k));
 """
 
 
@@ -463,19 +473,19 @@ def test_laying_it_out_twice_moves_nothing_the_second_time():
 
 @needs_node
 def test_a_song_in_two_playlists_takes_two_places():
-    """One id names two rows, and in the queue those are two entries and
-    two places. Looked up rather than walked, both rows would answer to
-    the first entry and the second would find nothing."""
+    """One video, two rows, two entries, two places — and each entry
+    lands on its own row, not both on the first."""
 
     out = _order(
         """
-        bench.children = ["a", "x", "b", "x"].map(row);
-        queue = ["x", "a", "x", "b"].map(id => ({ id }));
+        bench.children = [row("a"), row("x1", "x"), row("b"), row("x2", "x")];
+        queue = [entry("x2", "x"), entry("a"),
+                 entry("x1", "x"), entry("b")];
         """,
         "lay(bench.children, inPlayOrder(bench.children));",
     )
 
-    assert out["order"] == ["x", "a", "x", "b"], out
+    assert out["order"] == ["x2", "a", "x1", "b"], out
 
 
 @needs_node
@@ -486,8 +496,8 @@ def test_rows_the_queue_never_saw_go_behind_in_their_own_order():
 
     out = _order(
         """
-        bench.children = ["a", "b", "c", "d"].map(row);
-        queue = ["c", "a"].map(id => ({ id }));
+        bench.children = ["a", "b", "c", "d"].map(k => row(k));
+        queue = ["c", "a"].map(k => entry(k));
         """,
         "lay(bench.children, inPlayOrder(bench.children));",
     )
@@ -500,11 +510,14 @@ def _ranks(setup: str) -> list:
 
     harness = """
 let queue = [], listOrder = "name", orderIsOwn = false;
-function row(id) { return { dataset: { songId: id } }; }
+function row(key, id) {
+  return { dataset: { songId: id || key, songKey: key } };
+}
+function entry(key, id) { return { key, id: id || key }; }
 """ + _source("inPlayOrder") + _source("playRanks") + """
 """ + setup + """
 console.log(JSON.stringify(
-  [...playRanks(listing)].map(([r, n]) => r.dataset.songId + ":" + n)
+  [...playRanks(listing)].map(([r, n]) => r.dataset.songKey + ":" + n)
 ));
 """
     done = subprocess.run(
@@ -515,7 +528,7 @@ console.log(JSON.stringify(
     return json.loads(done.stdout)
 
 
-THREE = 'const listing = ["a", "b", "c"].map(row);'
+THREE = 'const listing = ["a", "b", "c"].map(k => row(k));'
 
 
 @needs_node
@@ -523,7 +536,7 @@ def test_no_rank_when_it_would_only_count_the_listing_back():
     """Play all takes the rows as they stand, so the queue's order is the
     listing's and a number beside each row says nothing at all."""
 
-    assert _ranks(THREE + 'queue = ["a", "b", "c"].map(id => ({ id }));') == []
+    assert _ranks(THREE + 'queue = ["a", "b", "c"].map(k => entry(k));') == []
 
 
 @needs_node
@@ -533,7 +546,7 @@ def test_the_rank_shows_once_the_queue_has_an_order_of_its_own():
 
     for made_its_own in ("orderIsOwn = true;", 'listOrder = "play";'):
         out = _ranks(
-            THREE + 'queue = ["c", "a", "b"].map(id => ({ id }));' + made_its_own
+            THREE + 'queue = ["c", "a", "b"].map(k => entry(k));' + made_its_own
         )
 
         assert out == ["c:1", "a:2", "b:3"], (made_its_own, out)
@@ -544,7 +557,7 @@ def test_in_play_order_the_rank_shows_even_when_the_two_agree():
     """Asked for that view, the number is the point: it says where you
     are in a run of 944 rather than where a name falls in an alphabet."""
 
-    out = _ranks(THREE + 'queue = ["a", "b", "c"].map(id => ({ id }));'
+    out = _ranks(THREE + 'queue = ["a", "b", "c"].map(k => entry(k));'
                  + 'listOrder = "play";')
 
     assert out == ["a:1", "b:2", "c:3"], out
@@ -554,7 +567,7 @@ def test_in_play_order_the_rank_shows_even_when_the_two_agree():
 def test_a_row_the_queue_never_saw_gets_no_number():
     """It has no place in an order it is not part of."""
 
-    out = _ranks(THREE + 'queue = ["c"].map(id => ({ id })); orderIsOwn = true;')
+    out = _ranks(THREE + 'queue = ["c"].map(k => entry(k)); orderIsOwn = true;')
 
     assert out == ["c:1"], out
 
@@ -593,8 +606,126 @@ async def test_the_toolbar_carries_the_order_switch(tmp_path):
         "nowhere to write the play position, or it starts out showing"
     )
 
-    place = re.search(r"\n\.row-actions \.rank \{([^}]*)\}", css)
+    place = re.search(r"\n\.rank \{([^}]*)\}", css)
     assert place, "the slot is a class nothing paints"
     assert "tabular-nums" in place.group(1), (
         "a column of numbers that do not line up"
     )
+
+    # And a column of its own. Sharing the actions cell it was
+    # right-aligned behind whatever buttons the row carried, and "Fix" is
+    # narrower than "Junkize" — so the figures stood eighteen pixels
+    # apart depending on whether the song was junk.
+    assert re.search(r"\ntd\.rank-cell \{([^}]*)\}", css), (
+        "the play position shares a cell with the row's buttons"
+    )
+    assert '<td class="num rank-cell">' in (
+        Path("src/pypl2mp3/web/templates/_song_row.html").read_text()
+    ), "the row has no cell for it"
+
+
+async def test_two_playlists_holding_one_video_are_two_rows(tmp_path):
+    """The row is named by the playlist and the video, so the eight songs
+    this repository holds twice are two rows the page can tell apart.
+
+    The playlist and the video, and not the filename: junkizing renames
+    the file, and the row that comes back to replace the one you clicked
+    has to carry the id it was aimed at. A playlist holds a video once,
+    so the pair is as unique as the path and survives every rename.
+    """
+
+    import httpx
+    from mutagen.id3 import ID3, TXXX
+
+    from pypl2mp3.web.app import create_app
+
+    for playlist in ("Owner - Alpha [PL0000000000000000000000000000001]",
+                     "Owner - Beta [PL0000000000000000000000000000002]"):
+        folder = tmp_path / playlist
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / "UNKNOWN - Something [aaaaaaaaaaa] (JUNK).mp3"
+        path.write_bytes((b"\xff\xfb\x90\xc0" + b"\x00" * 413) * 8)
+        frames = ID3()
+        frames.add(TXXX(encoding=3, desc="YouTube ID", text="aaaaaaaaaaa"))
+        frames.save(path)
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=create_app(tmp_path)),
+        base_url="http://test",
+    ) as client:
+        listing = (await client.get("/fragments/list")).text
+
+    rows = re.findall(r'<tr id="song-([0-9a-f]{16})"[^>]*'
+                      r'data-song-id="([^"]+)"[^>]*'
+                      r'data-song-key="([^"]+)"', listing, re.S)
+
+    assert len(rows) == 2, f"one video in two playlists gave {len(rows)} rows"
+
+    (id_a, video_a, key_a), (id_b, video_b, key_b) = rows
+
+    assert video_a == video_b == "aaaaaaaaaaa", "the video is the same one"
+    assert key_a != key_b, (
+        "both rows answer to one key, so the page cannot tell them apart"
+    )
+    # The row's own DOM id is that key, which is what htmx aims at.
+    assert (id_a, id_b) == (key_a, key_b), (id_a, key_a)
+
+    # And a key has to be usable as a selector: a playlist folder carries
+    # spaces and brackets, and both end one early.
+    assert re.fullmatch(r"[0-9a-f]{16}", key_a), key_a
+
+
+async def test_the_queue_carries_both_of_a_row_s_names(tmp_path):
+    """Read off the shipped source, because the node harness defines its
+    own `queueFromRows` and so cannot answer for this one.
+
+    That gap was not hypothetical: an edit to this function was lost, the
+    whole suite stayed green, and every row in the browser went dark —
+    nothing was marked playing, because the queue entries had no key to
+    be marked by.
+    """
+
+    import httpx
+
+    from pypl2mp3.web.app import create_app
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=create_app(tmp_path)),
+        base_url="http://test",
+    ) as client:
+        script = (await client.get("/static/console.js")).text
+
+    body = re.search(r"function queueFromRows\(\) \{(.*?)\n  \}", script, re.S)
+    assert body, "queueFromRows moved"
+
+    assert "id: row.dataset.songId" in body.group(1), body.group(1)
+    assert "key: row.dataset.songKey" in body.group(1), (
+        "an entry cannot say which row it came from"
+    )
+
+
+def test_the_key_is_the_playlist_and_the_video():
+    """Stated once here, so the two halves cannot quietly become one."""
+
+    import dataclasses
+
+    from pypl2mp3.services.list_songs import SongSummary
+
+    one = SongSummary(
+        path=Path("Owner - Alpha [PL1]/A - B [vvvvvvvvvvv].mp3"),
+        youtube_id="vvvvvvvvvvv", artist="A", title="B",
+        playlist="Owner - Alpha [PL1]", duration="00:03:00", is_junk=False,
+    )
+
+    # Renaming the file — which is what junkizing does — leaves it alone.
+    renamed = dataclasses.replace(
+        one, path=Path("Owner - Alpha [PL1]/A - B [vvvvvvvvvvv] (JUNK).mp3"))
+    assert renamed.key == one.key, "junkizing would move the row's own id"
+
+    # Another playlist is another row.
+    elsewhere = dataclasses.replace(one, playlist="Owner - Beta [PL2]")
+    assert elsewhere.key != one.key
+
+    # Another video in the same playlist, likewise.
+    other = dataclasses.replace(one, youtube_id="wwwwwwwwwww")
+    assert other.key != one.key

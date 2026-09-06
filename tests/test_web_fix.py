@@ -10,6 +10,7 @@ from pathlib import Path
 import httpx
 from mutagen.id3 import APIC, ID3, TXXX
 
+from pypl2mp3.services.find_song import song_key
 from pypl2mp3.web.app import create_app
 
 PLAYLIST = "Owner - Alpha [PL0000000000000000000000000000001]"
@@ -37,6 +38,16 @@ def _make_junk(repo: Path, vid: str = "aaaaaaaaaaa", cover: bool = False):
     return path
 
 
+
+def _key(vid, playlist=PLAYLIST):
+    """The address the web uses for one song.
+
+    Not the video: a video held by two playlists is two files, and the
+    routes name the file. `song_key` is the one definition of the pair.
+    """
+
+    return song_key(playlist, vid)
+
 def _client(app):
     return httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
@@ -48,7 +59,7 @@ async def test_submitting_the_form_writes_the_tags_and_clears_junk(tmp_path):
 
     async with _client(create_app(tmp_path)) as client:
         response = await client.post(
-            "/songs/aaaaaaaaaaa/fix",
+            f"/songs/{_key('aaaaaaaaaaa')}/fix",
             data={"artist": "THE PHARCYDE", "title": "Passin Me By"},
         )
 
@@ -65,7 +76,7 @@ async def test_the_cover_route_serves_the_embedded_image(tmp_path):
     _make_junk(tmp_path, cover=True)
 
     async with _client(create_app(tmp_path)) as client:
-        response = await client.get("/songs/aaaaaaaaaaa/cover")
+        response = await client.get(f"/songs/{_key('aaaaaaaaaaa')}/cover")
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("image/")
@@ -77,7 +88,7 @@ async def test_a_song_without_cover_art_is_a_404_not_a_broken_image(tmp_path):
 
     async with _client(create_app(tmp_path)) as client:
         assert (
-            await client.get("/songs/aaaaaaaaaaa/cover")
+            await client.get(f"/songs/{_key('aaaaaaaaaaa')}/cover")
         ).status_code == 404
 
 
@@ -87,12 +98,12 @@ async def test_an_unknown_song_is_a_404_everywhere(tmp_path):
     async with _client(create_app(tmp_path)) as client:
         for path in ("cover", "audio"):
             assert (
-                await client.get(f"/songs/zzzzzzzzzzz/{path}")
+                await client.get(f"/songs/{_key('zzzzzzzzzzz')}/{path}")
             ).status_code == 404, path
 
         assert (
             await client.post(
-                "/songs/zzzzzzzzzzz/fix", data={"artist": "A", "title": "B"}
+                f"/songs/{_key('zzzzzzzzzzz')}/fix", data={"artist": "A", "title": "B"}
             )
         ).status_code == 404
 
@@ -112,7 +123,9 @@ async def test_shazam_runs_as_a_job_rather_than_blocking_the_request(
     _make_junk(tmp_path)
 
     async with _client(create_app(tmp_path)) as client:
-        started = await client.post("/songs/aaaaaaaaaaa/shazam")
+        started = await client.post(f"/songs/{_key('aaaaaaaaaaa')}/shazam")
 
     assert started.status_code == 200
-    assert started.json()["job_id"] == "shazam:aaaaaaaaaaa"
+    assert started.json()["job_id"] == f"shazam:{_key('aaaaaaaaaaa')}", (
+        "the job is named by the video, so two copies of one share it"
+    )

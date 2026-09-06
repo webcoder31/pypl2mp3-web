@@ -11,6 +11,7 @@ from pathlib import Path
 
 import httpx
 
+from pypl2mp3.services.find_song import song_key
 from pypl2mp3.web.app import create_app
 
 PLAYLIST = "Owner - Alpha [PL0000000000000000000000000000001]"
@@ -44,6 +45,16 @@ def _dark_block(css: str) -> str:
     assert found, "no dark palette"
 
     return found.group(1)
+
+
+def _key(vid, playlist=PLAYLIST):
+    """The address the web uses for one song.
+
+    Not the video: a video held by two playlists is two files, and the
+    routes name the file. `song_key` is the one definition of the pair.
+    """
+
+    return song_key(playlist, vid)
 
 def _client(app):
     return httpx.AsyncClient(
@@ -147,7 +158,7 @@ async def test_a_junkized_row_matches_the_rows_around_it(tmp_path):
 
     async with _client(create_app(tmp_path)) as client:
         scoped = await client.post(
-            "/songs/aaaaaaaaaaa/junkize",
+            f"/songs/{_key('aaaaaaaaaaa')}/junkize",
             headers={
                 **HX,
                 "HX-Current-URL": (
@@ -177,8 +188,8 @@ async def test_every_control_is_drawn_by_the_stylesheet(tmp_path):
         css = (await client.get("/static/console.css")).text
         pages = [
             (await client.get("/")).text,
-            (await client.get("/fragments/inspector/aaaaaaaaaaa")).text,
-            (await client.get("/fragments/workbench/aaaaaaaaaaa")).text,
+            (await client.get(f"/fragments/inspector/{_key('aaaaaaaaaaa')}")).text,
+            (await client.get(f"/fragments/workbench/{_key('aaaaaaaaaaa')}")).text,
         ]
 
     def block(selector):
@@ -303,11 +314,11 @@ async def test_a_shazam_score_is_coloured_by_confidence(tmp_path, monkeypatch):
 
     async with _client(create_app(tmp_path)) as client:
         css = (await client.get("/static/console.css")).text
-        await client.post("/songs/aaaaaaaaaaa/shazam", headers=HX)
+        await client.post(f"/songs/{_key('aaaaaaaaaaa')}/shazam", headers=HX)
 
         for _ in range(60):
             body = (
-                await client.get("/fragments/shazam/aaaaaaaaaaa", headers=HX)
+                await client.get(f"/fragments/shazam/{_key('aaaaaaaaaaa')}", headers=HX)
             ).text
             if "Listening" not in body:
                 break
@@ -485,7 +496,7 @@ async def test_the_cover_sits_beside_the_fields(tmp_path):
     _make_song(tmp_path, "UNKNOWN", "Something", "aaaaaaaaaaa", junk=True)
 
     async with _client(create_app(tmp_path)) as client:
-        panel = (await client.get("/fragments/inspector/aaaaaaaaaaa")).text
+        panel = (await client.get(f"/fragments/inspector/{_key('aaaaaaaaaaa')}")).text
         css = (await client.get("/static/console.css")).text
 
     assert 'class="inspector-cover"' in panel
@@ -500,7 +511,7 @@ async def test_the_inspector_shows_a_short_duration(tmp_path):
     _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
-        panel = (await client.get("/fragments/inspector/aaaaaaaaaaa")).text
+        panel = (await client.get(f"/fragments/inspector/{_key('aaaaaaaaaaa')}")).text
 
     assert "00:00:00" not in panel, "the padded form is back"
 
@@ -534,7 +545,7 @@ async def test_the_cover_field_is_short_and_says_it_wants_a_url(tmp_path):
     _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
-        panel = (await client.get("/fragments/inspector/aaaaaaaaaaa")).text
+        panel = (await client.get(f"/fragments/inspector/{_key('aaaaaaaaaaa')}")).text
 
     label = re.search(r"<label>([^<]*)<input[^>]*cover_art_url", panel,
                       re.DOTALL)
@@ -558,7 +569,8 @@ async def test_the_two_panels_keep_the_same_fields(tmp_path):
 
     async with _client(create_app(tmp_path)) as client:
         panels = [
-            (await client.get(f"/fragments/{which}/aaaaaaaaaaa")).text
+            (await client.get(
+                f"/fragments/{which}/{_key('aaaaaaaaaaa')}")).text
             for which in ("inspector", "workbench")
         ]
 
@@ -583,7 +595,7 @@ async def test_junkize_stands_with_the_other_song_actions(tmp_path):
     _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
-        panel = (await client.get("/fragments/inspector/aaaaaaaaaaa")).text
+        panel = (await client.get(f"/fragments/inspector/{_key('aaaaaaaaaaa')}")).text
 
     tools = re.search(
         r'<p class="inspector-tools">(.*?)</p>', panel, re.DOTALL
@@ -606,7 +618,7 @@ async def test_a_junk_song_is_offered_no_junkize(tmp_path):
     _make_song(tmp_path, "UNKNOWN", "Something", "aaaaaaaaaaa", junk=True)
 
     async with _client(create_app(tmp_path)) as client:
-        panel = (await client.get("/fragments/inspector/aaaaaaaaaaa")).text
+        panel = (await client.get(f"/fragments/inspector/{_key('aaaaaaaaaaa')}")).text
 
     assert "/junkize" not in panel
 
@@ -617,7 +629,7 @@ async def test_the_filename_sits_beside_the_button_that_rewrites_it(tmp_path):
     _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
-        panel = (await client.get("/fragments/inspector/aaaaaaaaaaa")).text
+        panel = (await client.get(f"/fragments/inspector/{_key('aaaaaaaaaaa')}")).text
         css = (await client.get("/static/console.css")).text
 
     actions = re.search(
@@ -902,7 +914,7 @@ async def test_the_player_carries_no_second_video_link(tmp_path):
 
     async with _client(create_app(tmp_path)) as client:
         body = (await client.get("/")).text
-        panel = (await client.get("/fragments/inspector/aaaaaaaaaaa")).text
+        panel = (await client.get(f"/fragments/inspector/{_key('aaaaaaaaaaa')}")).text
         script = (await client.get("/static/console.js")).text
 
     player = re.search(r'<footer id="player".*?</footer>', body, re.DOTALL)
@@ -2667,7 +2679,7 @@ async def test_the_inspector_is_visible_from_either_tab(tmp_path):
         f"a tab hides the inspector: {hidden}"
     )
 
-    opener = script[script.index(".import-row[data-song-id]"):]
+    opener = script[script.index(".import-row[data-song-key]"):]
     opener = opener[: opener.index("\n    }")]
     assert "showTab" not in opener, (
         "opening a song from an import row switches tabs, which takes you "
@@ -2732,7 +2744,7 @@ async def test_the_panel_says_when_it_is_holding_edits(tmp_path):
     _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
-        panel = (await client.get("/fragments/inspector/aaaaaaaaaaa")).text
+        panel = (await client.get(f"/fragments/inspector/{_key('aaaaaaaaaaa')}")).text
         css = (await client.get("/static/console.css")).text
 
     assert 'class="held"' in panel, panel[:400]
@@ -2772,9 +2784,9 @@ async def test_the_listing_follows_the_song_but_only_when_it_changes(tmp_path):
     assert 'scrollIntoView({ block: "nearest" })' in script, (
         "the listing never follows what is playing"
     )
-    follow = script[script.index("if (currentId !== followed)"):]
+    follow = script[script.index("if (currentKey !== followed)"):]
     follow = follow[: follow.index("\n    }")]
-    assert "followed = currentId" in follow, (
+    assert "followed = currentKey" in follow, (
         "nothing remembers which song was followed, so every repaint "
         "scrolls the list back"
     )

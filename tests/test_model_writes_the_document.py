@@ -16,6 +16,8 @@ import json
 from pathlib import Path
 
 import pytest
+
+from pypl2mp3.services.find_song import song_key
 from mutagen.id3 import ID3, PRIV, TPE1, TXXX
 from mutagen.mp3 import MP3
 
@@ -39,6 +41,11 @@ def _song(repo: Path, vid="aaaaaaaaaaa"):
 
     return path
 
+
+def _key(vid, playlist=PLAYLIST):
+    """The address `apply_fix` takes: the playlist and the video."""
+
+    return song_key(playlist, vid)
 
 class TestItIsWritten:
     def test_a_save_leaves_a_document_beside_the_frames(self, tmp_path):
@@ -99,7 +106,7 @@ class TestProvenance:
         from pypl2mp3.services.fix_junks import apply_fix
 
         _song(tmp_path)
-        asyncio.run(apply_fix(tmp_path, "aaaaaaaaaaa", "MINE", "My Title"))
+        asyncio.run(apply_fix(tmp_path, _key("aaaaaaaaaaa"), "MINE", "My Title"))
 
         path = next(tmp_path.rglob("*.mp3"))
         document = metadata.read(path)
@@ -124,7 +131,7 @@ class TestProvenance:
         from pypl2mp3.services.fix_junks import apply_fix
 
         _song(tmp_path)
-        asyncio.run(apply_fix(tmp_path, "aaaaaaaaaaa", "MINE", "My Title"))
+        asyncio.run(apply_fix(tmp_path, _key("aaaaaaaaaaa"), "MINE", "My Title"))
         path = next(tmp_path.rglob("*.mp3"))
         before = metadata.read(path)["fields"]["artist"]
 
