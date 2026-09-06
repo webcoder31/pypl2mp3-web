@@ -195,6 +195,28 @@
   // happens when the song changes and not when the list is repainted.
   let followed = null;
 
+  // Where a song stands in the run asked for by hand, written into the
+  // row — and written *only when it differs*, which is the whole of this
+  // function's reason to exist.
+  //
+  // A MutationObserver on #list calls `paint`, so anything paint touches
+  // inside the listing calls paint again. `textContent = x` takes out the
+  // text node and puts a new one in even when x is exactly what was
+  // there, and that is a childList record, and that record is another
+  // paint: the page locked up the moment the first song was lined up.
+  // The class beside it was always safe, by accident rather than by
+  // care — classList.toggle handed a boolean leaves the attribute alone
+  // when it already agrees.
+  //
+  // `hidden` is an attribute and the observer does not watch those, so it
+  // is guarded for the next person rather than for today.
+  function showRank(badge, rank) {
+    const label = rank ? "next " + rank : "";
+
+    if (badge.textContent !== label) badge.textContent = label;
+    if (badge.hidden !== !rank) badge.hidden = !rank;
+  }
+
   function paint() {
     const current = queue[index];
 
@@ -206,8 +228,16 @@
     // or false, so the trap is gone rather than merely avoided.
     const currentId = current ? current.id : null;
 
+    // The run asked for by hand, numbered within itself. The queue is an
+    // order the listing does not otherwise show, and a song told to play
+    // next is exactly the song you want to see took.
+    const lined = lineupRanks();
+
     rows().forEach(function (row) {
       row.classList.toggle("playing", row.dataset.songId === currentId);
+
+      const badge = row.querySelector(".queued");
+      if (badge) showRank(badge, lined.get(row.dataset.songId) || 0);
     });
 
     // Bring the playing row into view — once per song, not on every
@@ -543,9 +573,61 @@
   // shuffled queue from an ordered one.
   let inRandomOrder = false;
 
+  // The songs asked for by hand, in the order they were asked for. Not a
+  // second queue: they are moved into place in the one queue, so the
+  // count in the toolbar goes on meaning what it says and no song is
+  // ever in the list twice.
+  //
+  // Ids, and not the index the run ends at. That was the first version
+  // and it was wrong in a way only the cursor moving backwards shows:
+  // one press of ← and every song between the new position and the
+  // pointer was inside the run, so a song nobody had asked for took the
+  // head of it and the next request came out one too high. A rank has to
+  // come from the run, never from the distance to the playing song.
+  let lineup = [];
+
+  // The run as it stands: those still in front of the playing song, in
+  // the order the queue holds them. Anything else has been played, or
+  // moved, or went with the selection that held it.
+  function lineupAhead() {
+    return lineup
+      .map(function (id) {
+        return {
+          id: id,
+          at: queue.findIndex(function (entry) { return entry.id === id; }),
+        };
+      })
+      .filter(function (song) { return song.at > index; })
+      .sort(function (a, b) { return a.at - b.at; });
+  }
+
+  // The run, numbered within itself, as the rows are to show it.
+  //
+  // Its own function so that what a test can drive is what the page
+  // actually draws. Worked out inside `paint` it was out of reach, and a
+  // test that computes the rank a second time to compare against holds
+  // nothing at all — put the distance to the cursor back in here, which
+  // is the bug this replaced, and such a test goes on passing.
+  //
+  // The pruning is here because this is called from `paint`, and `paint`
+  // runs when the cursor has just moved: a song the run has been played
+  // past is no longer in it.
+  function lineupRanks() {
+    const ahead = lineupAhead();
+    lineup = ahead.map(function (song) { return song.id; });
+
+    const lined = new Map();
+    ahead.forEach(function (song, rank) { lined.set(song.id, rank + 1); });
+
+    return lined;
+  }
+
   function setQueue(entries, startAt, randomOrder) {
     queue = entries;
     inRandomOrder = Boolean(randomOrder);
+    // A new selection is a new intent; whatever was lined up in the old
+    // one is not in this queue at all.
+    lineup = [];
 
     const button = document.querySelector('[data-queue-action="shuffle"]');
     if (button) button.setAttribute("aria-pressed", String(inRandomOrder));
@@ -568,6 +650,67 @@
         "GET", "/fragments/inspector/" + queue[index].id, "#inspector"
       );
     }
+  }
+
+  // Play this one after the one playing — and after the last one asked
+  // for before it, so picking three songs out of a listing plays them in
+  // the order they were picked rather than in reverse.
+  function playNext(id) {
+    // Nothing playing, so there is no "next" for it to come after. Take
+    // the listing and start there, exactly as clicking the row does.
+    if (!queue.length) {
+      const entries = queueFromRows();
+      setQueue(entries, entries.findIndex(function (entry) {
+        return entry.id === id;
+      }), false);
+      return;
+    }
+
+    const from = queue.findIndex(function (entry) { return entry.id === id; });
+
+    // Already the one playing: nothing to line up.
+    if (from === index) return;
+
+    let entry;
+
+    if (from === -1) {
+      // Not in the queue at all — a row from a listing that has been
+      // filtered since the queue was taken.
+      entry = queueFromRows().find(function (row) { return row.id === id; });
+      if (!entry) return;
+    } else {
+      // Moved and not copied. A copy would play the song twice and make
+      // the toolbar's "12 / 79" a count of something other than the
+      // selection.
+      entry = queue[from];
+      queue.splice(from, 1);
+      // Taken out from in front of it, the cursor shifts back one.
+      // Removing first and working the destination out afterwards is
+      // what keeps this correct for a song that was already behind the
+      // playing one.
+      if (from < index) index -= 1;
+    }
+
+    // Asked for again: it keeps one place in the run, and that place is
+    // the newest — a second request is a request.
+    lineup = lineup.filter(function (other) { return other !== id; });
+
+    // Behind the last one still ahead of the playing song, or behind the
+    // playing song when the run has none left. Worked out after the
+    // removal, so the positions are the ones the queue actually has.
+    const ahead = lineupAhead();
+    const at = (ahead.length ? ahead[ahead.length - 1].at : index) + 1;
+
+    queue.splice(at, 0, entry);
+    // Rebuilt from what is still standing, which is also what keeps the
+    // list from growing for the life of the page.
+    lineup = ahead.map(function (song) { return song.id; }).concat(id);
+
+    // Asked to be played next, so the queue is going forward. A track
+    // ending follows `direction`, and walking backwards through a
+    // selection would never reach what was just lined up.
+    direction = 1;
+    paint();
   }
 
   function shuffled(entries) {
@@ -1440,6 +1583,13 @@
       // list you are reading to show you something you could already
       // see — and lose your place in a run of thirty rows.
       inspect(imported.dataset.songId);
+      return;
+    }
+
+    const lineUp = event.target.closest("[data-play-next]");
+    if (lineUp) {
+      const row = lineUp.closest("tr[data-song-id]");
+      if (row) playNext(row.dataset.songId);
       return;
     }
 

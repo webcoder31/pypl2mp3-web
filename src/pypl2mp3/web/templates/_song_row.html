@@ -33,6 +33,18 @@
     </span>
   </td>
   <td class="row-actions">
+    {# Where this song stands in the run asked for by hand, or nothing.
+       Written by the page — the queue lives in the browser — and not a
+       button, so it does not go with the rest of the cell when the
+       pointer leaves the row: it is state, and state that hides itself
+       is state nobody can act on. #}
+    <span class="queued" hidden></span>
+    {# Jumps the queue rather than starting it. Clicking the row plays
+       the song at once and loses whatever you were listening to; this
+       puts it after the one playing, and after the last one you asked
+       for before it, so a handful of songs picked out of a listing keep
+       the order you picked them in. #}
+    <button type="button" data-play-next>Play next</button>
     {% if song.is_junk %}
       {# Loads the panel without playing. Clicking the row does both,
          which is usually what you want; this is for picking one out of

@@ -871,6 +871,20 @@ tbody tr:hover { background: var(--hover); }
 tr:hover .row-actions button,
 .row-actions button:focus-visible { opacity: 1; }
 
+/* The rank in the run asked for by hand. Not hidden with the buttons
+   beside it: they are things to do and appear under the pointer, this
+   is something that is true of the row whether or not you are looking
+   at it. In the accent, because it is the one thing on the row that the
+   page put there rather than the file. */
+.row-actions .queued {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  margin-right: var(--space-2);
+}
+
 td.num {
   text-align: right;
   font-variant-numeric: tabular-nums;
