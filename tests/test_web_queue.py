@@ -72,10 +72,11 @@ function setQueue(entries, startAt, randomOrder) {{
   orderIsOwn = Boolean(randomOrder);
   index = startAt > 0 ? startAt : 0;
 }}
-function paint() {{ lineupRanks(); }}
+function paint() {{ lineupStanding(); }}
 let lineup = [];
+const returns = new Map();
 {_source("lineupAhead")}
-{_source("lineupRanks")}
+{_source("lineupStanding")}
 {_source("playNext")}
 {setup}
 {steps}
@@ -84,8 +85,8 @@ console.log(JSON.stringify({{
   queue: queue.map(e => e.key),
   playing: queue[index] ? queue[index].key : null,
   index, lineup, direction, orderIsOwn,
-  // Read off the page's own ranking, not worked out a second time here.
-  ranks: [...lineupRanks()].map(([id, rank]) => id + ":" + rank),
+  // Read off the page's own run, not worked out a second time here.
+  ranks: lineupStanding().map((s, i) => s.key + ":" + (i + 1)),
 }}));
 """
     done = subprocess.run(
@@ -290,25 +291,25 @@ function badge() {
     seen() { return writes; },
   };
 }
-""" + _source("showRank") + """
+""" + _source("showPlace") + """
 const lined = badge();
-showRank(lined, 1);
+showPlace(lined, 1);
 const afterFirst = lined.seen();
-showRank(lined, 1);
-showRank(lined, 1);
+showPlace(lined, 1);
+showPlace(lined, 1);
 
 const blank = badge();
-showRank(blank, 0);
-showRank(blank, 0);
+showPlace(blank, 0);
+showPlace(blank, 0);
 
 // And one that was lined up and no longer is: it has to be cleared, then
 // left alone.
 const dropped = badge();
-showRank(dropped, 2);
+showPlace(dropped, 2);
 const beforeDrop = dropped.seen();
-showRank(dropped, 0);
+showPlace(dropped, 0);
 const afterDrop = dropped.seen();
-showRank(dropped, 0);
+showPlace(dropped, 0);
 
 console.log(JSON.stringify({
   wroteOnce: afterFirst > 0,
@@ -327,7 +328,7 @@ console.log(JSON.stringify({
     out = json.loads(done.stdout)
 
     assert out["wroteOnce"], "the rank never reaches the row"
-    assert out["label"] == "next 1", out
+    assert out["label"] == "1", out
     assert out["settled"], (
         "repainting an unchanged row writes to it again, which is the loop"
     )
@@ -378,22 +379,27 @@ async def test_the_row_offers_it_and_has_somewhere_to_show_it(tmp_path):
     assert "data-play-next" in row.group(0), (
         "no way to line a song up behind the one playing"
     )
-    assert re.search(r'<span class="queued"[^>]*hidden', row.group(0)), (
-        "nowhere to say where the song stands, or it starts out showing"
+    assert "queued" not in row.group(0), (
+        "the row still carries the badge that counted the distance to "
+        "the song playing — which the rank column already said, and "
+        "which vanished the moment the cursor passed a song that had "
+        "not moved"
     )
 
-    # Painted, and not merely classed — the failure this project keeps
-    # meeting.
-    css = Path("src/pypl2mp3/web/static/console.css").read_text()
-    rule = re.search(r"\n\.row-actions \.queued \{([^}]*)\}", css)
-    assert rule, "the badge is a class nothing paints"
-    assert "opacity: 0" not in rule.group(1), (
-        "the badge hides with the buttons beside it"
+    # And the strip that replaced it: outside the listing, above it, and
+    # hidden until there is a run to show.
+    page_markup = Path(
+        "src/pypl2mp3/web/templates/console.html").read_text()
+    strip = re.search(r'<div id="upnext"[^>]*>', page_markup)
+    assert strip and "hidden" in strip.group(0), (
+        "no strip for the run, or it starts out showing"
+    )
+    assert page_markup.index('id="upnext"') < page_markup.index('id="list"'), (
+        "the run is drawn under the listing it is meant to summarise"
     )
 
-    # And the page fills it in.
     script = SCRIPT.read_text()
-    assert 'querySelector(".queued")' in script, "nothing ever writes the rank"
+    assert "function showUpNext(" in script, "nothing ever fills the strip"
 
 
 # ---------------------------------------------------------------------

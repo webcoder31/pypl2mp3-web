@@ -292,6 +292,18 @@
         </button>
       </div>
 
+      {# The run you asked for, as a run.
+         
+         Written by the page and not by the server: the queue lives in
+         the browser and nothing here has ever been on disk. Outside
+         #list, so a refetch of the listing leaves it alone — and above
+         it, because a list of three is unreadable scattered through nine
+         hundred rows sorted by name.
+
+         Hidden until there is one. An empty strip between the toolbar
+         and the listing is a rule with nothing to rule off. #}
+      <div id="upnext" hidden></div>
+
       {# songsChanged fires when a save changed what the repository
          holds. The listing refetches with the current filters, because a
          fixed junk song must leave a junk-filtered view rather than sit

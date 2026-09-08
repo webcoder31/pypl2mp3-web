@@ -201,30 +201,6 @@
   // happens when the song changes and not when the list is repainted.
   let followed = null;
 
-  // Where a song stands in the run asked for by hand, written into the
-  // row — and written *only when it differs*, which is the whole of this
-  // function's reason to exist.
-  //
-  // A MutationObserver on #list calls `paint`, so anything paint touches
-  // inside the listing calls paint again. `textContent = x` takes out the
-  // text node and puts a new one in even when x is exactly what was
-  // there, and that is a childList record, and that record is another
-  // paint: the page locked up the moment the first song was lined up.
-  // The class beside it was always safe, by accident rather than by
-  // care — classList.toggle handed a boolean leaves the attribute alone
-  // when it already agrees.
-  //
-  // `hidden` is an attribute and the observer does not watch those, so it
-  // is guarded for the next person rather than for today.
-  function showRank(badge, rank) {
-    const label = rank ? "next " + rank : "";
-
-    if (badge.textContent !== label) badge.textContent = label;
-    if (badge.hidden !== !rank) badge.hidden = !rank;
-  }
-
-  // The same discipline as `showRank` above, and for the same reason:
-  // this writes inside #list, and #list is watched.
   function showPlace(slot, place) {
     const label = place ? String(place) : "";
 
@@ -246,11 +222,6 @@
     // and lighting both said the song was playing twice.
     const currentKey = current ? current.key : null;
 
-    // The run asked for by hand, numbered within itself. The queue is an
-    // order the listing does not otherwise show, and a song told to play
-    // next is exactly the song you want to see took.
-    const lined = lineupRanks();
-
     const all = rows();
 
     if (listOrder === "play") lay(all, inPlayOrder(all));
@@ -260,12 +231,11 @@
     all.forEach(function (row) {
       row.classList.toggle("playing", row.dataset.songKey === currentKey);
 
-      const badge = row.querySelector(".queued");
-      if (badge) showRank(badge, lined.get(row.dataset.songKey) || 0);
-
       const rank = row.querySelector(".rank");
       if (rank) showPlace(rank, ranked.get(row) || 0);
     });
+
+    showUpNext();
 
     // Bring the playing row into view — once per song, not on every
     // repaint. A listing of 944 rows is 51 000 pixels tall, and after a
@@ -634,6 +604,17 @@
   // come from the run, never from the distance to the playing song.
   let lineup = [];
 
+  // For each song in the run, the key of the entry it stood in front of
+  // when it was taken out of its place. Taking it back out of the run
+  // means putting it back there — an index would not do, because every
+  // later request moves things and an index measured before that is a
+  // different place afterwards. A key is the same song wherever it went.
+  //
+  // Its successor and not its predecessor: a song at the end of the
+  // queue has none, which is the one case that needs no lookup — it
+  // goes back to the end.
+  const returns = new Map();
+
   // The run as it stands: those still in front of the playing song, in
   // the order the queue holds them. Anything else has been played, or
   // moved, or went with the selection that held it.
@@ -726,25 +707,68 @@
     return ranked;
   }
 
-  // The run, numbered within itself, as the rows are to show it.
-  //
-  // Its own function so that what a test can drive is what the page
-  // actually draws. Worked out inside `paint` it was out of reach, and a
-  // test that computes the rank a second time to compare against holds
-  // nothing at all — put the distance to the cursor back in here, which
-  // is the bug this replaced, and such a test goes on passing.
-  //
-  // The pruning is here because this is called from `paint`, and `paint`
-  // runs when the cursor has just moved: a song the run has been played
-  // past is no longer in it.
-  function lineupRanks() {
+  // The run as it stands, pruned to what is still in front of the song
+  // playing. Called from `paint`, which runs when the cursor has just
+  // moved: a song the run has been played past is no longer in it.
+  function lineupStanding() {
     const ahead = lineupAhead();
+
     lineup = ahead.map(function (song) { return song.key; });
+    ahead.forEach(function (song) { song.entry = queue[song.at]; });
 
-    const lined = new Map();
-    ahead.forEach(function (song, rank) { lined.set(song.key, rank + 1); });
+    return ahead;
+  }
 
-    return lined;
+  // The run, drawn as a run. It used to be a badge on each row, which
+  // meant hunting for three songs among nine hundred sorted by name —
+  // and the badge counted the distance to the song playing, so it said
+  // what the rank column already said and disappeared the moment the
+  // cursor passed, though the song had not moved.
+  function showUpNext() {
+    const strip = document.getElementById("upnext");
+    if (!strip) return;
+
+    const ahead = lineupStanding();
+    const showing = ahead.map(function (song) { return song.key; }).join("|");
+
+    // Rebuilt only when it changed. `paint` runs on every song change,
+    // and replacing this markup under the pointer would drop a hover and
+    // a focus every time for nothing.
+    if (strip.dataset.showing === showing) return;
+
+    strip.dataset.showing = showing;
+    strip.hidden = ahead.length === 0;
+    strip.textContent = "";
+
+    if (!ahead.length) return;
+
+    const label = document.createElement("span");
+    label.className = "upnext-label";
+    label.textContent = "Up next";
+    strip.appendChild(label);
+
+    ahead.forEach(function (song) {
+      const chip = document.createElement("span");
+      chip.className = "upnext-song";
+
+      const name = document.createElement("span");
+      name.className = "upnext-name";
+      name.textContent = song.entry ? song.entry.label : "";
+      name.title = name.textContent;
+      chip.appendChild(name);
+
+      // The way back out. Nothing before this could undo an ask: a song
+      // queued by mistake could only be played or skipped past.
+      const drop = document.createElement("button");
+      drop.type = "button";
+      drop.dataset.unqueue = song.key;
+      drop.title = "Take it out of the queue";
+      drop.setAttribute("aria-label", "Take out of the queue");
+      drop.textContent = "\u00d7";
+      chip.appendChild(drop);
+
+      strip.appendChild(chip);
+    });
   }
 
   function setQueue(entries, startAt, randomOrder) {
@@ -753,6 +777,7 @@
     // A new selection is a new intent; whatever was lined up in the old
     // one is not in this queue at all.
     lineup = [];
+    returns.clear();
     orderIsOwn = Boolean(randomOrder);
 
     const button = document.querySelector('[data-queue-action="shuffle"]');
@@ -810,6 +835,10 @@
       // selection.
       entry = queue[from];
       queue.splice(from, 1);
+      // Whatever now stands at that index is what this song stood in
+      // front of. Read after the removal, so it is the successor and
+      // not the song itself.
+      returns.set(key, queue[from] ? queue[from].key : null);
       // Taken out from in front of it, the cursor shifts back one.
       // Removing first and working the destination out afterwards is
       // what keeps this correct for a song that was already behind the
@@ -876,6 +905,33 @@
       // Private browsing refuses localStorage, the same as the theme and
       // the volume. The switch still works; it just forgets.
     }
+  }
+
+  // Out of the run, and back where it stood. The one thing no version of
+  // this could do until now: a song asked for by mistake could only be
+  // played or skipped.
+  function unqueue(key) {
+    const from = queue.findIndex(function (entry) { return entry.key === key; });
+    if (from === -1 || from === index) return;
+
+    const entry = queue[from];
+    const before = returns.get(key);
+
+    queue.splice(from, 1);
+    if (from < index) index -= 1;
+
+    lineup = lineup.filter(function (other) { return other !== key; });
+    returns.delete(key);
+
+    // In front of what it used to be in front of. Gone from the queue —
+    // filtered away, or itself moved since — it goes to the end, which
+    // is where a song nobody has asked for anything about belongs.
+    const at = before === null || before === undefined
+      ? queue.length
+      : queue.findIndex(function (other) { return other.key === before; });
+
+    queue.splice(at === -1 ? queue.length : at, 0, entry);
+    paint();
   }
 
   function shuffled(entries) {
@@ -1754,6 +1810,12 @@
     const orderButton = event.target.closest("#order button");
     if (orderButton) {
       chooseOrder(orderButton.dataset.order);
+      return;
+    }
+
+    const drop = event.target.closest("[data-unqueue]");
+    if (drop) {
+      unqueue(drop.dataset.unqueue);
       return;
     }
 

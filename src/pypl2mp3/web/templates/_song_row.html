@@ -51,13 +51,14 @@
      than "Junkize" — so the numbers stood eighteen pixels apart
      depending on whether the song was junk. #}
   <td class="num rank-cell"><span class="rank" hidden></span></td>
+  {# No badge for the run here any more. It counted how many songs
+     stood between this one and the one playing — which is the rank in
+     the cell before, less the rank of the row that is lit — so it said
+     nothing new, and it looked like a mark saying "you put this here"
+     while meaning something else entirely: it vanished the moment the
+     cursor passed it, though the song was still exactly where you had
+     put it. The run is shown as a run, above the listing. #}
   <td class="row-actions">
-    {# Where this song stands in the run asked for by hand, or nothing.
-       Written by the page — the queue lives in the browser — and not a
-       button, so it does not go with the rest of the cell when the
-       pointer leaves the row: it is state, and state that hides itself
-       is state nobody can act on. #}
-    <span class="queued" hidden></span>
     {# Jumps the queue rather than starting it. Clicking the row plays
        the song at once and loses whatever you were listening to; this
        puts it after the one playing, and after the last one you asked
