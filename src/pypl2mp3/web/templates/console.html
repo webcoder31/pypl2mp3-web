@@ -225,11 +225,32 @@
          Switching is client-side: both panes are already in the
          document, and a round trip to change which one is visible would
          be a round trip to show what the browser already holds. #}
-      <div id="tabs" role="tablist">
-        <button type="button" role="tab" data-tab="playlist"
-                aria-selected="true">Playlist</button>
-        <button type="button" role="tab" data-tab="imports"
-                aria-selected="false">Imports<span id="imports-badge"></span>
+      {# The row, and inside it the tablist proper. A tablist may hold
+         tabs and nothing else, and what sits at the far end of this row
+         is not one — so the role goes on the pair rather than on the
+         row that carries them both. #}
+      <div id="tabs">
+        <div class="tab-strip" role="tablist">
+          <button type="button" role="tab" data-tab="playlist"
+                  aria-selected="true">Playlist</button>
+          <button type="button" role="tab" data-tab="imports"
+                  aria-selected="false">Imports<span id="imports-badge"></span>
+          </button>
+        </div>
+        {# Not a tab, and drawn as what it is: it does not switch the
+           pane under this row, it replaces the whole frame with one
+           song. It sits here because it acts on the selection the tabs
+           show, and at the far end because it is the one thing on the
+           row that is not a choice between two views. #}
+        <button type="button" data-queue-action="workbench"
+                title="Judge this selection one song at a time">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"
+               fill="none" stroke="currentColor" stroke-width="1.4"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8.6 1.8H2.2v6.4l6 6 6.4-6.4z"/>
+            <circle cx="5.2" cy="5.2" r="1.1"/>
+          </svg>
+          Workbench
         </button>
       </div>
 
@@ -246,23 +267,6 @@
            not in every system font, and where they do they render at
            whatever size that font decided — which was too small to
            read. These follow the text colour and the text size. #}
-        {# Which order the listing is in. Two named states drawn as
-           text, like the theme switch and for the same reason: this is a
-           way of looking, not an action, and a filled control would give
-           it the weight of the buttons beside it that change what plays.
-
-           The listing is the selection and the queue is the order it
-           plays in, and those are two different things — shuffling or
-           lining a song up by hand makes them differ, and until now the
-           second was invisible past the one song NEXT names. #}
-        <div id="order" role="group" aria-label="Listing order">
-          <button type="button" data-order="name" aria-pressed="true"
-                  title="List the selection by name">A&ndash;Z</button>
-          <button type="button" data-order="play" aria-pressed="false"
-                  title="List the selection in the order it plays"
-                  data-hint="List the selection in the order it plays"
-          >Play order</button>
-        </div>
         <button type="button" data-queue-action="play">
           <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"
                fill="currentColor"><path d="M5 3.2 13 8l-8 4.8Z"/></svg>
@@ -280,29 +284,7 @@
           </svg>
           Shuffle
         </button>
-        <button type="button" data-queue-action="workbench"
-                title="Judge this selection one song at a time">
-          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"
-               fill="none" stroke="currentColor" stroke-width="1.4"
-               stroke-linecap="round" stroke-linejoin="round">
-            <path d="M8.6 1.8H2.2v6.4l6 6 6.4-6.4z"/>
-            <circle cx="5.2" cy="5.2" r="1.1"/>
-          </svg>
-          Workbench
-        </button>
       </div>
-
-      {# The run you asked for, as a run.
-         
-         Written by the page and not by the server: the queue lives in
-         the browser and nothing here has ever been on disk. Outside
-         #list, so a refetch of the listing leaves it alone — and above
-         it, because a list of three is unreadable scattered through nine
-         hundred rows sorted by name.
-
-         Hidden until there is one. An empty strip between the toolbar
-         and the listing is a rule with nothing to rule off. #}
-      <div id="upnext" hidden></div>
 
       {# songsChanged fires when a save changed what the repository
          holds. The listing refetches with the current filters, because a

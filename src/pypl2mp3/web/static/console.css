@@ -71,6 +71,10 @@
   --accent: #0a8f7c;
   --accent-text: #ffffff;
   --accent-soft: rgba(10, 143, 124, 0.13);
+  /* A song waiting in the run. One step between the hover at
+     0.055 and the playing row at 0.13, so it is neither mistaken
+     for the pointer passing nor for the song that is on. */
+  --queued: rgba(10, 143, 124, 0.08);
   --accent-line: rgba(10, 143, 124, 0.4);
   /* One step up from the frame, for a glyph rather than a rule. The two
      palettes take different alphas because they have different room:
@@ -201,6 +205,7 @@
   --accent: #46c9b1;
   --accent-text: #04211c;
   --accent-soft: rgba(70, 201, 177, 0.15);
+  --queued: rgba(70, 201, 177, 0.09);
   --accent-line: rgba(70, 201, 177, 0.35);
   --accent-dim: rgba(70, 201, 177, 0.5);
 
@@ -455,12 +460,11 @@ a { color: var(--accent); text-decoration-thickness: 1px;
   /* The song, its transport, then everything else. The first two take
      the height they need and no more, so with nothing selected the
      listing has almost the whole column. */
-  /* Song, transport, tabs, toolbar, the run you asked for, then
-     whichever pane the tabs chose. Only the last row grows: everything
-     above takes the height it needs — and a child that lands in an
-     implicit row instead would push the listing out of the one that
-     does. */
-  grid-template-rows: auto auto auto auto auto minmax(0, 1fr);
+  /* Song, transport, tabs, toolbar, then whichever pane the tabs chose.
+     Only the last row grows: everything above takes the height it
+     needs — and a child landing in an implicit row instead would push
+     the listing out of the one that does. */
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
   min-height: 0;
   min-width: 0;
 }
@@ -477,22 +481,6 @@ a { color: var(--accent); text-decoration-thickness: 1px;
    than the plain buttons beside it. */
 button:has(.icon) { display: inline-flex; align-items: center;
                     gap: var(--space-2); }
-
-/* Which order the listing is in. Two named states drawn as text, like
-   the theme switch and for the same reason: a way of looking rather than
-   an action, and a filled segment would give it the weight of the
-   buttons beside it that change what plays. The colour carries the
-   choice. */
-#order { display: flex; gap: var(--space-2); flex: 0 0 auto; }
-#order button {
-  border: none;
-  padding: 0;
-  font-size: var(--fs-sm);
-  background: none;
-  color: var(--text-3);
-}
-#order button:hover { background: none; color: var(--text); }
-#order button.chosen { color: var(--accent); }
 
 /* Shuffle reports what order the queue is in, not what a click will do.
    Text and outline, no fill — the same treatment as the theme switch,
@@ -607,66 +595,6 @@ button:has(.icon) { display: inline-flex; align-items: center;
    with a distinct column beside it. */
 #list { overflow-y: auto; background: var(--content-bg); min-width: 0; }
 
-/* The run you asked for, between the toolbar and the listing it was
-   picked out of. A strip and not a panel: three or four songs, read left
-   to right, each with the way to drop it. It carries the listing's
-   surface and its own rule underneath, so it reads as the top of the
-   listing rather than as a second toolbar. */
-#upnext {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-3);
-  background: var(--content-bg);
-  border-bottom: 1px solid var(--line);
-  padding: var(--space-3) var(--block-pad-x);
-  min-width: 0;
-}
-#upnext[hidden] { display: none; }
-
-.upnext-label {
-  font-size: var(--fs-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.11em;
-  font-weight: 600;
-  color: var(--text-3);
-  flex: 0 0 auto;
-}
-
-/* Each one a thing you can pick up and put down, so it is drawn as an
-   object with an edge rather than as words in a sentence. */
-.upnext-song {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  max-width: 20rem;
-  min-width: 0;
-  padding: var(--space-1) var(--space-2);
-  /* A ground of its own as well as an edge. On the listing's surface a
-     hairline alone made these read as empty slots waiting to be filled;
-     filled, they read as things already picked up. */
-  background: var(--hover);
-  border: 1px solid var(--line-strong);
-  border-radius: 2px;
-  font-size: var(--fs-sm);
-}
-.upnext-name { overflow: hidden; text-overflow: ellipsis;
-               white-space: nowrap; min-width: 0; }
-
-/* The way out. Always there — a control that appears on hover is a
-   control nobody knows exists, and this one is the whole reason the
-   strip can be trusted. */
-.upnext-song button {
-  border: none;
-  background: none;
-  padding: 0;
-  line-height: 1;
-  font-size: var(--fs-md);
-  color: var(--text-3);
-  flex: 0 0 auto;
-}
-.upnext-song button:hover { background: none; color: var(--junk); }
-
 /* Its own row above the listing rather than pinned inside it: with the
    queue counter in it there is nothing for the server to render, so it
    stays out of the fragment that gets swapped. */
@@ -735,11 +663,20 @@ button:has(.icon) { display: inline-flex; align-items: center;
    pane that turns out to be. */
 #tabs {
   display: flex;
+  align-items: center;
   gap: var(--space-1);
   border-bottom: 1px solid var(--line);
   padding: 0 var(--block-pad-x);
 }
-#tabs button {
+.tab-strip { display: flex; gap: var(--space-1); }
+
+/* Not a tab: it does not switch the pane under this row, it replaces
+   the whole frame with one song. So it keeps the ordinary button's
+   shape rather than the tab's, and stands at the far end where the row
+   stops being a choice between two views. */
+#tabs [data-queue-action] { margin-left: auto; }
+
+#tabs [role="tab"] {
   border: none;
   background: none;
   padding: var(--space-3) var(--space-3);
@@ -753,11 +690,11 @@ button:has(.icon) { display: inline-flex; align-items: center;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
 }
-#tabs button[aria-selected="true"] {
+#tabs [role="tab"][aria-selected="true"] {
   color: var(--accent);
   border-bottom-color: var(--accent);
 }
-#tabs button:hover { color: var(--text-1); }
+#tabs [role="tab"]:hover { color: var(--text-1); }
 /* Empty until an import is running, and :empty needs there to be no
    child nodes at all — whitespace included — so the JS writes textContent
    rather than markup. */
@@ -769,10 +706,6 @@ button:has(.icon) { display: inline-flex; align-items: center;
 /* One pane at a time. Both are in the document; the body says which. */
 body[data-tab="playlist"] #imports,
 body[data-tab="imports"] #toolbar,
-/* With the toolbar and the listing, because it belongs to them: it
-   summarises a queue built out of the listing, and the other tab shows
-   neither. */
-body[data-tab="imports"] #upnext,
 body[data-tab="imports"] #list { display: none; }
 body[data-tab="imports"] #imports { display: block; }
 #imports { overflow-y: auto; min-height: 0; }
@@ -990,22 +923,56 @@ td {
   padding: var(--row-pad-y) var(--row-pad-x);
   vertical-align: middle;
   font-size: var(--row-font);
-  border-bottom: 1px solid var(--line);
 }
-tbody tr { cursor: pointer; border-left: 2px solid transparent; }
+/* The line under a row belongs to the row, not to its first cell.
+   On the cell it was clipped by the very `overflow: hidden` that gives
+   the title its ellipsis — so the separator stopped where the title
+   cell ended and only the last two cells' worth of it was drawn. */
+tbody tr { cursor: pointer; border-left: 2px solid transparent;
+           border-bottom: 1px solid var(--line); }
 tbody tr:hover { background: var(--hover); }
 
+/* The row while it is travelling to its new place.
+   
+   Given a body, because it had none: a row's background is nothing at
+   all, so a row crossing the listing was text sliding over text at
+   seventy-five pixels a frame — the movement was there and could not be
+   read. Opaque, so it covers what it passes; lifted, so it reads as a
+   thing picked up rather than a hole in the page.
+
+   The tint is a gradient over the surface rather than a translucent
+   colour, which is the only way to have both the accent and no
+   transparency in one background. */
+#list tr.moving {
+  position: relative;
+  z-index: 2;
+  background-color: var(--content-bg);
+  background-image: linear-gradient(var(--accent-soft), var(--accent-soft));
+  box-shadow: var(--shadow);
+}
+
 /* One line or two, decided by the values at the top of this file. */
+/* The cell takes the width the other two leave and no more; the
+   clipping is on what it holds, not on the cell.
+   
+   On the cell it also clipped the row's own bottom border — the
+   separator stopped where this cell ended, so only the last two cells'
+   worth of it was drawn. Moving the border to the `tr` did not help:
+   with collapsed borders the segment is still painted by the cell, so
+   the clip still caught it. What the cell must not do is clip. */
 .row-cell {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
   max-width: 0;
   width: 100%;
 }
+.row-title, .row-meta {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .row-title { font-weight: 500; color: var(--text); }
 .row-meta {
-  display: block;
   font-size: var(--row-meta-size);
   color: var(--text-3);
 }
@@ -1015,30 +982,13 @@ tbody tr:hover { background: var(--hover); }
                padding-left: 0; padding-right: var(--space-3); }
 .row-actions button { font-size: var(--fs-xs); color: var(--text-3);
                       opacity: 0; }
+/* The one action on a row that is about the song rather than the order,
+   in the colour the page already uses for a file that wants work — the
+   same orange as the ⚠ beside the title it belongs to. */
+.row-actions .fix-link { color: var(--junk); }
+.row-actions .fix-link:hover { color: var(--junk); }
 tr:hover .row-actions button,
 .row-actions button:focus-visible { opacity: 1; }
-
-/* Where the song falls in the order the queue plays. Numeric and quiet,
-   against the badge beside it which is loud and labelled: one says where
-   the song is, the other says you put it there.
-
-   The cell carries no padding of its own and the number carries its gap
-   instead, so with nothing to show the column takes no width at all — a
-   cell padded on both sides would open a permanent gap in the middle of
-   every row for a number that is usually not there. */
-td.rank-cell { width: 1%; padding-left: 0; padding-right: 0; }
-.rank {
-  font-size: var(--fs-xs);
-  font-variant-numeric: tabular-nums;
-  color: var(--text-3);
-  margin-left: var(--row-pad-x);
-  /* And a gap on the other side. The cell that follows starts flush —
-     it is right-aligned and pads only its far edge — so the number ran
-     straight into the badge beside it, and into the buttons on hover.
-     Carried by the number and not by the cell, so a row with nothing to
-     show still takes no width. */
-  margin-right: var(--space-3);
-}
 
 
 td.num {
@@ -1052,6 +1002,19 @@ td.num {
 
 tbody tr.is-junk { border-left-color: var(--junk); }
 tbody tr.is-junk .row-title { color: var(--junk); }
+/* Waiting in the run, and it stays marked for as long as that is true:
+   until it plays, or until a click further down the listing leaves it
+   behind. A badge did this before and counted the rows to the song
+   playing instead, so it vanished the moment the cursor passed a song
+   that had not moved.
+
+   The left edge is the playing row's alone. Two rows with an accent bar
+   would be two rows claiming to be on. Hovering one brightens it to the
+   playing row's own tint — the pointer still answers, and what it shows
+   is where that row is going. */
+tbody tr.queued { background: var(--queued); }
+tbody tr.queued:hover { background: var(--accent-soft); }
+
 tbody tr.playing { border-left-color: var(--accent);
                    background: var(--accent-soft); }
 tbody tr.playing .row-title { font-weight: 700; color: var(--accent); }
@@ -1735,8 +1698,6 @@ body.workbench-mode .workbench-cover { flex-basis: var(--workbench-cover); }
 body.workbench-mode #nav,
 body.workbench-mode #list { display: none; }
 body.workbench-mode #toolbar { display: none; }
-/* The listing is not on screen, so neither is what is queued in it. */
-body.workbench-mode #upnext { display: none; }
 
 /* The tabs choose between two panes, and neither is on screen here. */
 body.workbench-mode #tabs { display: none; }

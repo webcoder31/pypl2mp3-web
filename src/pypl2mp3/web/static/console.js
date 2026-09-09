@@ -201,11 +201,28 @@
   // happens when the song changes and not when the list is repainted.
   let followed = null;
 
-  function showPlace(slot, place) {
-    const label = place ? String(place) : "";
 
-    if (slot.textContent !== label) slot.textContent = label;
-    if (slot.hidden !== !place) slot.hidden = !place;
+  // What the row's one button says. Take out on a song you asked for,
+  // Play next on any other — and that label is the only thing saying you
+  // put it there: the listing is in play order, so a row following the
+  // one playing looks the same whether you asked for it or it was simply
+  // next, and the button is where the difference can be acted on.
+  //
+  // Written only when it differs. A MutationObserver on #list calls
+  // `paint`, so anything paint touches inside the listing calls paint
+  // again — `textContent = x` replaces the node even when x is what was
+  // already there, and that is a childList record.
+  function showAsk(row, queued) {
+    const button = row.querySelector("[data-play-next]");
+    if (!button) return;
+
+    const label = queued ? "Take out" : "Play next";
+    const title = queued
+      ? "Put it back where it was"
+      : "Play it after the one playing";
+
+    if (button.textContent !== label) button.textContent = label;
+    if (button.title !== title) button.title = title;
   }
 
   function paint() {
@@ -224,18 +241,27 @@
 
     const all = rows();
 
-    if (listOrder === "play") lay(all, inPlayOrder(all));
+    // The listing *is* the play order. There is no other, so there is
+    // nothing to choose between and nothing to number: a row that comes
+    // after another comes after it, which is the whole of what a rank
+    // column and a sort switch were there to explain.
+    lay(all, inPlayOrder(all));
 
-    const ranked = playRanks(all);
+    const asked = new Set(lineupStanding().map(function (song) {
+      return song.key;
+    }));
 
     all.forEach(function (row) {
-      row.classList.toggle("playing", row.dataset.songKey === currentKey);
+      const queued = asked.has(row.dataset.songKey);
 
-      const rank = row.querySelector(".rank");
-      if (rank) showPlace(rank, ranked.get(row) || 0);
+      row.classList.toggle("playing", row.dataset.songKey === currentKey);
+      // A real boolean, not a value that could be undefined: given one,
+      // classList.toggle treats the argument as absent and toggles.
+      row.classList.toggle("queued", queued);
+      showAsk(row, queued);
     });
 
-    showUpNext();
+    justMoved = null;
 
     // Bring the playing row into view — once per song, not on every
     // repaint. A listing of 944 rows is 51 000 pixels tall, and after a
@@ -254,7 +280,10 @@
     // they used to stay lit and do nothing at all, which reads as a
     // broken page rather than as an empty one.
     const empty = rows().length === 0;
-    document.querySelectorAll("#toolbar [data-queue-action]").forEach(
+    // Every one of them, wherever it sits: Workbench is on the tab row
+    // now and would otherwise stay lit over an empty listing — which is
+    // the exact thing this loop was written to stop.
+    document.querySelectorAll("[data-queue-action]").forEach(
       function (button) {
         button.disabled = empty;
         button.title = empty
@@ -570,22 +599,6 @@
   // shuffled queue from an ordered one.
   let inRandomOrder = false;
 
-  // Which order the listing is drawn in: the selection's own, or the
-  // one it plays in. Remembered across reloads like the theme and the
-  // volume, and for the same reason — it is how you have chosen to look
-  // at the page, not something about this visit.
-  const ORDER_KEY = "pypl2mp3.order";
-
-  let listOrder = "name";
-
-  // Whether the queue's order is anything other than the listing's.
-  // Shuffling makes it so, and so does lining a song up by hand.
-  //
-  // Said rather than worked out by comparing the two: once the listing
-  // has been put in play order they agree by construction, so a
-  // comparison would answer "no" exactly when the ranks are wanted.
-  let orderIsOwn = false;
-
   // The rows asked for by hand, in the order they were asked for. Keys
   // and not video ids: two copies of one video are two rows and two
   // places in the queue, and a run holding the video could not say which
@@ -670,6 +683,172 @@
     return out;
   }
 
+  // How long a row takes to travel to its new place, and how long the
+  // one you moved stays lit after it lands.
+  //
+  // 220ms: this stylesheet speaks two lengths — a tenth of a second for
+  // everything utilitarian, three quarters for the cover's dissolve,
+  // "the one place the page is asked to be looked at". A row crossing
+  // three hundred pixels in 120ms is a blink; 220 is seen without being
+  // waited for.
+  // How long a row takes to travel to its new place, and how long the
+  // one you moved stays lit after it lands.
+  //
+  // 220ms: this stylesheet speaks two lengths — a tenth of a second for
+  // everything utilitarian, three quarters for the cover's dissolve,
+  // "the one place the page is asked to be looked at". A row crossing
+  // three hundred pixels in 120ms is a blink; 220 is seen without being
+  // waited for.
+  const SLIDE_MS = 220;
+  const MAX_SLIDE_MS = 520;
+  const LANDED_MS = 900;
+
+  // Rows put back where they were and then let go — the browser
+  // interpolates the journey they did not make. FLIP, with the row you
+  // asked for lit where it lands: the run it joins is two or three rows
+  // that look alike, and after a slide the eye needs telling which one
+  // was yours.
+  //
+  // Both in one declaration, because `transition` is a single property
+  // and does not merge. The tint lived in a class of its own first, and
+  // an inline `transition: transform` from the slide silently replaced
+  // it: the background went from full to nothing between two frames
+  // with no fade at all. That took measuring to find — the class was on
+  // the row the whole time.
+  //
+  // Transitions rather than keyframe animations, deliberately: the rule
+  // at the foot of the stylesheet neutralises transition durations under
+  // prefers-reduced-motion and walks straight past animations, so this
+  // way both are instant for anyone who asked for that.
+  //
+  // Inline styles, so every write here is an attribute change. The
+  // MutationObserver on #list watches childList, and would otherwise
+  // call `paint` at each of them.
+  function slide(seen, lit) {
+    const touched = [];
+    const room = window.innerHeight;
+    const margin = room / 2;
+    let travel = 0;
+    let mover = null;
+
+    seen.forEach(function (was, row) {
+      const box = row.getBoundingClientRect();
+      const mine = row.dataset.songKey === lit;
+
+      // Only what can be watched. A song four hundred rows down moves
+      // four hundred rows of neighbours, and setting a transform on all
+      // of them is the pause before anything happens at all — none of
+      // them is on screen to be seen doing it. A row earns an animation
+      // by starting or ending where the eye is.
+      const watched =
+        (was > -margin && was < room + margin) ||
+        (box.bottom > -margin && box.top < room + margin);
+
+      if (!watched) return;
+
+      const shift = was - box.top;
+
+      if (!shift && !mine) return;
+
+      // Where the transition should end, which is not always where the
+      // row is going.
+      //
+      // A song four hundred rows down is twenty thousand pixels from its
+      // new place, and its new place is nowhere near the screen: you are
+      // looking at the row you just clicked. Animating the arrival
+      // animates it off screen, and all you see is the row vanish from
+      // under the pointer — which is what this looked like for three
+      // goes at it.
+      //
+      // So the visible half of the journey is the one that gets
+      // animated: the row holds its old place and travels one screen
+      // towards where it is going, which is the direction you need told.
+      // The rest is covered instantly, off screen, unwatched.
+      let target = 0;
+
+      if (mine && Math.abs(shift) > room) {
+        target = shift - (shift > 0 ? room : -room);
+      }
+
+      row.style.transition = "none";
+      row.style.transform = "translateY(" + shift + "px)";
+
+      if (mine) {
+        // A body for the journey. Without it the row is text sliding
+        // over text — the movement happens and cannot be read.
+        row.classList.add("moving");
+        mover = row;
+      }
+
+      travel = Math.max(travel, Math.abs(shift - target));
+      touched.push([row, target]);
+    });
+
+    if (!touched.length) return;
+
+    // Long enough to be followed. A fixed 220ms is right for a row
+    // stepping aside and far too fast for one crossing the window: a
+    // thousand pixels in 220ms is seventy-five a frame, which reads as a
+    // flicker. Scaled by the distance actually travelled, and capped so
+    // that nothing ever feels slow.
+    const ms = Math.min(
+      MAX_SLIDE_MS, Math.max(SLIDE_MS, Math.round(travel * 0.55))
+    );
+
+    // One frame. A transition runs from the style of the last frame the
+    // browser painted, and the values above were set in the click's own
+    // task — so a frame carrying them is drawn before this callback,
+    // which belongs to the next one. Two frames worked as well and cost
+    // another sixteen milliseconds before anything moved.
+    window.requestAnimationFrame(function () {
+      touched.forEach(function (pair) {
+        pair[0].style.transition = "transform " + ms + "ms ease";
+        pair[0].style.transform = pair[1]
+          ? "translateY(" + pair[1] + "px)"
+          : "";
+      });
+
+      window.setTimeout(function () {
+        touched.forEach(function (pair) {
+          // Cleared, not transitioned: for a row that only travelled the
+          // visible screen's worth, this is the rest of its journey, and
+          // it happens where nobody is looking.
+          pair[0].style.transition = "";
+          pair[0].style.transform = "";
+        });
+
+        // Landed: the body it travelled in comes off, and the tint it
+        // arrives with fades. Two stages rather than one declaration —
+        // the journey wants an opaque card and the arrival wants a
+        // colour draining away, and a single transition cannot be both.
+        if (mover) land(mover);
+      }, ms);
+    });
+  }
+
+  // Where it landed, lit for a moment. The run it joins is two or three
+  // rows that look alike, and after a journey the eye needs telling
+  // which one was yours.
+  function land(row) {
+    row.classList.remove("moving");
+    row.style.transition = "none";
+    row.style.background = "var(--accent-soft)";
+
+    // A transition runs from the style of the last frame the browser
+    // painted, so the tint has to be on screen before it is taken off.
+    // The cover's dissolve names the same trap.
+    window.requestAnimationFrame(function () {
+      window.requestAnimationFrame(function () {
+        row.style.transition = "background " + LANDED_MS + "ms ease-out";
+        row.style.background = "";
+
+        window.setTimeout(function () {
+          row.style.transition = "";
+        }, LANDED_MS);
+      });
+    });
+  }
+
   // Put them there — and only when they are not there already.
   //
   // A MutationObserver on #list calls `paint`, so a reorder that runs
@@ -686,26 +865,50 @@
 
     if (settled || !wanted.length) return;
 
+    // Where each row is now, for the slide below — but only when a
+    // click is what moved something. Shuffling sends every row to an
+    // unrelated place, and nine hundred rows crossing each other says
+    // nothing you could follow; an insertion is one row travelling and
+    // a handful stepping aside, which is exactly what a slide shows.
+    //
+    // All of them, not the ones on screen. Filtering to the viewport
+    // first looked like the saving: it is 1.4ms for all 944, measured,
+    // and a row asked for from below the fold has its *arrival* on
+    // screen and nothing to be inverted from — so it jumped, which is
+    // the thing this exists to stop.
+    const seen = new Map();
+
+    if (justMoved) {
+      all.forEach(function (row) {
+        seen.set(row, row.getBoundingClientRect().top);
+      });
+    }
+
+    // Only the rows that are out of place. Rebuilding the listing into
+    // a fragment and re-appending it moved all 944 nodes whatever had
+    // changed: 94ms of node churn and 138ms of layout behind it,
+    // measured — a quarter of a second before the slide could begin, for
+    // one song changing place. Walking the wanted order against what is
+    // there turns an insertion into a single insertBefore.
     const parent = wanted[0].parentNode;
-    const batch = document.createDocumentFragment();
+    let cursor = parent.firstElementChild;
 
-    wanted.forEach(function (row) { batch.appendChild(row); });
-    parent.appendChild(batch);
-  }
+    wanted.forEach(function (row) {
+      if (cursor === row) {
+        cursor = cursor.nextElementSibling;
+        return;
+      }
 
-  // Where each row falls in the queue, one-based, or an empty map when
-  // saying so would only count the listing back to you.
-  function playRanks(all) {
-    const ranked = new Map();
-
-    if (!queue.length || (listOrder !== "play" && !orderIsOwn)) return ranked;
-
-    inPlayOrder(all).forEach(function (row, at) {
-      if (at < queue.length) ranked.set(row, at + 1);
+      parent.insertBefore(row, cursor);
     });
 
-    return ranked;
+    slide(seen, justMoved);
   }
+
+  // The row a click has just moved, so the tint lands on it and on
+  // nothing else. Read by `lay`, and cleared by `paint` once the move it
+  // describes has been drawn.
+  let justMoved = null;
 
   // The run as it stands, pruned to what is still in front of the song
   // playing. Called from `paint`, which runs when the cursor has just
@@ -719,57 +922,6 @@
     return ahead;
   }
 
-  // The run, drawn as a run. It used to be a badge on each row, which
-  // meant hunting for three songs among nine hundred sorted by name —
-  // and the badge counted the distance to the song playing, so it said
-  // what the rank column already said and disappeared the moment the
-  // cursor passed, though the song had not moved.
-  function showUpNext() {
-    const strip = document.getElementById("upnext");
-    if (!strip) return;
-
-    const ahead = lineupStanding();
-    const showing = ahead.map(function (song) { return song.key; }).join("|");
-
-    // Rebuilt only when it changed. `paint` runs on every song change,
-    // and replacing this markup under the pointer would drop a hover and
-    // a focus every time for nothing.
-    if (strip.dataset.showing === showing) return;
-
-    strip.dataset.showing = showing;
-    strip.hidden = ahead.length === 0;
-    strip.textContent = "";
-
-    if (!ahead.length) return;
-
-    const label = document.createElement("span");
-    label.className = "upnext-label";
-    label.textContent = "Up next";
-    strip.appendChild(label);
-
-    ahead.forEach(function (song) {
-      const chip = document.createElement("span");
-      chip.className = "upnext-song";
-
-      const name = document.createElement("span");
-      name.className = "upnext-name";
-      name.textContent = song.entry ? song.entry.label : "";
-      name.title = name.textContent;
-      chip.appendChild(name);
-
-      // The way back out. Nothing before this could undo an ask: a song
-      // queued by mistake could only be played or skipped past.
-      const drop = document.createElement("button");
-      drop.type = "button";
-      drop.dataset.unqueue = song.key;
-      drop.title = "Take it out of the queue";
-      drop.setAttribute("aria-label", "Take out of the queue");
-      drop.textContent = "\u00d7";
-      chip.appendChild(drop);
-
-      strip.appendChild(chip);
-    });
-  }
 
   function setQueue(entries, startAt, randomOrder) {
     queue = entries;
@@ -778,7 +930,6 @@
     // one is not in this queue at all.
     lineup = [];
     returns.clear();
-    orderIsOwn = Boolean(randomOrder);
 
     const button = document.querySelector('[data-queue-action="shuffle"]');
     if (button) button.setAttribute("aria-pressed", String(inRandomOrder));
@@ -861,51 +1012,15 @@
     // list from growing for the life of the page.
     lineup = ahead.map(function (song) { return song.key; }).concat(key);
 
-    // The queue is no longer the listing's order, and stays that way
-    // after the run has played out: the songs it moved are still moved.
-    orderIsOwn = true;
-
     // Asked to be played next, so the queue is going forward. A track
     // ending follows `direction`, and walking backwards through a
     // selection would never reach what was just lined up.
     direction = 1;
+    justMoved = key;
     paint();
   }
 
-  function showOrder() {
-    document.querySelectorAll("#order button").forEach(function (button) {
-      const on = button.dataset.order === listOrder;
 
-      button.setAttribute("aria-pressed", String(on));
-      button.classList.toggle("chosen", on);
-    });
-  }
-
-  function chooseOrder(order) {
-    listOrder = order === "play" ? "play" : "name";
-    showOrder();
-
-    // Back to the selection's own order, which only the server knows:
-    // the rows were rearranged in place, so putting them back means
-    // asking for them again.
-    if (listOrder === "name") {
-      window.htmx.ajax("GET", "/fragments/list", {
-        target: "#list",
-        swap: "innerHTML",
-        values: null,
-        source: document.getElementById("filters"),
-      });
-    } else {
-      paint();
-    }
-
-    try {
-      localStorage.setItem(ORDER_KEY, listOrder);
-    } catch (error) {
-      // Private browsing refuses localStorage, the same as the theme and
-      // the volume. The switch still works; it just forgets.
-    }
-  }
 
   // Out of the run, and back where it stood. The one thing no version of
   // this could do until now: a song asked for by mistake could only be
@@ -923,14 +1038,33 @@
     lineup = lineup.filter(function (other) { return other !== key; });
     returns.delete(key);
 
-    // In front of what it used to be in front of. Gone from the queue —
-    // filtered away, or itself moved since — it goes to the end, which
-    // is where a song nobody has asked for anything about belongs.
-    const at = before === null || before === undefined
+    // In front of what it used to be in front of — but only if that
+    // song is still where it was.
+    //
+    // Ask for two songs that sit next to each other in the listing, and
+    // the first records the second as its way home. The second is then
+    // lifted to the front too, so following it home follows it to the
+    // front: the song came back out of the run and went straight back to
+    // where the run is, unmarked and apparently stuck. Each song the
+    // chain passes recorded its own way home, so following it past
+    // everything still lifted arrives at a song that never moved.
+    let anchor = before;
+    const passed = new Set([key]);
+
+    while (anchor && lineup.indexOf(anchor) !== -1 && !passed.has(anchor)) {
+      passed.add(anchor);
+      anchor = returns.get(anchor);
+    }
+
+    // Nothing left to come back to — filtered away, or the run reached
+    // the end of the queue. The end is where a song nobody has asked
+    // anything about belongs.
+    const at = anchor === null || anchor === undefined
       ? queue.length
-      : queue.findIndex(function (other) { return other.key === before; });
+      : queue.findIndex(function (other) { return other.key === anchor; });
 
     queue.splice(at === -1 ? queue.length : at, 0, entry);
+    justMoved = key;
     paint();
   }
 
@@ -1807,22 +1941,18 @@
       return;
     }
 
-    const orderButton = event.target.closest("#order button");
-    if (orderButton) {
-      chooseOrder(orderButton.dataset.order);
-      return;
-    }
-
-    const drop = event.target.closest("[data-unqueue]");
-    if (drop) {
-      unqueue(drop.dataset.unqueue);
-      return;
-    }
-
     const lineUp = event.target.closest("[data-play-next]");
     if (lineUp) {
       const row = lineUp.closest("tr[data-song-id]");
-      if (row) playNext(row.dataset.songKey);
+
+      // Which of the two it does is read off the run itself rather than
+      // off a second attribute that could disagree with the label.
+      if (row) {
+        const key = row.dataset.songKey;
+
+        if (lineup.indexOf(key) === -1) playNext(key);
+        else unqueue(key);
+      }
       return;
     }
 
@@ -2060,13 +2190,6 @@
   const list = document.getElementById("list");
   if (list) observer.observe(list, { childList: true, subtree: true });
 
-  try {
-    listOrder = localStorage.getItem(ORDER_KEY) === "play" ? "play" : "name";
-  } catch (error) {
-    // As above: refused storage means the default, not a broken page.
-  }
-
-  showOrder();
   paint();
 
   // Arriving, the panel described nothing: "Select a song." The first

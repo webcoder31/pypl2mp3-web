@@ -38,33 +38,7 @@
       <span class="id">{{ song.youtube_id }}</span>
     </span>
   </td>
-  {# Where the song falls in the order the queue plays, or nothing.
-     Shown only when that order is not the one the rows are listed in —
-     shuffled, or rearranged by hand — because otherwise it counts the
-     listing back to you. Quiet and numeric, against the badge in the
-     next cell which is loud and labelled: one says where the song is,
-     the other says you put it there.
-
-     A cell of its own, because it is a column of figures and has to read
-     as one. Sharing the actions cell it was right-aligned behind
-     whatever buttons that row happened to carry, and "Fix" is narrower
-     than "Junkize" — so the numbers stood eighteen pixels apart
-     depending on whether the song was junk. #}
-  <td class="num rank-cell"><span class="rank" hidden></span></td>
-  {# No badge for the run here any more. It counted how many songs
-     stood between this one and the one playing — which is the rank in
-     the cell before, less the rank of the row that is lit — so it said
-     nothing new, and it looked like a mark saying "you put this here"
-     while meaning something else entirely: it vanished the moment the
-     cursor passed it, though the song was still exactly where you had
-     put it. The run is shown as a run, above the listing. #}
   <td class="row-actions">
-    {# Jumps the queue rather than starting it. Clicking the row plays
-       the song at once and loses whatever you were listening to; this
-       puts it after the one playing, and after the last one you asked
-       for before it, so a handful of songs picked out of a listing keep
-       the order you picked them in. #}
-    <button type="button" data-play-next>Play next</button>
     {% if song.is_junk %}
       {# Loads the panel without playing. Clicking the row does both,
          which is usually what you want; this is for picking one out of
@@ -73,14 +47,27 @@
               hx-get="/fragments/inspector/{{ song.key }}"
               hx-target="#inspector"
               hx-swap="innerHTML">Fix</button>
-    {% else %}
-      <button type="button"
-        hx-post="/songs/{{ song.key }}/junkize"
-        hx-target="#song-{{ song.key }}"
-        hx-swap="outerHTML"
-        hx-confirm="Clear this song's metadata and mark it as junk? This cannot be undone."
-      >Junkize</button>
     {% endif %}
+    {# Jumps the queue rather than starting it. Clicking the row plays
+       the song at once and loses whatever you were listening to; this
+       puts it after the one playing, and after the last one you asked
+       for before it, so a handful of songs picked out of a listing keep
+       the order you picked them in.
+
+       Two states in one control, the label written by the page: on a
+       song you have asked for it says Take out and puts it back where
+       it stood. Which is also the only mark saying you put it there —
+       the listing is in play order, so a row that follows the one
+       playing looks the same whether you asked for it or it was simply
+       next, and the button is where that difference matters. #}
+    <button type="button" data-play-next
+            title="Play it after the one playing">Play next</button>
+    {# No Junkize here. The panel has one, and it is the better place for
+       it: the panel is where you have the song's own metadata in front
+       of you, which is the thing being cleared — a row shows a name and
+       a length, and deciding to destroy the tags from that is deciding
+       blind. It also took a confirmation dialog on every row of nine
+       hundred to make the click safe. #}
     {% if fixed %}<span class="job-new">metadata fixed</span>{% endif %}
     {% if junkized %}<span class="job-new">metadata cleared</span>{% endif %}
   </td>

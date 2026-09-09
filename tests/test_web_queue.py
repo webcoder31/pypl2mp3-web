@@ -58,7 +58,7 @@ def _run(setup: str, steps: str) -> dict:
     """Run playNext against a stubbed console and report the queue."""
 
     harness = f"""
-let queue = [], index = 0, direction = 1, orderIsOwn = false;
+let queue = [], index = 0, direction = 1;
 let rows = [];
 // A row's key is what says which row; its id is what the server is
 // asked about the song. They differ only where one video is held twice,
@@ -66,10 +66,9 @@ let rows = [];
 // letter stands for both.
 function entry(key, id) {{ return {{ key, id: id || key }}; }}
 function queueFromRows() {{ return rows.map(id => entry(id)); }}
-function setQueue(entries, startAt, randomOrder) {{
+function setQueue(entries, startAt) {{
   queue = entries;
   lineup = [];
-  orderIsOwn = Boolean(randomOrder);
   index = startAt > 0 ? startAt : 0;
 }}
 function paint() {{ lineupStanding(); }}
@@ -78,13 +77,14 @@ const returns = new Map();
 {_source("lineupAhead")}
 {_source("lineupStanding")}
 {_source("playNext")}
+{_source("unqueue")}
 {setup}
 {steps}
 paint();
 console.log(JSON.stringify({{
   queue: queue.map(e => e.key),
   playing: queue[index] ? queue[index].key : null,
-  index, lineup, direction, orderIsOwn,
+  index, lineup, direction,
   // Read off the page's own run, not worked out a second time here.
   ranks: lineupStanding().map((s, i) => s.key + ":" + (i + 1)),
 }}));
@@ -110,12 +110,6 @@ def test_one_song_goes_straight_after_the_one_playing():
 
     assert out["queue"] == ["a", "d", "b", "c", "e"], out
     assert out["playing"] == "a", "the song playing must not change"
-
-    # And the queue's order is now its own, which is what puts the play
-    # position beside every row: the listing can no longer show it.
-    assert out["orderIsOwn"] is True, (
-        "a song moved by hand, and the listing still claims to be the order"
-    )
 
 
 @needs_node
@@ -209,6 +203,32 @@ def test_two_copies_of_one_video_are_two_places_in_the_run():
 
 
 @needs_node
+def test_taking_one_out_sends_it_home_and_not_back_to_the_front():
+    """Ask for two songs that sit next to each other, and the first
+    records the second as its way home. The second is then lifted to the
+    front too — so following it home follows it to the front: the song
+    came out of the run and went straight back to where the run is,
+    unmarked and apparently anchored. Seen on screen.
+
+    Each song the chain passes recorded its own way home, so following
+    it past everything still lifted arrives at one that never moved.
+    """
+
+    out = _run(
+        FIVE + "index = 0;",
+        # "c" and "d" are neighbours: c's way home is d, and d is lifted
+        # right after it.
+        'playNext("c"); playNext("d"); unqueue("c");',
+    )
+
+    assert out["queue"] == ["a", "d", "b", "c", "e"], (
+        f"c did not go home: {out['queue']}"
+    )
+    assert out["lineup"] == ["d"], out
+    assert out["ranks"] == ["d:1"], out
+
+
+@needs_node
 def test_going_back_does_not_draft_a_song_into_the_run():
     """The bug this file was written the wrong way for.
 
@@ -266,7 +286,7 @@ def test_with_nothing_playing_it_takes_the_listing_and_starts_there():
 
 
 @needs_node
-def test_writing_the_rank_touches_nothing_it_does_not_change():
+def test_writing_the_button_touches_nothing_it_does_not_change():
     """A MutationObserver on #list calls `paint`, so anything paint writes
     inside the listing calls paint again. `textContent = x` replaces the
     text node even when x is exactly what was already there, and that is
@@ -274,50 +294,53 @@ def test_writing_the_rank_touches_nothing_it_does_not_change():
     locked up the moment the first song was lined up.
 
     So this counts the writes rather than reading the result: a second
-    call with the same rank must touch nothing at all."""
+    call with the same state must touch nothing at all."""
 
-    # The span ships `hidden` and empty — `test_the_row_offers_it...`
-    # below holds the template to it — so the stub starts where the page
-    # starts. A stub that starts anywhere else would report a write the
-    # real row never makes.
+    # A row starts out saying "Play next": that is what the template
+    # ships, so the stub starts where the page starts. A stub starting
+    # anywhere else would report a write the real row never makes.
     harness = """
-function badge() {
-  let text = "", hidden = true, writes = 0;
-  return {
+function row(label) {
+  let text = label, title = "Play it after the one playing", writes = 0;
+  const button = {
     get textContent() { return text; },
     set textContent(v) { writes += 1; text = v; },
-    get hidden() { return hidden; },
-    set hidden(v) { writes += 1; hidden = v; },
-    seen() { return writes; },
+    get title() { return title; },
+    set title(v) { writes += 1; title = v; },
+  };
+  return {
+    querySelector: () => button,
+    label: () => text,
+    seen: () => writes,
   };
 }
-""" + _source("showPlace") + """
-const lined = badge();
-showPlace(lined, 1);
-const afterFirst = lined.seen();
-showPlace(lined, 1);
-showPlace(lined, 1);
+""" + _source("showAsk") + """
+// Asked for: the label turns over once, then holds.
+const asked = row("Play next");
+showAsk(asked, true);
+const afterFirst = asked.seen();
+showAsk(asked, true);
+showAsk(asked, true);
 
-const blank = badge();
-showPlace(blank, 0);
-showPlace(blank, 0);
+// Never asked for: nothing is written at all.
+const plain = row("Play next");
+showAsk(plain, false);
+showAsk(plain, false);
 
-// And one that was lined up and no longer is: it has to be cleared, then
-// left alone.
-const dropped = badge();
-showPlace(dropped, 2);
+// Taken back out: turned back, then left alone.
+const dropped = row("Play next");
+showAsk(dropped, true);
 const beforeDrop = dropped.seen();
-showPlace(dropped, 0);
+showAsk(dropped, false);
 const afterDrop = dropped.seen();
-showPlace(dropped, 0);
+showAsk(dropped, false);
 
 console.log(JSON.stringify({
   wroteOnce: afterFirst > 0,
-  settled: lined.seen() === afterFirst,
-  label: lined.textContent,
-  untouched: blank.seen(),
-  cleared: afterDrop > beforeDrop && dropped.textContent === ""
-           && dropped.hidden === true,
+  settled: asked.seen() === afterFirst,
+  label: asked.label(),
+  untouched: plain.seen(),
+  cleared: afterDrop > beforeDrop && dropped.label() === "Play next",
   clearedSettled: dropped.seen() === afterDrop,
 }));
 """
@@ -327,17 +350,17 @@ console.log(JSON.stringify({
     assert done.returncode == 0, done.stderr
     out = json.loads(done.stdout)
 
-    assert out["wroteOnce"], "the rank never reaches the row"
-    assert out["label"] == "1", out
+    assert out["wroteOnce"], "the label never changes on a song you asked for"
+    assert out["label"] == "Take out", out
     assert out["settled"], (
         "repainting an unchanged row writes to it again, which is the loop"
     )
     assert out["untouched"] == 0, (
-        "a row that was never lined up is written to anyway, "
-        "so every paint mutates all 944 of them"
+        "a row nobody asked for is written to anyway, so every paint "
+        "mutates all 944 of them"
     )
-    assert out["cleared"], "a row that left the run keeps its rank"
-    assert out["clearedSettled"], "clearing it goes on writing afterwards"
+    assert out["cleared"], "taking it out leaves the label saying Take out"
+    assert out["clearedSettled"], "turning it back goes on writing afterwards"
 
 
 def test_a_new_selection_forgets_what_was_lined_up():
@@ -355,51 +378,99 @@ def test_a_new_selection_forgets_what_was_lined_up():
     )
 
 
-async def test_the_row_offers_it_and_has_somewhere_to_show_it(tmp_path):
-    """The button, and the badge the page writes the rank into.
+async def test_a_waiting_song_keeps_its_mark_until_it_plays(tmp_path):
+    """For as long as it is true, which a badge could not manage: that
+    one counted the rows between here and the song playing, so it
+    vanished the moment the cursor passed a song that had not moved.
 
-    The badge is not a button, deliberately: the row's buttons are
-    hidden until the pointer arrives, and a song's place in the queue is
-    true of the row whether or not you are looking at it."""
+    A ground of its own, one step between the hover and the playing row —
+    two rows wearing the playing row's tint would be two rows claiming to
+    be on."""
 
     import httpx
 
     from pypl2mp3.web.app import create_app
 
     _one_song(tmp_path)
-    app = create_app(tmp_path)
+
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://test"
+        transport=httpx.ASGITransport(app=create_app(tmp_path)),
+        base_url="http://test",
+    ) as client:
+        css = (await client.get("/static/console.css")).text
+
+    rule = re.search(r"\ntbody tr\.queued \{([^}]*)\}", css)
+    assert rule, "a waiting song is marked by nothing"
+    assert "var(--queued)" in rule.group(1), rule.group(1)
+
+    # Its own step, not the playing row's and not the hover's.
+    values = dict(re.findall(r"(--(?:queued|accent-soft|hover)):\s*([^;]+);",
+                             css))
+    assert len({values["--queued"], values["--accent-soft"],
+                values["--hover"]}) == 3, values
+
+    # The left edge stays the playing row's alone.
+    assert "border-left" not in rule.group(1), (
+        "two rows carry the bar that says which one is on"
+    )
+
+    # And the pointer still answers on a row that is already tinted.
+    assert re.search(r"\ntbody tr\.queued:hover \{", css), (
+        "hovering a waiting song shows nothing, its tint having already "
+        "taken the hover's place"
+    )
+
+    script = SCRIPT.read_text()
+    assert 'classList.toggle("queued", queued)' in script, (
+        "nothing puts the mark on, or it is put on with a value that "
+        "could be undefined — which makes toggle toggle"
+    )
+
+
+async def test_the_row_offers_it_and_takes_it_back(tmp_path):
+    """One control, two states. There was a strip above the listing for
+    taking a song back out, and with the listing in play order that strip
+    showed the run a second time — the confusion it was built to fix,
+    moved one row up.
+
+    The label is also the only mark saying you put the song there: in
+    play order a row following the one playing looks the same whether you
+    asked for it or it was simply next.
+    """
+
+    import httpx
+
+    from pypl2mp3.web.app import create_app
+
+    _one_song(tmp_path)
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=create_app(tmp_path)),
+        base_url="http://test",
     ) as client:
         page = (await client.get("/")).text
 
     row = re.search(r'<tr id="song-[0-9a-f]{16}".*?</tr>', page, re.S)
     assert row, "no song row on the page"
-
     assert "data-play-next" in row.group(0), (
         "no way to line a song up behind the one playing"
     )
-    assert "queued" not in row.group(0), (
-        "the row still carries the badge that counted the distance to "
-        "the song playing — which the rank column already said, and "
-        "which vanished the moment the cursor passed a song that had "
-        "not moved"
-    )
-
-    # And the strip that replaced it: outside the listing, above it, and
-    # hidden until there is a run to show.
-    page_markup = Path(
-        "src/pypl2mp3/web/templates/console.html").read_text()
-    strip = re.search(r'<div id="upnext"[^>]*>', page_markup)
-    assert strip and "hidden" in strip.group(0), (
-        "no strip for the run, or it starts out showing"
-    )
-    assert page_markup.index('id="upnext"') < page_markup.index('id="list"'), (
-        "the run is drawn under the listing it is meant to summarise"
+    assert row.group(0).count("data-play-next") == 1, (
+        "two controls for one decision"
     )
 
     script = SCRIPT.read_text()
-    assert "function showUpNext(" in script, "nothing ever fills the strip"
+    body = re.search(r"function showAsk\(row, queued\) \{(.*?)\n  \}",
+                     script, re.S)
+    assert body, "nothing ever writes the button's label"
+    assert '"Take out"' in body.group(1), body.group(1)
+    assert '"Play next"' in body.group(1), body.group(1)
+
+    # And the click reads which of the two to do off the run itself,
+    # rather than off a second attribute that could disagree with it.
+    assert "lineup.indexOf(key) === -1" in script, (
+        "the button's two meanings are decided somewhere other than the run"
+    )
 
 
 # ---------------------------------------------------------------------
@@ -414,7 +485,13 @@ def _order(setup: str, steps: str) -> dict:
     with no DOM at all.
     """
 
+    # Rows 50 pixels tall, stacked from the top, so a row's box follows
+    # from where it stands — which is what lets the slide below be
+    # measured rather than merely read.
     harness = """
+const SLIDE_MS = 220;
+const MAX_SLIDE_MS = 520;
+const LANDED_MS = 900;
 let queue = [];
 class Fragment {
   constructor() { this.taken = []; }
@@ -423,19 +500,61 @@ class Fragment {
 const document = { createDocumentFragment: () => new Fragment() };
 const bench = {
   children: [],
-  appendChild(batch) { bench.children = batch.taken.slice(); bench.laid += 1; },
   laid: 0,
+  get firstElementChild() { return bench.children[0] || null; },
+  insertBefore(row, before) {
+    const from = bench.children.indexOf(row);
+    if (from !== -1) bench.children.splice(from, 1);
+    const at = before ? bench.children.indexOf(before) : bench.children.length;
+    bench.children.splice(at === -1 ? bench.children.length : at, 0, row);
+    bench.laid += 1;
+  },
+};
+const frames = [];
+let justMoved = "d";
+const window = {
+  innerHeight: 10000,
+  requestAnimationFrame(run) { frames.push(run); },
+  setTimeout() {},
 };
 function row(key, id) {
-  return { dataset: { songId: id || key, songKey: key }, parentNode: bench };
+  return {
+    dataset: { songId: id || key, songKey: key },
+    parentNode: bench,
+    style: {},
+    classList: { names: [], add(n) { this.names.push(n); },
+                 remove(n) { this.names = this.names.filter(x => x !== n); } },
+    get nextElementSibling() {
+      return bench.children[bench.children.indexOf(this) + 1] || null;
+    },
+    getBoundingClientRect() {
+      const at = bench.children.indexOf(this);
+      return { top: at * 50, bottom: at * 50 + 50 };
+    },
+  };
 }
 function entry(key, id) { return { key, id: id || key }; }
-""" + _source("inPlayOrder") + _source("lay") + """
+""" + _source("land") + _source("slide") + _source("inPlayOrder") + _source("lay") + """
 """ + setup + """
 """ + steps + """
 console.log(JSON.stringify({
   order: bench.children.map(r => r.dataset.songKey),
+  // Nodes moved, not times the listing was rebuilt: putting only what is
+  // out of place back is the difference between one insertBefore and
+  // nine hundred, and the count is what says which happened.
   laid: bench.laid,
+  // Where each row was put back to before being let go: the distance it
+  // is about to travel, as the browser will animate it.
+  inverted: bench.children
+    .filter(r => r.style.transform)
+    .map(r => r.dataset.songKey + ":" + r.style.transform.match(/-?\d+/)[0]),
+  // The row the click moved, given a body for the journey.
+  tinted: bench.children
+    .filter(r => r.classList.names.includes("moving"))
+    .map(r => r.dataset.songKey),
+  frames: frames.length,
+  settled: bench.settled,
+  ms: bench.ms,
 }));
 """
     done = subprocess.run(
@@ -457,7 +576,9 @@ def test_the_listing_can_be_laid_in_the_order_it_plays():
     out = _order(LISTING, "lay(bench.children, inPlayOrder(bench.children));")
 
     assert out["order"] == ["c", "a", "e", "b", "d"], out
-    assert out["laid"] == 1, out
+    # Two nodes out of five are out of place; the other three are left
+    # exactly where they are.
+    assert out["laid"] == 2, out
 
 
 @needs_node
@@ -469,12 +590,149 @@ def test_laying_it_out_twice_moves_nothing_the_second_time():
     out = _order(
         LISTING,
         "lay(bench.children, inPlayOrder(bench.children));"
+        "const once = bench.laid;"
         "lay(bench.children, inPlayOrder(bench.children));"
-        "lay(bench.children, inPlayOrder(bench.children));",
+        "lay(bench.children, inPlayOrder(bench.children));"
+        "bench.settled = bench.laid === once;",
     )
 
     assert out["order"] == ["c", "a", "e", "b", "d"], out
-    assert out["laid"] == 1, "it puts the listing back every single paint"
+    assert out["settled"], "it puts the listing back every single paint"
+
+
+@needs_node
+def test_each_row_is_put_back_where_it_was_before_being_let_go():
+    """FLIP. A reorder is instant — no transition applies to a node that
+    changed place — so each row is translated back to where it stood and
+    then released, and the browser interpolates the journey it did not
+    make.
+
+    Rows fifty pixels tall here. Bringing "d" from the fourth place to
+    the second sends it up two rows, and the two it displaces come down
+    one each; everything else stands still and is not touched at all.
+    """
+
+    out = _order(
+        """
+        bench.children = ["a", "b", "c", "d", "e"].map(k => row(k));
+        queue = ["a", "d", "b", "c", "e"].map(k => entry(k));
+        """,
+        "lay(bench.children, inPlayOrder(bench.children));",
+    )
+
+    assert out["order"] == ["a", "d", "b", "c", "e"], out
+    assert out["inverted"] == ["d:100", "b:-50", "c:-50"], (
+        f"the rows are not put back where they came from: {out['inverted']}"
+    )
+    # And the one the click moved travels in a body of its own, alone.
+    # The two that stepped aside move one row and need none.
+    assert out["tinted"] == ["d"], out
+    # And released on the next frame: setting the transform and clearing
+    # it in one go lands both in a single style recalculation, and
+    # nothing moves at all.
+    assert out["frames"] == 1, out
+
+
+@needs_node
+def test_an_insertion_moves_one_node():
+    """Rebuilding the listing into a fragment and re-appending it moved
+    all 944 nodes whatever had changed — 94ms of node churn and 138ms of
+    layout behind it, measured in the browser. A quarter of a second
+    before the slide could begin, for one song changing place."""
+
+    out = _order(
+        """
+        bench.children = ["a", "b", "c", "d", "e"].map(k => row(k));
+        queue = ["a", "d", "b", "c", "e"].map(k => entry(k));
+        """,
+        "lay(bench.children, inPlayOrder(bench.children));",
+    )
+
+    assert out["order"] == ["a", "d", "b", "c", "e"], out
+    assert out["laid"] == 1, (
+        f"{out['laid']} nodes moved to put one song in its place"
+    )
+
+
+# Run the frame the slide queued, then read back the duration it chose:
+# it is a local, and the transition it writes is the only place it shows.
+RELEASE = """
+frames.forEach(run => run());
+const carrier = bench.children.find(r => r.style.transition);
+bench.ms = carrier ? Number(carrier.style.transition.match(/(\\d+)ms/)[1]) : 0;
+"""
+
+
+@needs_node
+def test_a_long_journey_is_given_longer_to_be_watched():
+    """A fixed 220ms is right for a row stepping aside and far too fast
+    for one crossing the window: a thousand pixels in 220ms is
+    seventy-five a frame, which reads as a flicker rather than as a
+    journey — the row was measured moving and could not be seen to.
+
+    Rows fifty pixels tall here, so bringing "z" from the fortieth place
+    to the second is nineteen hundred pixels and takes the cap."""
+
+    near = _order(
+        """
+        bench.children = ["a", "b", "c", "d"].map(k => row(k));
+        queue = ["a", "d", "b", "c"].map(k => entry(k));
+        justMoved = "d";
+        """,
+        "lay(bench.children, inPlayOrder(bench.children));" + RELEASE,
+    )
+    assert near["ms"] == 220, near
+
+    keys = [str(n) for n in range(40)]
+    far = _order(
+        "bench.children = [" + ",".join(f'row("{k}")' for k in keys) + "];"
+        'queue = ["0", "39"].concat('
+        + ",".join(f'"{k}"' for k in keys[1:-1]) + ").map(k => entry(k));"
+        'justMoved = "39";',
+        "lay(bench.children, inPlayOrder(bench.children));" + RELEASE,
+    )
+    assert far["order"][1] == "39", far["order"][:4]
+    assert far["ms"] == 520, f"a journey of {far['travel']}px took {far['ms']}ms"
+
+
+@needs_node
+def test_only_a_click_animates_the_reorder():
+    """Shuffling sends every row to an unrelated place, and nine hundred
+    rows crossing each other says nothing anyone could follow. An
+    insertion is one row travelling and a handful stepping aside, which
+    is what a slide shows — so the measuring only happens when a click
+    is what moved something."""
+
+    out = _order(
+        """
+        justMoved = null;
+        bench.children = ["a", "b", "c", "d", "e"].map(k => row(k));
+        queue = ["e", "d", "c", "b", "a"].map(k => entry(k));
+        """,
+        "lay(bench.children, inPlayOrder(bench.children));",
+    )
+
+    assert out["order"] == ["e", "d", "c", "b", "a"], "the reorder still happens"
+    assert out["inverted"] == [], "a shuffle is animated row by row"
+    assert out["tinted"] == [], "a shuffle lifts a row nobody picked"
+    assert out["frames"] == 0, out
+
+
+@needs_node
+def test_a_row_that_has_not_moved_is_never_touched():
+    """A transform on every row of nine hundred, to animate the two that
+    travelled, is nine hundred style writes and nine hundred needless
+    transitions."""
+
+    out = _order(
+        """
+        bench.children = ["a", "b", "c", "d"].map(k => row(k));
+        queue = ["a", "b", "d", "c"].map(k => entry(k));
+        """,
+        "lay(bench.children, inPlayOrder(bench.children));",
+    )
+
+    assert out["inverted"] == ["d:50", "c:-50"], out
 
 
 @needs_node
@@ -510,77 +768,14 @@ def test_rows_the_queue_never_saw_go_behind_in_their_own_order():
 
     assert out["order"] == ["c", "a", "b", "d"], out
 
+async def test_there_is_one_order_and_it_is_the_one_that_plays(tmp_path):
+    """The listing is the play order. There is nothing to choose between,
+    so there is no switch, and nothing to number, so there is no rank
+    column: a row that comes after another comes after it.
 
-def _ranks(setup: str) -> list:
-    """What the page would write into the rows, for the shipped rules."""
-
-    harness = """
-let queue = [], listOrder = "name", orderIsOwn = false;
-function row(key, id) {
-  return { dataset: { songId: id || key, songKey: key } };
-}
-function entry(key, id) { return { key, id: id || key }; }
-""" + _source("inPlayOrder") + _source("playRanks") + """
-""" + setup + """
-console.log(JSON.stringify(
-  [...playRanks(listing)].map(([r, n]) => r.dataset.songKey + ":" + n)
-));
-"""
-    done = subprocess.run(
-        ["node", "-e", harness], capture_output=True, text=True, timeout=20
-    )
-    assert done.returncode == 0, done.stderr
-
-    return json.loads(done.stdout)
-
-
-THREE = 'const listing = ["a", "b", "c"].map(k => row(k));'
-
-
-@needs_node
-def test_no_rank_when_it_would_only_count_the_listing_back():
-    """Play all takes the rows as they stand, so the queue's order is the
-    listing's and a number beside each row says nothing at all."""
-
-    assert _ranks(THREE + 'queue = ["a", "b", "c"].map(k => entry(k));') == []
-
-
-@needs_node
-def test_the_rank_shows_once_the_queue_has_an_order_of_its_own():
-    """Shuffling gives it one, and so does lining a song up by hand.
-    Either way the play order is a thing the listing cannot show."""
-
-    for made_its_own in ("orderIsOwn = true;", 'listOrder = "play";'):
-        out = _ranks(
-            THREE + 'queue = ["c", "a", "b"].map(k => entry(k));' + made_its_own
-        )
-
-        assert out == ["c:1", "a:2", "b:3"], (made_its_own, out)
-
-
-@needs_node
-def test_in_play_order_the_rank_shows_even_when_the_two_agree():
-    """Asked for that view, the number is the point: it says where you
-    are in a run of 944 rather than where a name falls in an alphabet."""
-
-    out = _ranks(THREE + 'queue = ["a", "b", "c"].map(k => entry(k));'
-                 + 'listOrder = "play";')
-
-    assert out == ["a:1", "b:2", "c:3"], out
-
-
-@needs_node
-def test_a_row_the_queue_never_saw_gets_no_number():
-    """It has no place in an order it is not part of."""
-
-    out = _ranks(THREE + 'queue = ["c"].map(k => entry(k)); orderIsOwn = true;')
-
-    assert out == ["c:1"], out
-
-
-async def test_the_toolbar_carries_the_order_switch(tmp_path):
-    """Two named states drawn as text, like the theme switch: a way of
-    looking rather than an action."""
+    That was the whole job of the two things this removed — a sort
+    selector and a figure on every row, both of them explaining a
+    disagreement between what you saw and what you would hear."""
 
     import httpx
 
@@ -595,39 +790,23 @@ async def test_the_toolbar_carries_the_order_switch(tmp_path):
         page = (await client.get("/")).text
         css = (await client.get("/static/console.css")).text
 
-    switch = re.search(r'<div id="order".*?</div>', page, re.S)
-    assert switch, "no way to choose the listing's order"
-    assert re.findall(r'data-order="(\w+)"', switch.group(0)) == ["name", "play"],\
-        switch.group(0)
+    for gone, why in (
+        ('id="order"', "the sort selector is back"),
+        ('class="rank"', "the rank column is back"),
+        ('id="upnext"', "the strip is back, showing the run a second time"),
+    ):
+        assert gone not in page, why
 
-    # Painted, and not merely classed.
-    rule = re.search(r"\n#order button\.chosen \{([^}]*)\}", css)
-    assert rule and "var(--accent)" in rule.group(1), (
-        "nothing on the page says which of the two is on"
-    )
+    for gone in ("#order button", "td.rank-cell", "#upnext"):
+        assert gone not in css, f"{gone} is still painted"
 
-    # And the row has somewhere to put the number, shipped empty.
-    row = re.search(r'<span class="rank"[^>]*>', page)
-    assert row and "hidden" in row.group(0), (
-        "nowhere to write the play position, or it starts out showing"
+    # And the listing is laid in play order unconditionally, not when a
+    # setting says so.
+    script = SCRIPT.read_text()
+    assert "lay(all, inPlayOrder(all));" in script, (
+        "the listing is not put in the order it plays"
     )
-
-    place = re.search(r"\n\.rank \{([^}]*)\}", css)
-    assert place, "the slot is a class nothing paints"
-    assert "tabular-nums" in place.group(1), (
-        "a column of numbers that do not line up"
-    )
-
-    # And a column of its own. Sharing the actions cell it was
-    # right-aligned behind whatever buttons the row carried, and "Fix" is
-    # narrower than "Junkize" — so the figures stood eighteen pixels
-    # apart depending on whether the song was junk.
-    assert re.search(r"\ntd\.rank-cell \{([^}]*)\}", css), (
-        "the play position shares a cell with the row's buttons"
-    )
-    assert '<td class="num rank-cell">' in (
-        Path("src/pypl2mp3/web/templates/_song_row.html").read_text()
-    ), "the row has no cell for it"
+    assert "listOrder" not in script, "a setting still chooses the order"
 
 
 async def test_two_playlists_holding_one_video_are_two_rows(tmp_path):

@@ -1225,7 +1225,26 @@ async def test_the_toolbar_icons_are_drawn_not_typed(tmp_path):
         css = (await client.get("/static/console.css")).text
 
     bar = _block(body, '<div id="toolbar">')
-    assert bar.count("<svg") == 3, "not every action has a drawn icon"
+    # Two now: Workbench moved up to the tab row, where it acts on the
+    # same selection but is not a choice between two views.
+    assert bar.count("<svg") == 2, "not every action has a drawn icon"
+
+    tabs = _block(body, '<div id="tabs">')
+    assert tabs.count("<svg") == 1, "the one that moved lost its icon"
+
+    # A tablist holds tabs and nothing else, so the role sits on the pair
+    # rather than on the row that carries them and the button.
+    strip = _block(body, '<div class="tab-strip" role="tablist">')
+    assert strip.count('role="tab"') == 2, strip
+    assert "data-queue-action" not in strip, (
+        "a button that is not a tab is inside the tablist"
+    )
+
+    # And it stays subject to the guard that greys the actions over an
+    # empty listing — the selector it left behind named the toolbar.
+    assert 'querySelectorAll("[data-queue-action]")' in (
+        Path("src/pypl2mp3/web/static/console.js").read_text()
+    ), "the moved button stays lit over a listing with nothing in it"
     assert "⤨" not in bar and "⚒" not in bar and "▶" not in bar, bar
 
     # Sized against the label, not in absolute pixels: an icon smaller

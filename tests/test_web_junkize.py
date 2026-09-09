@@ -46,20 +46,26 @@ def _client(app):
     )
 
 
-async def test_the_listing_offers_junkize_only_for_tagged_songs(tmp_path):
+async def test_the_listing_does_not_offer_junkize_at_all(tmp_path):
+    """The panel does, and it is the better place: there the song's own
+    metadata is in front of you, which is the thing being cleared. A row
+    shows a name and a length, and deciding to destroy the tags from that
+    is deciding blind — it also took a confirmation dialog on every one
+    of nine hundred rows to make the click safe.
+
+    A junk row keeps Fix, which only loads the panel."""
+
     _make_song(tmp_path, "GOOD", "Tagged", "aaaaaaaaaaa")
     app = create_app(tmp_path)
 
     async with _client(app) as client:
         body = (await client.get("/fragments/list")).text
-        assert f"/songs/{_key('aaaaaaaaaaa')}/junkize" in body
+        panel = (await client.get(
+            f"/fragments/inspector/{_key('aaaaaaaaaaa')}", headers=HX)).text
 
-        await client.post(f"/songs/{_key('aaaaaaaaaaa')}/junkize", headers=HX)
-
-        after = (await client.get("/fragments/list")).text
-
-    assert f"/songs/{_key('aaaaaaaaaaa')}/junkize" not in after, (
-        "an already-junk song must not offer the button again"
+    assert "/junkize" not in body, "the listing still destroys tags"
+    assert f"/songs/{_key('aaaaaaaaaaa')}/junkize" in panel, (
+        "and now nowhere does"
     )
 
 
@@ -97,14 +103,19 @@ async def test_the_row_comes_back_marked_as_junk(tmp_path):
 
 
 async def test_the_button_asks_for_confirmation(tmp_path):
-    """Destructive and not undoable: a stray click must not be enough."""
+    """Destructive and not undoable: a stray click must not be enough.
+
+    Asked of the panel, which is where the button lives now."""
 
     _make_song(tmp_path, "ARTIST", "Title", "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
-        body = (await client.get("/fragments/list")).text
+        panel = (await client.get(
+            f"/fragments/inspector/{_key('aaaaaaaaaaa')}", headers=HX)).text
 
-    assert "hx-confirm" in body
+    button = re.search(r"<button[^>]*/junkize[^>]*>", panel, re.S)
+    assert button, "no junkize button in the panel"
+    assert "hx-confirm" in button.group(0), button.group(0)
 
 
 async def test_an_unknown_song_is_a_404(tmp_path):
