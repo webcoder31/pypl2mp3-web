@@ -6,7 +6,7 @@ import pytest
 from mutagen.easyid3 import EasyID3
 from mutagen.id3 import ID3NoHeaderError
 
-from pypl2mp3.services.find_song import song_key
+from pypl2mp3.services.find_song import song_key_in_folder
 from pypl2mp3.services.junkize_songs import (
     JunkizeResult,
     SongNotFound,
@@ -28,7 +28,7 @@ def _key(vid, playlist=PLAYLIST):
     these functions act on the one they are given.
     """
 
-    return song_key(playlist, vid)
+    return song_key_in_folder(playlist, vid)
 
 def _make_tagged_song(repo: Path, artist: str, title: str, vid: str) -> Path:
     folder = repo / PLAYLIST

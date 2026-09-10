@@ -889,8 +889,10 @@ async def test_the_queue_carries_both_of_a_row_s_names(tmp_path):
     )
 
 
-def test_the_key_is_the_playlist_and_the_video():
-    """Stated once here, so the two halves cannot quietly become one."""
+def test_the_key_is_the_playlist_id_and_the_video():
+    """Stated once here, so the two halves cannot quietly become one —
+    and so that the playlist half stays its id rather than the name of
+    its folder, which YouTube can change under us."""
 
     import dataclasses
 
@@ -906,6 +908,14 @@ def test_the_key_is_the_playlist_and_the_video():
     renamed = dataclasses.replace(
         one, path=Path("Owner - Alpha [PL1]/A - B [vvvvvvvvvvv] (JUNK).mp3"))
     assert renamed.key == one.key, "junkizing would move the row's own id"
+
+    # Retitling the playlist on YouTube renames its folder here — the
+    # check builds that name afresh from what YouTube answers — and the
+    # key is the playlist's *id*, so it does not follow.
+    retitled = dataclasses.replace(one, playlist="Owner - Alpha, live [PL1]")
+    assert retitled.key == one.key, (
+        "renaming a playlist would orphan every key derived from its name"
+    )
 
     # Another playlist is another row.
     elsewhere = dataclasses.replace(one, playlist="Owner - Beta [PL2]")

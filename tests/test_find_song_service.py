@@ -6,7 +6,7 @@ import pytest
 from mutagen.id3 import ID3, TXXX
 
 from pypl2mp3.libs import repository
-from pypl2mp3.services.find_song import SongNotFound, find_song_file, song_key
+from pypl2mp3.services.find_song import SongNotFound, find_song_file, song_key_in_folder
 
 PLAYLIST = "Owner - Alpha [PL0000000000000000000000000000001]"
 OTHER = "Owner - Beta [PL0000000000000000000000000000002]"
@@ -21,7 +21,7 @@ def _key(vid, playlist=PLAYLIST):
     these functions act on the one they are given.
     """
 
-    return song_key(playlist, vid)
+    return song_key_in_folder(playlist, vid)
 
 def _make_song(repo: Path, vid: str, playlist: str = PLAYLIST, tag=True):
     folder = repo / playlist

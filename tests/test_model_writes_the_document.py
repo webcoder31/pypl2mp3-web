@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from pypl2mp3.services.find_song import song_key
+from pypl2mp3.services.find_song import song_key_in_folder
 from mutagen.id3 import ID3, PRIV, TPE1, TXXX
 from mutagen.mp3 import MP3
 
@@ -45,7 +45,7 @@ def _song(repo: Path, vid="aaaaaaaaaaa"):
 def _key(vid, playlist=PLAYLIST):
     """The address `apply_fix` takes: the playlist and the video."""
 
-    return song_key(playlist, vid)
+    return song_key_in_folder(playlist, vid)
 
 class TestItIsWritten:
     def test_a_save_leaves_a_document_beside_the_frames(self, tmp_path):

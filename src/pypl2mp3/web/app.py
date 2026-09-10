@@ -120,20 +120,6 @@ def create_app(repository_path: Path) -> FastAPI:
 
         return dict(sorted(counts.items(), key=lambda kv: -kv[1]))
 
-    def _playlist_folder(playlist_id: str) -> str:
-        """The playlist's folder name, brackets and all.
-
-        Which is half of a song's key — the other half being the video —
-        so a row the import has just finished can name the file it made
-        rather than the video it came from.
-        """
-
-        # [[] and []] match literal brackets in fnmatch.
-        for folder in app.state.repository_path.glob(f"*[[]{playlist_id}[]]"):
-            return folder.name
-
-        return ""
-
     def _playlist_name(playlist_id: str) -> str:
         """The playlist's display name, without counting its songs.
 
@@ -582,11 +568,9 @@ def create_app(repository_path: Path) -> FastAPI:
         # file rather than whichever copy of the video the repository
         # lists first. Only the finished ones: nothing has reached the
         # disk for the others, so there is nothing to name.
-        folder = _playlist_folder(playlist) if playlist else ""
-
         for item in items:
-            if item.get("state") == "done" and folder:
-                item["key"] = song_key(folder, item["item_id"])
+            if item.get("state") == "done" and playlist:
+                item["key"] = song_key(playlist, item["item_id"])
 
         return {
             "playlist_id": playlist,

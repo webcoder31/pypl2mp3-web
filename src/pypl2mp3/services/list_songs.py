@@ -16,7 +16,7 @@ from typing import Optional
 
 from pypl2mp3.libs.repository import get_repository_songs
 from pypl2mp3.libs.song import SongModel
-from pypl2mp3.services.find_song import song_key
+from pypl2mp3.services.find_song import song_key_in_folder
 
 DEFAULT_MATCH_THRESHOLD = 45
 
@@ -130,7 +130,8 @@ class SongSummary:
         renames the file, and the row that comes back to replace the one
         you clicked has to carry the id it was aimed at. A playlist holds
         a video once, so the pair is as unique as the path and it
-        survives every rename the file will ever get.
+        survives every rename the file will ever get — and the playlist's
+        half is its id, which survives the playlist being retitled.
 
         Hashed rather than spelled out because this is also the row's DOM
         id and an htmx target: a playlist folder carries spaces and
@@ -141,7 +142,7 @@ class SongSummary:
         copies apart either. This is the page saying which row it means.
         """
 
-        return song_key(self.playlist, self.youtube_id)
+        return song_key_in_folder(self.playlist, self.youtube_id)
 
     @property
     def cover_version(self) -> int:

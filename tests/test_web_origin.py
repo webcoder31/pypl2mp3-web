@@ -21,7 +21,7 @@ from mutagen.id3 import ID3, TPE1, TIT2, TXXX
 from pypl2mp3.libs import metadata
 from pypl2mp3.services.list_songs import SongSummary, summarize
 from pypl2mp3.libs.song import SongModel
-from pypl2mp3.services.find_song import song_key
+from pypl2mp3.services.find_song import song_key_in_folder
 from pypl2mp3.web.app import create_app
 
 HX = {"HX-Request": "true"}
@@ -42,7 +42,7 @@ def _key(vid, playlist=PLAYLIST):
     routes name the file. `song_key` is the one definition of the pair.
     """
 
-    return song_key(playlist, vid)
+    return song_key_in_folder(playlist, vid)
 
 
 

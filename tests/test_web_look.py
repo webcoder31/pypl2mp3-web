@@ -11,7 +11,7 @@ from pathlib import Path
 
 import httpx
 
-from pypl2mp3.services.find_song import song_key
+from pypl2mp3.services.find_song import song_key_in_folder
 from pypl2mp3.web.app import create_app
 
 PLAYLIST = "Owner - Alpha [PL0000000000000000000000000000001]"
@@ -54,7 +54,7 @@ def _key(vid, playlist=PLAYLIST):
     routes name the file. `song_key` is the one definition of the pair.
     """
 
-    return song_key(playlist, vid)
+    return song_key_in_folder(playlist, vid)
 
 def _client(app):
     return httpx.AsyncClient(

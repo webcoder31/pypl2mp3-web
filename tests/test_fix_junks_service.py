@@ -7,7 +7,7 @@ from mutagen.id3 import ID3, APIC, TXXX
 
 from pypl2mp3.libs import metadata
 
-from pypl2mp3.services.find_song import song_key
+from pypl2mp3.services.find_song import song_key_in_folder
 from pypl2mp3.services.fix_junks import (
     FixProposal,
     SongNotFound,
@@ -30,7 +30,7 @@ def _key(vid, playlist=PLAYLIST):
     these functions act on the one they are given.
     """
 
-    return song_key(playlist, vid)
+    return song_key_in_folder(playlist, vid)
 
 def _make_junk(repo: Path, vid: str = "aaaaaaaaaaa") -> Path:
     folder = repo / PLAYLIST

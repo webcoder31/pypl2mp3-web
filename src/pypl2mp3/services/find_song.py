@@ -25,26 +25,44 @@ class SongNotFound(Exception):
     """No song in the repository carries that YouTube id."""
 
 
-def song_key(playlist_folder: str, youtube_id: str) -> str:
+def song_key(playlist_id: str, youtube_id: str) -> str:
     """What names one file, as against the video it was made from.
 
     The playlist and the video, and not the filename: junkizing renames
     the file, and a name that moves is no use as an address — nor as the
     id of the row that has to be replaced in place.
 
-    Hashed because this is also a DOM id and an htmx target: a playlist
-    folder carries spaces and brackets, and both of those end a CSS
-    selector early. Sixteen hex characters, which is a collision every
-    few billion songs.
+    The playlist's *id*, not the name of its folder. The folder is built
+    afresh from what YouTube answers — "owner - title [id]" — so
+    retitling a playlist there renames it here, and every key derived
+    from that name would be orphaned. Nothing persists a key today, so
+    it would have cost nothing and shown nothing; the day an order file
+    or a hand-made playlist holds one, it would cost the file.
+
+    Hashed because this is also a DOM id and an htmx target: a key made
+    of a playlist id and a video id is 46 characters of which some are
+    not safe in a selector. Sixteen hex characters, which is a collision
+    every few billion songs.
 
     One definition, called by both sides. The listing stamps it on every
     row; `find_song_file` recomputes it per candidate. Two spellings of
     the same formula would part company on the first edit.
     """
 
-    name = f"{playlist_folder}/{youtube_id}"
+    name = f"{playlist_id}/{youtube_id}"
 
     return hashlib.blake2s(name.encode(), digest_size=8).hexdigest()
+
+
+def song_key_in_folder(playlist_folder: str, youtube_id: str) -> str:
+    """The same key, for a caller that holds a folder rather than an id.
+
+    The id is in the folder's own name, in brackets. Extracted here so
+    that the one place that knows the shape of a playlist folder is not
+    every place that needs a key.
+    """
+
+    return song_key(get_song_id_from_filename(playlist_folder), youtube_id)
 
 
 def find_song_file(repository_path: Path, key: str) -> Path:
@@ -68,7 +86,7 @@ def find_song_file(repository_path: Path, key: str) -> Path:
     for song_file in repository_path.glob("*/*.mp3"):
         found = get_song_id_from_filename(song_file.name)
 
-        if found and song_key(song_file.parent.name, found) == key:
+        if found and song_key_in_folder(song_file.parent.name, found) == key:
             return _ensure_inside(repository_path, song_file)
 
     raise SongNotFound(key)
