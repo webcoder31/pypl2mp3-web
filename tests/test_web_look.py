@@ -814,13 +814,13 @@ async def test_the_toolbar_carries_the_queue_readout(tmp_path):
     inside = _block(body, '<div id="toolbar">')
 
     for part in ('id="player-position"', 'id="player-next"',
-                 'data-queue-action="play"'):
+                 'data-play-order="youtube"'):
         assert part in inside, part
     assert (
         inside.index('id="player-position"')
         < inside.index('id="player-next"')
-        < inside.index("data-queue-action")
-    ), "counter, preview, then the actions"
+        < inside.index("data-play-order")
+    ), "counter, preview, then the order being played"
 
     assert "song(s)" not in body, "the old count is still rendered too"
 
@@ -1225,9 +1225,10 @@ async def test_the_toolbar_icons_are_drawn_not_typed(tmp_path):
         css = (await client.get("/static/console.css")).text
 
     bar = _block(body, '<div id="toolbar">')
-    # Two now: Workbench moved up to the tab row, where it acts on the
-    # same selection but is not a choice between two views.
-    assert bar.count("<svg") == 2, "not every action has a drawn icon"
+    # Three now, one per play order. Workbench moved up to the tab row,
+    # where it acts on the same selection but is not a choice between two
+    # views; Play all and Shuffle became two of these three.
+    assert bar.count("<svg") == 3, "not every order has a drawn icon"
 
     tabs = _block(body, '<div id="tabs">')
     assert tabs.count("<svg") == 1, "the one that moved lost its icon"
@@ -1246,6 +1247,7 @@ async def test_the_toolbar_icons_are_drawn_not_typed(tmp_path):
         Path("src/pypl2mp3/web/static/console.js").read_text()
     ), "the moved button stays lit over a listing with nothing in it"
     assert "⤨" not in bar and "⚒" not in bar and "▶" not in bar, bar
+    assert "🔀" not in bar and "🔁" not in bar, bar
 
     # Sized against the label, not in absolute pixels: an icon smaller
     # than the word beside it is the problem being fixed.
@@ -1254,50 +1256,62 @@ async def test_the_toolbar_icons_are_drawn_not_typed(tmp_path):
     assert "currentColor" in bar, "the icons do not follow the text colour"
 
 
-async def test_shuffle_says_whether_the_queue_is_shuffled(tmp_path):
-    """It reorders the queue once rather than switching a mode on, so
-    the honest state to report is what order the queue is in."""
+async def test_the_switch_says_which_order_is_playing(tmp_path):
+    """One fact, not three independent buttons: the songs are played in
+    one order, and the switch names it. Play all and Shuffle each built a
+    queue and left you to work out which one you were hearing."""
+
+    _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
 
     async with _client(create_app(tmp_path)) as client:
         body = (await client.get("/")).text
-        script = (await client.get("/static/console.js")).text
-        css = (await client.get("/static/console.css")).text
+        sorted_body = (await client.get("/?order=name")).text
+        random_body = (await client.get("/?order=shuffle")).text
 
-    button = re.search(
-        r'<button[^>]*data-queue-action="shuffle"[^>]*>', body, re.DOTALL
-    ).group(0)
-    assert 'aria-pressed="false"' in button, button
+    def lit(page):
+        group = _block(page, '<div id="orders"')
+        buttons = re.findall(
+            r'<button[^>]*data-play-order="([^"]+)"[^>]*'
+            r'aria-pressed="([^"]+)"', group, re.DOTALL
+        )
+        assert [order for order, _ in buttons] == [
+            "youtube", "name", "shuffle"
+        ], buttons
+        return [order for order, pressed in buttons if pressed == "true"]
 
-    assert 'button.setAttribute("aria-pressed"' in script, (
-        "nothing ever updates the state it starts in"
+    assert lit(body) == ["youtube"], "a fresh page is in the playlist order"
+    assert lit(sorted_body) == ["name"], "an order in the address is ignored"
+
+    # A random order was made in the browser out of the rows that were
+    # there; a page fetched afresh is not in it, whatever the address
+    # says. Lighting shuffle here would be the switch lying about the
+    # listing right under it.
+    assert lit(random_body) == ["youtube"], "a reload claims to be shuffled"
+    field = re.search(r'<input[^>]*id="order-field"[^>]*>', random_body).group(0)
+    assert 'value="youtube"' in field, field
+
+
+async def test_the_switch_is_updated_by_the_code_that_changes_the_order():
+    """Rendered right on arrival and then never again — every later
+    change happens without a reload."""
+
+    script = Path("src/pypl2mp3/web/static/console.js").read_text()
+
+    body = re.search(
+        r"function showOrder\(\) \{(.*?)\n  \}", script, re.S
     )
-    # The toolbar builds the queue for all three of its buttons, so the
-    # order it reports has to be the one it chose — not a constant.
-    handler = script[script.index('queueButton.dataset.queueAction') :]
-    handler = handler[: handler.index("return;")]
-    decision = re.search(
-        r"setQueue\([^;]*?,\s*0,\s*([^)]+)\)", handler, re.DOTALL
-    )
-    assert decision, handler
-    assert decision.group(1).strip() == "random", (
-        f"the toolbar reports {decision.group(1).strip()!r} whichever "
-        "button was pressed, so Play all leaves the light on"
-    )
-    assert re.search(r"const random = action === \"shuffle\"", handler), (
-        "nothing ties that value to which button was pressed"
+    assert body, "showOrder moved"
+    assert '"aria-pressed"' in body.group(1), body.group(1)
+    assert "playOrder" in body.group(1), (
+        "the switch reports something other than the order in force"
     )
 
-    # And the other two ways of building a queue leave it in order.
-    assert "setQueue(entries, 0, false)" in script
-    assert re.search(r"setQueue\(\s*entries,\s*entries\.findIndex", script)
-
-    pressed = re.search(
-        r'#toolbar button\[aria-pressed="true"\] \{([^}]*)\}', css
+    chooser = re.search(
+        r"function chooseOrder\(order\) \{(.*?)\n  \}", script, re.S
     ).group(1)
-    assert "background" not in pressed, (
-        "a fill would make the report look like the primary action"
+    assert "showOrder()" in chooser, (
+        "the order changes without the switch saying so"
     )
-    assert "color: var(--accent)" in pressed
 
 
 async def test_the_inspector_uses_the_width_it_has(tmp_path):

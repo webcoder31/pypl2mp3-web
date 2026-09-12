@@ -408,7 +408,8 @@ def create_app(repository_path: Path) -> FastAPI:
         }
 
     def _selection(
-        playlist: str, q: str, junk: int, match: float, artist: str = ""
+        playlist: str, q: str, junk: int, match: float, artist: str = "",
+        order: str = "",
     ):
         """The songs a query selects. Shared by the shell and the fragment.
 
@@ -430,12 +431,25 @@ def create_app(repository_path: Path) -> FastAPI:
             songs = [s for s in songs if s.artist.casefold() == wanted]
 
         # The listing is the play order, so the order it arrives in is
-        # the one that will be heard — and the one the playlist itself is
-        # in is the one it was put in.
+        # the one that will be heard. Two of the three the toolbar offers
+        # are the server's to render: the playlist's own, as YouTube
+        # holds it, and the alphabet, which is what `list_songs` already
+        # returns. The third, shuffling, is the page's — it needs no
+        # round trip and no repository.
         #
         # Here and not in `list_songs`, because the CLI lists by artist
         # and must go on doing so.
-        return in_playlist_order(app.state.repository_path, songs)
+        ranked = in_playlist_order(app.state.repository_path, songs)
+
+        if order == "name":
+            # Ranked all the same, and then put back in the order
+            # `list_songs` returned: a playlist that dropped a song
+            # dropped it whichever way the listing is stacked, so the
+            # mark stays. Only going last belongs to the play order.
+            where = {song.path: at for at, song in enumerate(songs)}
+            ranked.sort(key=lambda song: where[song.path])
+
+        return ranked
 
     @app.get("/", response_class=HTMLResponse)
     def console(
@@ -445,6 +459,7 @@ def create_app(repository_path: Path) -> FastAPI:
         junk: int = 0,
         artist: str = "",
         match: float = DEFAULT_MATCH_THRESHOLD,
+        order: str = "",
     ) -> HTMLResponse:
         """The whole application, in one page.
 
@@ -459,11 +474,11 @@ def create_app(repository_path: Path) -> FastAPI:
         # A pass over 900 songs costs 1.4s, so when nothing is filtered —
         # the usual case — the listing reuses this rather than asking
         # again for the same thing.
-        everything = _selection(playlist, "", 0, match)
+        everything = _selection(playlist, "", 0, match, order=order)
         filtered = (
             everything
             if not (q or junk or artist)
-            else _selection(playlist, q, junk, match, artist)
+            else _selection(playlist, q, junk, match, artist, order)
         )
 
         return templates.TemplateResponse(
@@ -478,6 +493,11 @@ def create_app(repository_path: Path) -> FastAPI:
                 "query": q,
                 "junk_only": bool(junk),
                 "artist": artist,
+                # Which of the three orders the listing arrived in, so a
+                # reload lights the icon that is actually true. Never
+                # "shuffle": a random order lives in the browser, so a
+                # page fetched afresh is not in one whatever was asked.
+                "order": "name" if order == "name" else "youtube",
                 "total_songs": sum(s.total_songs for s in summaries),
                 "total_junk": sum(s.junk_songs for s in summaries),
                 "repository": str(app.state.repository_path),
@@ -704,6 +724,7 @@ def create_app(repository_path: Path) -> FastAPI:
         junk: int = 0,
         artist: str = "",
         match: float = DEFAULT_MATCH_THRESHOLD,
+        order: str = "",
     ) -> HTMLResponse:
         """The listing on its own, for the console to swap in."""
 
@@ -711,7 +732,7 @@ def create_app(repository_path: Path) -> FastAPI:
             request,
             "_list.html",
             {
-                "songs": _selection(playlist, q, junk, match, artist),
+                "songs": _selection(playlist, q, junk, match, artist, order),
                 # Repeating one playlist's name down 874 rows teaches
                 # nothing. It earns its place only when the selection
                 # spans more than one.

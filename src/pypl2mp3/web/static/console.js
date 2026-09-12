@@ -593,11 +593,6 @@
 
   // Setting the queue: the visible listing becomes what plays, which is
   // what every music player does when you start a track from a view.
-  // Whether the queue standing right now is in a random order. Not a
-  // mode that changes what `move` does — shuffling reorders the queue
-  // once, and this says so. Without it there is no way to tell a
-  // shuffled queue from an ordered one.
-  let inRandomOrder = false;
 
   // The rows asked for by hand, in the order they were asked for. Keys
   // and not video ids: two copies of one video are two rows and two
@@ -923,16 +918,12 @@
   }
 
 
-  function setQueue(entries, startAt, randomOrder) {
+  function setQueue(entries, startAt) {
     queue = entries;
-    inRandomOrder = Boolean(randomOrder);
     // A new selection is a new intent; whatever was lined up in the old
     // one is not in this queue at all.
     lineup = [];
     returns.clear();
-
-    const button = document.querySelector('[data-queue-action="shuffle"]');
-    if (button) button.setAttribute("aria-pressed", String(inRandomOrder));
 
     // A fresh selection plays forward, whichever way the last one ended.
     direction = 1;
@@ -1066,6 +1057,72 @@
     queue.splice(at === -1 ? queue.length : at, 0, entry);
     justMoved = key;
     paint();
+  }
+
+  // Which of the three orders the listing is in, and choosing one starts
+  // it. Two of them are the server's to render — the playlist's own and
+  // the alphabet — so those are a refetch; shuffling needs no round trip
+  // and no repository, only the rows already here.
+  //
+  // A reset, and it could be nothing else: an order *is* a queue, so
+  // rebuilding one discards whatever was lined up by hand. `setQueue`
+  // clears the run and the ways home with it.
+  //
+  // Not remembered across reloads. On arrival nothing is playing and the
+  // listing is in the server's own order, so a switch lit on "shuffle"
+  // from a previous visit would be describing something that is not
+  // there.
+  //
+  // Read from the field the shell rendered rather than assumed, so a
+  // reload with an order in the address agrees with the icon lit.
+  const orderField = document.getElementById("order-field");
+  let playOrder = orderField ? orderField.value || "youtube" : "youtube";
+
+  // True only for the moment between asking the server for a listing in
+  // a new order and its arrival. Every other listing swap — a filter
+  // keystroke, a save, a playlist change — must leave the queue where it
+  // is; this one is the whole point of the request.
+  let orderAsked = false;
+
+  function showOrder() {
+    document.querySelectorAll("#orders button").forEach(function (button) {
+      button.setAttribute(
+        "aria-pressed", String(button.dataset.playOrder === playOrder)
+      );
+    });
+  }
+
+  function chooseOrder(order) {
+    playOrder = order === "name" || order === "shuffle" ? order : "youtube";
+    showOrder();
+
+    // Carried in the filter form, so a refetch for any other reason — a
+    // filter, a save, a playlist change — brings the listing back in the
+    // order that is playing rather than in the server's default.
+    if (orderField) orderField.value = playOrder;
+
+    if (playOrder === "shuffle") {
+      // No round trip: a random order is not the server's to hold, and
+      // the rows to put in one are already here.
+      const entries = queueFromRows();
+
+      if (entries.length) setQueue(shuffled(entries), 0);
+      return;
+    }
+
+    // Asked from the server, because by now the rows on screen are in
+    // the queue's order rather than in the one being asked for.
+    // Set before the request and read when the listing lands. Not
+    // cleared from the promise htmx hands back: that resolves before the
+    // settle, so it cleared the flag before the listing it was set for
+    // had arrived — the switch changed while the queue went on playing
+    // the order it was already in.
+    orderAsked = true;
+    window.htmx.ajax("GET", "/fragments/list", {
+      target: "#list",
+      swap: "innerHTML",
+      source: document.getElementById("filters"),
+    });
   }
 
   function shuffled(entries) {
@@ -1290,6 +1347,34 @@
       boardClock = window.setInterval(turnBoards, BOARD_HOLD);
     }
   }
+
+  // A request that failed swapped nothing, so the flag would have stood
+  // for the next listing arriving for any other reason to claim — and a
+  // filter keystroke would have restarted the queue.
+  document.body.addEventListener("htmx:afterRequest", function (event) {
+    if (event.detail && event.detail.successful === false) orderAsked = false;
+  });
+
+  // A listing asked for in a new order arrives here; it is the queue
+  // now, and the run starts at the top — which is what choosing an order
+  // means, and what the two buttons it replaced both did.
+  //
+  // Guarded by the flag rather than by "is something playing": a filter
+  // keystroke swaps this same listing, and adopting that one would
+  // restart the music at whoever was typing.
+  //
+  // At the swap and not at the settle, because this reads the order the
+  // rows arrived in. Between those two moments the repaint runs and lays
+  // the listing out in the queue's order — the one being replaced — so
+  // by settle time the arriving order is gone, and the switch would have
+  // chosen the order that was already playing.
+  document.body.addEventListener("htmx:afterSwap", function (event) {
+    if (event.target.id !== "list" || !orderAsked) return;
+    orderAsked = false;
+
+    const entries = queueFromRows();
+    if (entries.length) setQueue(entries, 0);
+  });
 
   restartBoards();
   document.body.addEventListener("htmx:afterSwap", function (event) {
@@ -1840,19 +1925,22 @@
       return;
     }
 
+    const orderButton = event.target.closest("[data-play-order]");
+    if (orderButton) {
+      chooseOrder(orderButton.dataset.playOrder);
+      return;
+    }
+
+    // Only the workbench is left here: Play all and Shuffle were each a
+    // way of building a queue, and the listing being the play order,
+    // what they chose was an order. They are two of the three above.
     const queueButton = event.target.closest("[data-queue-action]");
     if (queueButton) {
       const entries = queueFromRows();
       if (!entries.length) return;
 
-      const action = queueButton.dataset.queueAction;
-      if (action === "workbench") document.body.classList.add("workbench-mode");
-
-      // Pressing it again reshuffles rather than putting the queue back
-      // in order: the button says what order the queue is in, and after
-      // a second press it is still a random one.
-      const random = action === "shuffle";
-      setQueue(random ? shuffled(entries) : entries, 0, random);
+      document.body.classList.add("workbench-mode");
+      setQueue(entries, 0);
       return;
     }
 
@@ -1869,7 +1957,7 @@
       else if (action === "toggle") {
         if (!queue.length) {
           const entries = queueFromRows();
-          if (entries.length) setQueue(entries, 0, false);
+          if (entries.length) setQueue(entries, 0);
         } else if (audio.paused) {
           audio.play();
         } else {
@@ -1907,7 +1995,7 @@
       if (at >= 0) {
         // In the listing: select it there, exactly as clicking its row
         // would, so the queue and what you can see stay the same thing.
-        setQueue(entries, at, false);
+        setQueue(entries, at);
       } else {
         // Filtered out of the listing, or imported into a view that does
         // not show it. Play it on its own rather than refuse: you asked
@@ -1915,13 +2003,15 @@
         // does nothing.
         setQueue(
           [{
-            id: wanted,
+            // The key is what plays it; the video id is what the "watch
+            // on YouTube" key opens, and the panel carries both.
+            key: wanted,
+            id: shown.dataset.songId || "",
             label: shown.dataset.label || "",
             duration: "",
             junk: false,
           }],
-          0,
-          false
+          0
         );
       }
       return;
@@ -1965,8 +2055,7 @@
         entries,
         entries.findIndex(function (entry) {
           return entry.key === row.dataset.songKey;
-        }),
-        false
+        })
       );
     }
   });
@@ -2189,6 +2278,18 @@
 
   const list = document.getElementById("list");
   if (list) observer.observe(list, { childList: true, subtree: true });
+
+  // The observer above watches for rows arriving and leaving, and it
+  // fires as a microtask straight after the swap — before htmx has
+  // settled the attributes it kept from the rows that were there. The
+  // settle then wrote the new markup's `class` over everything painted
+  // in between, which is how a filter keystroke put out the light on the
+  // song still playing. Painting again once the attributes are final is
+  // the whole of the fix; a paint over an already-right listing writes
+  // nothing.
+  document.body.addEventListener("htmx:afterSettle", function (event) {
+    if (event.target.id === "list") paint();
+  });
 
   paint();
 

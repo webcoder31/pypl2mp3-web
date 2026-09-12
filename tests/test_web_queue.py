@@ -368,7 +368,7 @@ def test_a_new_selection_forgets_what_was_lined_up():
     so this is the one thing the harness cannot answer for."""
 
     body = re.search(
-        r"\n  function setQueue\(entries, startAt, randomOrder\) \{(.*?)\n  \}",
+        r"\n  function setQueue\(entries, startAt\) \{(.*?)\n  \}",
         SCRIPT.read_text(), re.S,
     )
 
@@ -924,3 +924,191 @@ def test_the_key_is_the_playlist_id_and_the_video():
     # Another video in the same playlist, likewise.
     other = dataclasses.replace(one, youtube_id="wwwwwwwwwww")
     assert other.key != one.key
+
+
+def _switch(order: str, asked: str) -> dict:
+    """Run the shipped switch: what it lights, and what choosing does."""
+
+    harness = f"""
+let queue = [], index = 0, direction = 1, lineup = [];
+const returns = new Map();
+let rows = ["a", "b", "c", "d", "e"];
+function entry(key) {{ return {{ key, id: key }}; }}
+function queueFromRows() {{ return rows.map(id => entry(id)); }}
+const played = [];
+function setQueue(entries, startAt) {{
+  queue = entries;
+  played.push(entries.map(e => e.key).join(""));
+  index = startAt > 0 ? startAt : 0;
+}}
+
+// Three buttons, one per order, as the shell renders them.
+const buttons = ["youtube", "name", "shuffle"].map(function (name) {{
+  return {{
+    dataset: {{ playOrder: name }},
+    pressed: null,
+    setAttribute(attr, value) {{ if (attr === "aria-pressed") this.pressed = value; }},
+  }};
+}});
+
+const orderField = {{ value: "{order}" }};
+let requested = null;
+const document = {{
+  querySelectorAll: () => buttons,
+  getElementById: (id) => (id === "filters" ? {{}} : null),
+}};
+const window = {{ htmx: {{ ajax: (verb, url) => {{ requested = url; }} }} }};
+
+let playOrder = "{order}";
+let orderAsked = false;
+{_source("showOrder")}
+{_source("chooseOrder")}
+{_source("shuffled")}
+
+// What the switch says about the order standing, before it is asked to
+// change: the shell renders this on arrival, and showOrder is what keeps
+// it true from then on.
+showOrder();
+const litOnArrival = buttons.filter(b => b.pressed === "true")
+                            .map(b => b.dataset.playOrder);
+chooseOrder("{asked}");
+
+console.log(JSON.stringify({{
+  litOnArrival,
+  lit: buttons.filter(b => b.pressed === "true").map(b => b.dataset.playOrder),
+  field: orderField.value,
+  requested, orderAsked, played,
+}}));
+"""
+    done = subprocess.run(
+        ["node", "-e", harness], capture_output=True, text=True, timeout=20
+    )
+    assert done.returncode == 0, done.stderr
+
+    return json.loads(done.stdout)
+
+
+@needs_node
+@pytest.mark.parametrize("order", ["youtube", "name", "shuffle"])
+def test_exactly_one_order_is_lit_and_it_is_the_one_playing(order):
+    """Three buttons saying one thing between them. Two lit would be two
+    claims about the order the songs are in, and none would leave the
+    listing's order unaccounted for."""
+
+    out = _switch(order, order)
+
+    assert out["litOnArrival"] == [order], out
+
+
+@needs_node
+@pytest.mark.parametrize("order", ["youtube", "name"])
+def test_the_orders_the_server_holds_are_asked_of_it(order):
+    """The rows on screen are in the queue's order by now — a song lined
+    up by hand is not where either of these two would put it — so the
+    listing has to come back from the repository rather than be sorted
+    out of the page."""
+
+    out = _switch("shuffle", order)
+
+    assert out["requested"] == "/fragments/list", out
+    assert out["field"] == order, "the next refetch would undo the choice"
+    assert out["orderAsked"], (
+        "the listing arriving would not be taken as the queue"
+    )
+    assert out["played"] == [], (
+        "the queue was rebuilt from rows that are about to be replaced"
+    )
+
+
+@needs_node
+def test_a_random_order_is_made_here_and_asked_of_nobody():
+    """There is nothing for a repository to hold: the order is made out
+    of the rows that are on the page, once, when you ask for it."""
+
+    out = _switch("youtube", "shuffle")
+
+    assert out["requested"] is None, "a round trip for a coin toss"
+    assert out["field"] == "shuffle", out
+    assert not out["orderAsked"], (
+        "the next listing to arrive for any reason would replace this one"
+    )
+    assert len(out["played"]) == 1, out
+    assert sorted(out["played"][0]) == list("abcde"), (
+        "shuffling lost or invented a song"
+    )
+
+
+@needs_node
+def test_choosing_an_order_starts_it_from_the_top():
+    """A reset, and it could be nothing else: an order *is* a queue, so
+    choosing one discards whatever was lined up by hand — which is what
+    Play all and Shuffle, the two buttons these three replaced, did."""
+
+    source = SCRIPT.read_text()
+    handler = re.search(
+        r'if \(event\.target\.id !== "list" \|\| !orderAsked\) return;'
+        r"(.*?)\n  \}\);",
+        source, re.S,
+    )
+
+    assert handler, (
+        "the listing arriving in a new order is claimed by some other "
+        "condition than having been asked for — a filter keystroke swaps "
+        "this same listing, and adopting that one restarts the music "
+        "under whoever was typing"
+    )
+    assert "orderAsked = false;" in handler.group(1), (
+        "the flag stands for the next listing to arrive to claim"
+    )
+    assert re.search(r"setQueue\(entries, 0\)", handler.group(1)), handler.group(1)
+
+    # And at the swap: this reads the order the rows arrived in, and the
+    # repaint between the swap and the settle lays them out in the order
+    # of the queue being replaced. A settle-time reader would choose the
+    # order that was already playing.
+    hooked = source[:handler.start()].rfind("addEventListener(")
+    assert 'addEventListener("htmx:afterSwap"' in source[hooked - 1:handler.start()], (
+        source[hooked - 1:handler.start()]
+    )
+
+
+def test_a_request_that_brought_nothing_back_stops_expecting_a_listing():
+    """Otherwise the flag stands, and the next listing to arrive for some
+    other reason — a filter keystroke, a save — is taken for the order
+    that was asked for and restarts the run under whoever was typing."""
+
+    source = SCRIPT.read_text()
+
+    hook = re.search(
+        r'addEventListener\("htmx:afterRequest", function \(event\) \{\n'
+        r"(.*?)\n  \}\);",
+        source, re.S,
+    )
+
+    assert hook, "a request that failed leaves the flag standing"
+    assert "successful === false" in hook.group(1), (
+        "cleared on every request, the successful one included — which is "
+        "the one whose listing the flag exists to claim"
+    )
+    assert "orderAsked = false" in hook.group(1), hook.group(1)
+
+
+def test_the_listing_is_painted_again_once_htmx_has_settled_it():
+    """htmx keeps an element's old attributes across a swap when the same
+    id comes back — that is what lets a CSS transition run over arriving
+    content — and writes the new markup's own `class` a moment later. The
+    repaint on the swap fell inside that window, so the settle put out
+    the light on the song still playing: a filter keystroke left the
+    queue playing with nothing on the page saying which song."""
+
+    source = SCRIPT.read_text()
+
+    hook = re.search(
+        r'addEventListener\("htmx:afterSettle", function \(event\) \{\n'
+        r"(.*?)\n  \}\);",
+        source, re.S,
+    )
+
+    assert hook, "nothing repaints the listing once its attributes are final"
+    assert 'event.target.id === "list"' in hook.group(1), hook.group(1)
+    assert "paint()" in hook.group(1), hook.group(1)

@@ -54,6 +54,12 @@
                value="{{ playlist }}">
         <input type="hidden" name="artist" id="artist-field"
                value="{{ artist }}">
+        {# Which of the three orders the listing is in. In the form
+           because every refetch — a filter, a save, a playlist change —
+           goes through it, and a listing that came back alphabetical
+           after a save would have quietly changed what plays next. #}
+        <input type="hidden" name="order" id="order-field"
+               value="{{ order }}">
         <input type="search" name="q" value="{{ query }}"
                placeholder="Filter by artist or title">
         <label>
@@ -263,27 +269,65 @@
         <span id="player-next"><span class="k" id="player-next-key">NEXT</span
           ><span id="player-next-text">Nothing playing</span
           ><span id="player-next-time"></span></span>
-        {# Inline SVG rather than glyphs. ⤨ and ⚒ exist in Unicode but
+        {# One order at a time, and choosing one starts it.
+
+           These were Play all and Shuffle, two buttons that each built a
+           queue — and the listing is the play order now, so what they
+           really chose was an order. Said as three, with the one in force
+           lit, because that is one fact and not two independent acts.
+
+           A click is a reset: the queue is rebuilt from the top, so
+           whatever was lined up by hand goes with it. Nothing else could
+           be true — an order is the whole of what a queue is.
+
+           Inline SVG rather than glyphs. ⤨ and ⚒ exist in Unicode but
            not in every system font, and where they do they render at
-           whatever size that font decided — which was too small to
-           read. These follow the text colour and the text size. #}
-        <button type="button" data-queue-action="play">
-          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"
-               fill="currentColor"><path d="M5 3.2 13 8l-8 4.8Z"/></svg>
-          Play all
-        </button>
-        <button type="button" data-queue-action="shuffle"
-                aria-pressed="false"
-                title="Play this selection in a random order">
-          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"
-               fill="none" stroke="currentColor" stroke-width="1.4"
-               stroke-linecap="round" stroke-linejoin="round">
-            <path d="M1.5 4h3l7 8h3M1.5 12h3l7-8h3"/>
-            <path d="M11.8 1.8 14.5 4l-2.7 2.2"/>
-            <path d="M11.8 9.8 14.5 12l-2.7 2.2"/>
-          </svg>
-          Shuffle
-        </button>
+           whatever size that font decided — which was too small to read.
+           These follow the text colour and the text size. #}
+        <div id="orders" role="group" aria-label="Play order">
+          <span class="orders-label">Play order</span>
+
+          {# The playlist's own order, as YouTube holds it: a list, and
+             the triangle that says it is the one being played. #}
+          <button type="button" data-play-order="youtube"
+                  aria-pressed="{{ 'true' if order == 'youtube' else 'false' }}"
+                  title="Play in the playlist's own order"
+                  aria-label="Playlist order">
+            <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"
+                 fill="none" stroke="currentColor" stroke-width="1.4"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 4h9M2 8h9M2 12h5"/>
+              <path d="M11 10.4 14.6 12.5 11 14.6Z" fill="currentColor"
+                    stroke="none"/>
+            </svg>
+          </button>
+
+          {# Sorted: an arrow, and the bars it puts in order. #}
+          <button type="button" data-play-order="name"
+                  aria-pressed="{{ 'true' if order == 'name' else 'false' }}"
+                  title="Play in alphabetical order"
+                  aria-label="Alphabetical order">
+            <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"
+                 fill="none" stroke="currentColor" stroke-width="1.4"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 2.6v10.8M1.6 11 4 13.4 6.4 11"/>
+              <path d="M8.6 4h6M8.6 8h4.4M8.6 12h2.6"/>
+            </svg>
+          </button>
+
+          <button type="button" data-play-order="shuffle"
+                  aria-pressed="false"
+                  title="Play in a random order"
+                  aria-label="Random order">
+            <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"
+                 fill="none" stroke="currentColor" stroke-width="1.4"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1.5 4h3l7 8h3M1.5 12h3l7-8h3"/>
+              <path d="M11.8 1.8 14.5 4l-2.7 2.2"/>
+              <path d="M11.8 9.8 14.5 12l-2.7 2.2"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
       {# songsChanged fires when a save changed what the repository

@@ -211,3 +211,92 @@ async def test_the_row_marks_a_song_its_playlist_has_dropped(tmp_path):
         "the mark is a class nothing paints, or it is not the colour the "
         "page uses for a file that wants a decision"
     )
+
+
+async def test_the_listing_comes_in_whichever_order_was_asked_for(tmp_path):
+    """Two of the three switches are the server's to answer: the
+    playlist's own order and the alphabet. The third is not — a random
+    order is made in the browser out of the rows already there, and there
+    is nothing for a repository to hold."""
+
+    import httpx
+    from mutagen.id3 import ID3, TXXX
+
+    from pypl2mp3.web.app import create_app
+
+    folder = tmp_path / ALPHA
+    folder.mkdir(parents=True)
+
+    # Alphabetically Alpha, Beta, Gamma; on YouTube the reverse.
+    named = {"aaaaaaaaaaa": "Gamma", "bbbbbbbbbbb": "Beta",
+             "ccccccccccc": "Alpha"}
+
+    for vid, title in named.items():
+        path = folder / f"ARTIST - {title} [{vid}].mp3"
+        path.write_bytes((b"\xff\xfb\x90\xc0" + b"\x00" * 413) * 8)
+        frames = ID3()
+        frames.add(TXXX(encoding=3, desc="YouTube ID", text=vid))
+        frames.save(path)
+
+    write_order(folder, "PL0000000000000000000000000000001",
+                ["aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc"])
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=create_app(tmp_path)),
+        base_url="http://test",
+    ) as client:
+        async def ids(query):
+            page = (await client.get("/fragments/list" + query)).text
+            return re.findall(r'data-song-id="(\w+)"', page)
+
+        # The playlist's own order, and the default: it is the order the
+        # songs were put in, and nobody chose the alphabet.
+        playlist = ["aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc"]
+        assert await ids("") == playlist
+        assert await ids("?order=youtube") == playlist
+
+        assert await ids("?order=name") == list(reversed(playlist)), (
+            "the alphabet is not the alphabet"
+        )
+
+        # Shuffling never reaches here, so the server answers it with the
+        # order it does hold rather than with an arbitrary one of its own.
+        assert await ids("?order=shuffle") == playlist
+
+
+async def test_a_dropped_song_is_marked_in_the_alphabet_too(tmp_path):
+    """The mark is a fact about the song, not about the sort: a playlist
+    that dropped it dropped it whichever way the listing is stacked. Only
+    going last belongs to the play order."""
+
+    import httpx
+    from mutagen.id3 import ID3, TXXX
+
+    from pypl2mp3.web.app import create_app
+
+    folder = tmp_path / ALPHA
+    folder.mkdir(parents=True)
+
+    for vid, title in (("aaaaaaaaaaa", "Alpha"), ("bbbbbbbbbbb", "Beta")):
+        path = folder / f"ARTIST - {title} [{vid}].mp3"
+        path.write_bytes((b"\xff\xfb\x90\xc0" + b"\x00" * 413) * 8)
+        frames = ID3()
+        frames.add(TXXX(encoding=3, desc="YouTube ID", text=vid))
+        frames.save(path)
+
+    # Only Alpha is still in the playlist, so Beta is the orphan — and it
+    # is second alphabetically, where going last would put it anyway.
+    write_order(folder, "PL0000000000000000000000000000001", ["aaaaaaaaaaa"])
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=create_app(tmp_path)),
+        base_url="http://test",
+    ) as client:
+        listing = (await client.get("/fragments/list?order=name")).text
+
+    rows = re.findall(r"<tr .*?</tr>", listing, re.S)
+    assert len(rows) == 2, listing
+    assert "off-playlist" not in rows[0], "a song still in the playlist is marked"
+    assert "off-playlist" in rows[1], (
+        "the mark is dropped along with the play order it was not part of"
+    )
