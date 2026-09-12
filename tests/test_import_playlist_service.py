@@ -555,3 +555,53 @@ async def test_a_finished_song_is_announced_by_what_it_became(
         assert label == "ARTIST - Title", (
             f"{youtube_id} finished announced as {label!r}"
         )
+
+
+async def test_the_import_records_the_order_it_read(tmp_path, monkeypatch):
+    """Written here as well as by a check, because neither implies the
+    other: the CLI imports without ever checking, and a check skips a
+    playlist it has no folder for — which is every playlist the first
+    time it is imported. Without this the listing had no order to be read
+    in until some later check happened to run."""
+
+    from pypl2mp3.services.playlist_order import FILENAME, read_order
+
+    _install_fakes(monkeypatch)
+
+    # No folder yet: a first import, which is the case a check cannot
+    # cover.
+    assert not _folder(tmp_path).exists()
+
+    await import_playlist(tmp_path, PLAYLIST_ID, FakeProgress())
+
+    assert read_order(_folder(tmp_path)) == {
+        "AAAAAAAAAAA": 1, "BBBBBBBBBBB": 2, "CCCCCCCCCCC": 3
+    }
+
+    import json
+
+    said = json.loads((_folder(tmp_path) / FILENAME).read_text(encoding="utf-8"))
+    assert said["playlist"] == PLAYLIST_ID, (
+        "keyed on the folder's name rather than on the playlist's own id, "
+        "so retitling the playlist orphans the order"
+    )
+
+
+async def test_the_order_is_recorded_even_when_nothing_is_imported(
+    tmp_path, monkeypatch
+):
+    """It is the playlist's order and not the run's: a repository that is
+    already up to date is exactly one whose order can be read off in
+    full."""
+
+    from pypl2mp3.services.playlist_order import read_order
+
+    _install_fakes(monkeypatch)
+    _make_local(tmp_path, REMOTE_IDS)
+
+    report = await import_playlist(tmp_path, PLAYLIST_ID, FakeProgress())
+
+    assert report.imported == []
+    assert read_order(_folder(tmp_path)) == {
+        "AAAAAAAAAAA": 1, "BBBBBBBBBBB": 2, "CCCCCCCCCCC": 3
+    }

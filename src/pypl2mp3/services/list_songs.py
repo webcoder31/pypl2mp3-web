@@ -8,6 +8,7 @@ Reads the local filesystem only — no network call, ever. Building a
 SongModel parses the file's ID3 tags, which is disk work, not a request.
 """
 
+import dataclasses
 import datetime
 import re
 from dataclasses import dataclass
@@ -16,7 +17,9 @@ from typing import Optional
 
 from pypl2mp3.libs.repository import get_repository_songs
 from pypl2mp3.libs.song import SongModel
+from pypl2mp3.libs.utils import natural_sort_key
 from pypl2mp3.services.find_song import song_key_in_folder
+from pypl2mp3.services.playlist_order import read_order
 
 DEFAULT_MATCH_THRESHOLD = 45
 
@@ -115,6 +118,11 @@ class SongSummary:
     # And whether asking YouTube about it is still worth a click. Eleven
     # videos have gone; the link to them answers 404 without saying so.
     video_gone: bool = False
+    # Where the song stands in its playlist on YouTube, when a check has
+    # read that order. None means nobody has looked — which is not the
+    # same as being absent from it, and `off_playlist` says which.
+    playlist_rank: int | None = None
+    off_playlist: bool = False
 
     @property
     def key(self) -> str:
@@ -369,6 +377,59 @@ def list_songs(
     # The repository helper returns None rather than [] when it finds
     # nothing; both mean the same thing here.
     return [summarize(song) for song in (songs or [])]
+
+
+def in_playlist_order(
+    repository_path: Path, songs: list[SongSummary]
+) -> list[SongSummary]:
+    """The same songs, ordered the way their playlists are on YouTube.
+
+    Songs a playlist no longer holds go last, marked. A whole playlist
+    nobody has checked keeps the order it came in and none of its songs
+    is marked: not knowing where a song stands is not the same as knowing
+    it is gone.
+
+    Not folded into `list_songs`, and not into the repository below it:
+    the CLI lists by artist and must go on doing so. This is the web
+    listing's own idea of order.
+    """
+
+    known: dict[str, dict[str, int] | None] = {}
+
+    def order_of(playlist: str) -> dict[str, int] | None:
+        if playlist not in known:
+            known[playlist] = read_order(Path(repository_path) / playlist)
+
+        return known[playlist]
+
+    ranked = []
+
+    for song in songs:
+        order = order_of(song.playlist)
+
+        if order is None:
+            ranked.append(song)
+            continue
+
+        rank = order.get(song.youtube_id)
+        ranked.append(dataclasses.replace(
+            song, playlist_rank=rank, off_playlist=rank is None
+        ))
+
+    # Two passes rather than one sort key. What has a rank is grouped by
+    # playlist, in the order the nav lists them, then by position. What
+    # has none keeps the order it arrived in — the repository's, by
+    # artist — and a single key would have had to sort those by playlist
+    # too, which would quietly group an unchecked repository's whole
+    # listing by folder instead of leaving it alphabetical.
+    held = [song for song in ranked if song.playlist_rank]
+    rest = [song for song in ranked if not song.playlist_rank]
+
+    held.sort(key=lambda song: (
+        natural_sort_key(song.playlist), song.playlist_rank
+    ))
+
+    return held + rest
 
 
 def summarize(song: SongModel) -> SongSummary:

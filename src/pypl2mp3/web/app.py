@@ -37,6 +37,7 @@ from pypl2mp3.services.import_playlist import import_playlist
 from pypl2mp3.services.junkize_songs import junkize_song
 from pypl2mp3.services.list_songs import (
     DEFAULT_MATCH_THRESHOLD,
+    in_playlist_order,
     list_songs,
     summarize,
 )
@@ -428,7 +429,13 @@ def create_app(repository_path: Path) -> FastAPI:
             wanted = artist.casefold()
             songs = [s for s in songs if s.artist.casefold() == wanted]
 
-        return songs
+        # The listing is the play order, so the order it arrives in is
+        # the one that will be heard — and the one the playlist itself is
+        # in is the one it was put in.
+        #
+        # Here and not in `list_songs`, because the CLI lists by artist
+        # and must go on doing so.
+        return in_playlist_order(app.state.repository_path, songs)
 
     @app.get("/", response_class=HTMLResponse)
     def console(

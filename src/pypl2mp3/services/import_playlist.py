@@ -23,6 +23,7 @@ from pypl2mp3.libs.song import SongModel
 from pypl2mp3.libs.waveform import peaks_for
 from pypl2mp3.libs.utils import get_song_id_from_filename, get_song_id_from_url
 from pypl2mp3.ports.progress import ProgressPort
+from pypl2mp3.services.playlist_order import write_order
 from pypl2mp3.services._song_callbacks import create_from_youtube_callbacks
 
 DEFAULT_SHAZAM_THRESHOLD = 50
@@ -220,6 +221,14 @@ async def import_playlist(
     )
 
     playlist_path.mkdir(parents=True, exist_ok=True)
+
+    # The order comes free with the answer, exactly as it does for a
+    # check: this is the one moment the whole remote playlist is in hand,
+    # in its own order, and it cost the single request above. Written
+    # here as well as there because neither implies the other — the CLI
+    # imports without ever checking, and a check skips a playlist it has
+    # no folder for, which is every playlist on its first import.
+    write_order(playlist_path, selected.id, remote_ids)
     local_ids = {
         song_id
         for song_id in map(

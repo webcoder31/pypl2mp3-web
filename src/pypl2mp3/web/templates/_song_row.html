@@ -36,6 +36,19 @@
         <span class="playlist">{{ song.playlist_name }}</span>
       {% endif %}
       <span class="id">{{ song.youtube_id }}</span>
+      {# The playlist no longer holds it. Kept and listed — the file is
+         yours, and a song dropped from a playlist upstream is exactly
+         the one you might want to know about — but at the end of the
+         listing and marked, because it has no place in the order the
+         rest of it is in.
+
+         Said only when a check has read that order: not knowing where a
+         song stands is not the same as knowing it is gone. #}
+      {% if song.off_playlist %}
+        <span class="off-playlist"
+              title="This song is no longer in the YouTube playlist"
+        >off-list</span>
+      {% endif %}
     </span>
   </td>
   <td class="row-actions">

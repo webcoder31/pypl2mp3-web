@@ -15,6 +15,7 @@ from pytubefix import Playlist, YouTube
 from pypl2mp3.libs.repository import get_repository_playlist
 from pypl2mp3.libs.utils import get_song_id_from_filename, get_song_id_from_url
 from pypl2mp3.ports.progress import ProgressPort
+from pypl2mp3.services.playlist_order import write_order
 
 STAGE = "check_new_songs"
 
@@ -80,6 +81,13 @@ def check_new_songs(
     }
 
     missing = [song_id for song_id in remote_ids if song_id not in local_ids]
+
+    # The order comes free with the answer: this is the one moment the
+    # whole remote playlist is in hand, in its own order, and it cost a
+    # single request. Recorded beside the songs so the listing can be
+    # read the way the playlist is.
+    if playlist_folder.is_dir():
+        write_order(playlist_folder, selected.id, remote_ids)
 
     if with_labels:
         for done, song_id in enumerate(missing, 1):

@@ -977,6 +977,11 @@ tbody tr:hover { background: var(--hover); }
   color: var(--text-3);
 }
 .row-meta .playlist { margin-right: 0.55rem; }
+/* A song its playlist has dropped. In the page's own colour for a file
+   that wants a decision — the same orange as the junk mark and Fix —
+   because that is what this is: something to put in a playlist again,
+   or to delete. */
+.row-meta .off-playlist { margin-left: 0.55rem; color: var(--junk); }
 
 .row-actions { width: 1%; white-space: nowrap; text-align: right;
                padding-left: 0; padding-right: var(--space-3); }
