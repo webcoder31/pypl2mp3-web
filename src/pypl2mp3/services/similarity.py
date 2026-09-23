@@ -133,13 +133,14 @@ def facet_distances(vectors: np.ndarray) -> dict[str, np.ndarray]:
 class Space:
     """A selection of songs, and the distances between them."""
 
-    def __init__(self, keys, videos, totals, facets, pairs):
+    def __init__(self, keys, videos, totals, facets, pairs, typical=None):
         self._keys = keys
         self._videos = videos
         self._at = {key: at for at, key in enumerate(keys)}
         self._totals = totals
         self._facets = facets
         self._pairs = pairs
+        self._typical = np.zeros(0) if typical is None else typical
 
     @classmethod
     def build(cls, entries) -> "Space":
@@ -164,7 +165,8 @@ class Space:
         videos = [video for _, video, _ in entries]
 
         if not keys:
-            return cls([], [], np.zeros((0, 0)), {}, np.zeros(0))
+            return cls([], [], np.zeros((0, 0)), {}, np.zeros(0),
+                       np.zeros(0))
 
         raw = np.array([vector for _, _, vector in entries], dtype=np.float64)
         if raw.shape[1] != FEATURE_COUNT:
@@ -181,7 +183,19 @@ class Space:
         above = np.triu_indices(len(keys), k=1)
         pairs = np.sort(totals[above]) if len(keys) > 1 else np.zeros(0)
 
-        return cls(keys, videos, totals, facets, pairs)
+        # And how close songs here usually get to anything at all: each
+        # song's distance to its own nearest. This is what the five
+        # marks are read against, because a raw percentile of all pairs
+        # cannot be: over 944 songs every nearest neighbour sits in the
+        # top fraction of a percent, and over eleven none of them
+        # reaches even the 85th. A scale that says "five" for everything
+        # or "one" for everything says nothing either way.
+        typical = np.zeros(0)
+        if len(keys) > 1:
+            off = totals + np.diag(np.full(len(keys), np.inf))
+            typical = np.sort(off.min(axis=1))
+
+        return cls(keys, videos, totals, facets, pairs, typical)
 
     def knows(self, key: str) -> bool:
         """Whether this song has a vector, and so a place in the order."""
@@ -235,6 +249,77 @@ class Space:
                 break
 
         return found
+
+    def closeness(self, distance: float) -> int:
+        """How close that is, from 1 to 5, for this selection.
+
+        Read against how close songs here usually get to anything —
+        every song's distance to its own nearest — rather than against
+        all pairs. Five means closer than most songs ever come to
+        anything; one means these two are only each other's nearest for
+        want of better.
+
+        Self-calibrating on purpose: the same fixed percentiles cannot
+        serve a library of 944 and a filter holding eleven.
+        """
+
+        if self._typical.size == 0:
+            return 1
+
+        # How many songs get closer to something than these two are.
+        below = float(np.searchsorted(self._typical, distance))
+        share = below / self._typical.size
+
+        for mark, limit in enumerate((0.2, 0.4, 0.6, 0.8), start=1):
+            if share < limit:
+                return 6 - mark
+
+        return 1
+
+    def table(self, count: int = 8) -> dict:
+        """Each song's nearest few, as positions into a list of keys.
+
+        For the browser, so that steering the radio can replan the walk
+        from where you steered it without a round trip — and without the
+        Play next animation being lost to a full swap of the listing.
+
+        Positions and not keys: 944 songs times eight keys of sixteen
+        characters is 230 KB, and the same thing as small integers is
+        thirty.
+
+        Args:
+            count: how many to keep for each song. Eight covers the
+                first dozen steps after a steer, which is all anyone
+                hears before steering again or letting it run.
+
+        Returns:
+            {"keys": [...], "near": [[position, ...], ...]}, the two
+            lists in the same order.
+        """
+
+        if not self._keys:
+            return {"keys": [], "near": []}
+
+        # One sort of the whole matrix rather than one per song: 944 by
+        # 944 is 30 ms here and a Python loop over it is seconds.
+        order = np.argsort(self._totals, axis=1, kind="stable")
+
+        near = []
+        for here in range(len(self._keys)):
+            mine = self._videos[here]
+            kept = []
+
+            for there in order[here]:
+                if there == here or self._videos[there] == mine:
+                    continue
+
+                kept.append(int(there))
+                if len(kept) == count:
+                    break
+
+            near.append(kept)
+
+        return {"keys": list(self._keys), "near": near}
 
     def _percentile(self, distance: float) -> float:
         """How close this is, as a rank among every pair in the space.

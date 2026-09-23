@@ -1062,6 +1062,77 @@ tbody tr.playing td.num { color: var(--accent); }
 }
 #inspector > .job-none { margin: 0; }
 
+/* The five nearest songs, drawn as a continuation of the panel above
+   rather than as a second one: it is about the song that panel is
+   showing. Same ground, no gap, and the padding picks up where the
+   inspector's bottom padding left off.
+
+   Empty until a song plays, and it must take no room then — an empty
+   strip of panel between the inspector and the player would be a gap
+   nobody could explain. */
+#neighbours { background: var(--content-bg); min-width: 0; }
+#neighbours:empty { display: none; }
+#neighbours-body {
+  padding: var(--space-3) var(--block-pad-x) var(--space-4);
+  border-top: 1px solid var(--line);
+}
+.neighbours-title {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  font-weight: 600;
+  color: var(--text-3);
+  margin: 0 0 var(--space-2);
+}
+.neighbours-none { margin: 0; color: var(--text-3); font-size: var(--fs-sm); }
+
+.neighbour-list { list-style: none; margin: 0; padding: 0; }
+.neighbour {
+  display: grid;
+  /* Name, then three columns that must not move from row to row: a
+     reading of five proximities is a comparison, and a comparison whose
+     scale shifts under it is not one. */
+  grid-template-columns: 1fr auto 5.5rem 5.5rem;
+  align-items: center;
+  gap: var(--space-3);
+  /* Tight on purpose. Five of these sit between the song being
+     inspected and the transport, and at a comfortable row height they
+     pushed the player 300px down the page — which costs more than the
+     comfort was worth. */
+  padding: var(--space-1) 0;
+  font-size: var(--fs-sm);
+}
+.neighbour + .neighbour { border-top: 1px solid var(--line); }
+/* Lined up by hand and waiting, the same ground the listing gives it. */
+.neighbour.queued { background: var(--queued); }
+.neighbour-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.neighbour-why { font-size: var(--fs-xs); color: var(--text-3); }
+.neighbour-do { text-align: right; }
+.neighbour .up-next { display: none; }
+.neighbour.is-next .up-next { display: inline-block; }
+.neighbour.is-next [data-play-next] { display: none; }
+.neighbour-do button {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--fs-xs);
+}
+
+/* Five marks, filled to the percentile. Drawn rather than written
+   because the number behind it — a rank among four hundred thousand
+   pairs — is not something anyone reads five times over. */
+.closeness { display: inline-flex; gap: 3px; align-items: center; }
+.closeness .pip {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--line);
+}
+.closeness .pip.lit { background: var(--accent); }
+
 #inspector-body { display: flex; gap: var(--space-5); align-items: flex-start; }
 /* Always square, and always the same square, in both panels. The width
    is the flex basis and `aspect-ratio` makes the height follow it — so

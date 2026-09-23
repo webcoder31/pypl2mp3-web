@@ -284,3 +284,49 @@ def test_the_chain_keeps_a_duplicate_out_of_its_own_way():
 
     assert sorted(order) == ["a", "b", "c"]
     assert order[1] != "b", "the same recording plays twice running"
+
+
+def test_the_table_names_each_song_s_nearest_few():
+    """For the browser: steering the radio replans the walk from where
+    you steered it, and doing that over the wire would cost the Play
+    next animation a full swap of the listing."""
+
+    from pypl2mp3.services.similarity import Space
+
+    entries = [(f"s{i}", f"v{i}", _vector(timbre=float(i))) for i in range(6)]
+    space = Space.build(entries)
+
+    table = space.table(count=2)
+
+    assert table["keys"] == [f"s{i}" for i in range(6)]
+    assert len(table["near"]) == 6
+    # On a line, the two nearest of s3 are s2 and s4, in either order.
+    assert sorted(table["keys"][at] for at in table["near"][3]) == ["s2", "s4"]
+    # And nobody is their own neighbour.
+    for at, kept in enumerate(table["near"]):
+        assert at not in kept
+
+
+def test_the_table_keeps_a_duplicate_out_of_it():
+    """The same rule the neighbours obey, and for the same reason: two
+    keys over one recording would otherwise be each other's first
+    suggestion for ever."""
+
+    from pypl2mp3.services.similarity import Space
+
+    space = Space.build([
+        ("a", "same", _vector(timbre=0.0)),
+        ("b", "same", _vector(timbre=0.0)),
+        ("c", "v3", _vector(timbre=1.0)),
+    ])
+
+    table = space.table(count=3)
+    first = table["near"][table["keys"].index("a")]
+
+    assert table["keys"].index("b") not in first
+
+
+def test_the_table_of_nothing_is_nothing():
+    from pypl2mp3.services.similarity import Space
+
+    assert Space.build([]).table() == {"keys": [], "near": []}

@@ -6,6 +6,14 @@
    queue counter in it there is nothing left for the server to fill, and
    keeping it out means a refetch cannot take the player's own readout
    away and put it back blank. #}
+{# Each song's nearest few, as positions into a list of keys — so that
+   steering the radio can replan the walk from where you steered it
+   without a round trip, and without the Play next animation being lost
+   to a full swap of this listing. Sent with the radio and with nothing
+   else. #}
+{% if radio_map %}
+  <script type="application/json" id="radio-map">{{ radio_map|safe }}</script>
+{% endif %}
 {% if not songs %}
   <p class="empty">No songs match.</p>
 {% else %}

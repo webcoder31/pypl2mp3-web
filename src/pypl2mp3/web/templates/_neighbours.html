@@ -14,7 +14,7 @@
     <p class="neighbours-title">Neighbours</p>
     <ul class="neighbour-list">
       {% for near in neighbours %}
-        <li class="neighbour"
+        <li class="neighbour{% if near.is_next %} is-next{% endif %}"
             id="neighbour-{{ near.key }}"
             data-song-key="{{ near.key }}"
             data-song-id="{{ near.youtube_id }}"
@@ -31,16 +31,16 @@
                 class="pip{% if step < near.dots %} lit{% endif %}"
               ></span>{% endfor %}</span>
           <span class="neighbour-why">{{ near.facet }}</span>
-          {# The first is already the next row, by construction of the
-             walk. Offering to play it next would be offering to do
-             nothing. #}
+          {# Whichever of these two is shown is decided by `is-next` on
+             the row, and both are rendered: the mark has to be able to
+             move without a round trip. Lining a song up by hand makes
+             it the next row a tenth of a second later, and a panel that
+             went on naming the old one would be saying something false
+             about what is about to play. #}
           <span class="neighbour-do">
-            {% if near.is_next %}
-              <span class="k up-next">NEXT</span>
-            {% else %}
-              <button type="button" data-play-next
-                      title="Play it after the one playing">Play next</button>
-            {% endif %}
+            <span class="k up-next">NEXT</span>
+            <button type="button" data-play-next
+                    title="Play it after the one playing">Play next</button>
           </span>
         </li>
       {% endfor %}

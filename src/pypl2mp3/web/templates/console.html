@@ -60,6 +60,10 @@
            after a save would have quietly changed what plays next. #}
         <input type="hidden" name="order" id="order-field"
                value="{{ order }}">
+        {# Where the walk begins. Only the radio reads it, and only the
+           page ever writes it: it is the song playing when the icon was
+           pressed. #}
+        <input type="hidden" name="start" id="start-field" value="">
         <input type="search" name="q" value="{{ query }}"
                placeholder="Filter by artist or title">
         <label>
@@ -116,6 +120,13 @@
       <section id="inspector" data-swap-region>
         <p class="job-none">Select a song.</p>
       </section>
+
+      {# Beside the song being inspected rather than inside its panel:
+         the inspector is replaced wholesale on every song, and the
+         workbench replaces it too, so anything living in there would be
+         swept away twice. It is drawn as a continuation of the panel
+         above it, because that is what it is about. #}
+      <section id="neighbours" data-swap-region></section>
 
       {# Under the song it is playing, not at the foot of the page: the
        inspector follows the queue, so the art, the tags and the
@@ -312,6 +323,21 @@
                  stroke-linecap="round" stroke-linejoin="round">
               <path d="M4 2.6v10.8M1.6 11 4 13.4 6.4 11"/>
               <path d="M8.6 4h6M8.6 8h4.4M8.6 12h2.6"/>
+            </svg>
+          </button>
+
+          {# The radio: a mast, and what comes off it. #}
+          <button type="button" data-play-order="radio"
+                  aria-pressed="{{ 'true' if order == 'radio' else 'false' }}"
+                  title="Play from each song to the one it sounds like"
+                  aria-label="Radio">
+            <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"
+                 fill="none" stroke="currentColor" stroke-width="1.4"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="8" cy="9.5" r="1.6" fill="currentColor"
+                      stroke="none"/>
+              <path d="M5.2 6.7a4 4 0 0 0 0 5.6M10.8 6.7a4 4 0 0 1 0 5.6"/>
+              <path d="M3 4.5a7.2 7.2 0 0 0 0 10M13 4.5a7.2 7.2 0 0 1 0 10"/>
             </svg>
           </button>
 

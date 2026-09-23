@@ -7,6 +7,7 @@ passed the wrong flag.
 """
 
 import asyncio
+import json
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -566,11 +567,14 @@ def create_app(repository_path: Path) -> FastAPI:
                 "query": q,
                 "junk_only": bool(junk),
                 "artist": artist,
-                # Which of the three orders the listing arrived in, so a
-                # reload lights the icon that is actually true. Never
+                # Which order the listing arrived in, so a reload
+                # lights the icon that is actually true. Never
                 # "shuffle": a random order lives in the browser, so a
                 # page fetched afresh is not in one whatever was asked.
-                "order": "name" if order == "name" else "youtube",
+                # The radio is not like that — the server can walk a
+                # selection from the top without being told where to
+                # start — so it survives a reload as the other two do.
+                "order": order if order in ("name", "radio") else "youtube",
                 "total_songs": sum(s.total_songs for s in summaries),
                 "total_junk": sum(s.junk_songs for s in summaries),
                 "repository": str(app.state.repository_path),
@@ -802,12 +806,20 @@ def create_app(repository_path: Path) -> FastAPI:
     ) -> HTMLResponse:
         """The listing on its own, for the console to swap in."""
 
+        songs = _selection(playlist, q, junk, match, artist, order, start)
+
         return templates.TemplateResponse(
             request,
             "_list.html",
             {
-                "songs": _selection(playlist, q, junk, match, artist, order,
-                                    start),
+                "songs": songs,
+                # Only with the radio, and only then: it is 48 KB over
+                # this library, which is nothing once but not nothing on
+                # every keystroke in the filter box.
+                "radio_map": (
+                    json.dumps(_space(songs).table(), separators=(",", ":"))
+                    if order == "radio" else ""
+                ),
                 # Repeating one playlist's name down 874 rows teaches
                 # nothing. It earns its place only when the selection
                 # spans more than one.
@@ -891,11 +903,10 @@ def create_app(repository_path: Path) -> FastAPI:
                         "label": _label_of(by_key[near.key]),
                         "percentile": round(near.percentile),
                         # Five marks rather than a number nobody can
-                        # read: 99th and above is five, then 97, 93, 85.
-                        "dots": sum(
-                            1 for step in (0, 85, 93, 97, 99)
-                            if near.percentile >= step
-                        ),
+                        # read. The scale is the space's own, because it
+                        # has to mean the same thing over eleven songs
+                        # and over nine hundred.
+                        "dots": space.closeness(near.distance),
                         "facet": near.facet,
                         # The walk puts the nearest next, so in radio
                         # order the first of these IS the row after this

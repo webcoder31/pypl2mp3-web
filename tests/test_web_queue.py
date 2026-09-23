@@ -1046,7 +1046,7 @@ def test_choosing_an_order_starts_it_from_the_top():
 
     source = SCRIPT.read_text()
     handler = re.search(
-        r'if \(event\.target\.id !== "list" \|\| !orderAsked\) return;'
+        r'if \(event\.target\.id !== "list"\) return;'
         r"(.*?)\n  \}\);",
         source, re.S,
     )
@@ -1057,9 +1057,19 @@ def test_choosing_an_order_starts_it_from_the_top():
         "this same listing, and adopting that one restarts the music "
         "under whoever was typing"
     )
+    assert "if (!orderAsked) return;" in handler.group(1), (
+        "every listing that arrives is taken for the order that was "
+        "asked for — a filter keystroke swaps this same listing"
+    )
     assert "orderAsked = false;" in handler.group(1), (
         "the flag stands for the next listing to arrive to claim"
     )
+
+    # And the table the radio replans from is read on every listing,
+    # guard or no guard: it belongs to the rows that just arrived, and a
+    # stale one would replan a walk over songs no longer there.
+    before = handler.group(1)[:handler.group(1).index("if (!orderAsked)")]
+    assert "readRadioMap()" in before, before
     assert re.search(r"setQueue\(entries, 0\)", handler.group(1)), handler.group(1)
 
     # And at the swap: this reads the order the rows arrived in, and the
@@ -1112,3 +1122,120 @@ def test_the_listing_is_painted_again_once_htmx_has_settled_it():
     assert hook, "nothing repaints the listing once its attributes are final"
     assert 'event.target.id === "list"' in hook.group(1), hook.group(1)
     assert "paint()" in hook.group(1), hook.group(1)
+
+
+def _replan(setup: str, steps: str) -> dict:
+    """Run the shipped replanner against a table written by hand."""
+
+    harness = f"""
+let index = 0, direction = 1, lineup = [], justMoved = null;
+let playOrder = "radio";
+let painted = 0;
+function paint() {{ painted += 1; }}
+{setup}
+if (radioMap) {{
+  const at = new Map();
+  radioMap.keys.forEach(function (key, position) {{ at.set(key, position); }});
+  radioMap.at = at;
+}}
+{_source("replanFrom")}
+{steps}
+console.log(JSON.stringify({{
+  queue: queue.map(e => e.key),
+  painted,
+}}));
+"""
+    done = subprocess.run(
+        ["node", "-e", harness], capture_output=True, text=True, timeout=20
+    )
+    assert done.returncode == 0, done.stderr
+
+    return json.loads(done.stdout)
+
+
+# Five songs on a line: each one's nearest two are its neighbours along
+# it. The walk from any of them is then predictable by hand.
+LINE = """
+let queue = ["a", "b", "c", "d", "e"].map(k => ({ key: k, id: k }));
+const radioMap = {
+  keys: ["a", "b", "c", "d", "e"],
+  near: [[1, 2], [0, 2], [1, 3], [2, 4], [3, 2]],
+};
+"""
+
+
+@needs_node
+def test_replanning_walks_the_rest_from_the_song_you_chose():
+    """The whole point of steering. Without it the radio plays your song
+    and then returns to the course it was already on, which is not what
+    "play this next" suggests."""
+
+    # "a" plays; "e" has been lined up behind it, so the queue reads
+    # a, e, b, c, d — and the rest must now be walked from "e".
+    out = _replan(LINE, """
+queue = ["a", "e", "b", "c", "d"].map(k => ({ key: k, id: k }));
+replanFrom("e");
+""")
+
+    assert out["queue"] == ["a", "e", "d", "c", "b"], out
+
+
+@needs_node
+def test_replanning_leaves_the_song_playing_and_the_choice_alone():
+    """It reorders what is still to come. Touching the head would cut
+    the track being listened to."""
+
+    out = _replan(LINE, """
+queue = ["a", "e", "b", "c", "d"].map(k => ({ key: k, id: k }));
+replanFrom("e");
+""")
+
+    assert out["queue"][:2] == ["a", "e"]
+
+
+@needs_node
+def test_a_song_whose_near_ones_are_all_behind_carries_on():
+    """Eight neighbours is enough for the first dozen steps and not for
+    the nine hundredth. A walk that ran out of near ones has to carry on
+    in the order the listing already had, not stop."""
+
+    out = _replan("""
+let queue = ["a", "b", "c", "d"].map(k => ({ key: k, id: k }));
+const radioMap = { keys: ["a", "b", "c", "d"], near: [[1], [0], [], []] };
+""", 'replanFrom("a");')
+
+    assert sorted(out["queue"]) == ["a", "b", "c", "d"]
+    assert out["queue"] == ["a", "b", "c", "d"], out
+
+
+@needs_node
+def test_nothing_is_lost_or_invented_by_a_replan():
+    out = _replan(LINE, 'replanFrom("a");')
+
+    assert sorted(out["queue"]) == ["a", "b", "c", "d", "e"]
+    assert len(out["queue"]) == 5
+
+
+@needs_node
+def test_replanning_does_nothing_outside_the_radio():
+    """The other three orders are what the listing arrived in. Walking
+    them again would be replacing the order the switch says is in force
+    with a different one."""
+
+    out = _replan(LINE, 'playOrder = "youtube"; replanFrom("a");')
+
+    assert out["queue"] == ["a", "b", "c", "d", "e"]
+    assert out["painted"] == 0, "it repainted a listing it did not change"
+
+
+@needs_node
+def test_replanning_without_a_table_leaves_the_queue_alone():
+    """A listing that arrived without one is a listing the radio cannot
+    replan. It still plays."""
+
+    out = _replan("""
+let queue = ["a", "b", "c"].map(k => ({ key: k, id: k }));
+const radioMap = null;
+""", 'replanFrom("a");')
+
+    assert out["queue"] == ["a", "b", "c"]

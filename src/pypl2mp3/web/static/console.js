@@ -225,6 +225,39 @@
     if (button.title !== title) button.title = title;
   }
 
+  // Which of the five neighbours is the row that actually plays next.
+  //
+  // Kept here rather than asked of the server, because lining a song up
+  // by hand makes it the next row a tenth of a second later — and a
+  // panel still naming the old one would be saying something false
+  // about what is about to play. The walk puts the nearest there; a
+  // click puts whatever you chose there; this says which, either way.
+  function markWhatIsNext(all, asked) {
+    const panel = document.getElementById("neighbours");
+    if (!panel) return;
+
+    const offered = panel.querySelectorAll(".neighbour");
+    if (!offered.length) return;
+
+    const playing = queue[index] ? queue[index].key : null;
+    const at = all.findIndex(function (row) {
+      return row.dataset.songKey === playing;
+    });
+    const after = at >= 0 && all[at + 1] ? all[at + 1].dataset.songKey : null;
+
+    offered.forEach(function (one) {
+      const key = one.dataset.songKey;
+
+      one.classList.toggle("is-next", key === after);
+      one.classList.toggle("queued", asked.has(key));
+      // The same two-state button the listing has, and the same
+      // function deciding what it says: one button with one meaning,
+      // and no second place for the two to disagree about what a click
+      // does.
+      showAsk(one, asked.has(key));
+    });
+  }
+
   function paint() {
     const current = queue[index];
 
@@ -260,6 +293,8 @@
       row.classList.toggle("queued", queued);
       showAsk(row, queued);
     });
+
+    markWhatIsNext(all, asked);
 
     justMoved = null;
 
@@ -511,6 +546,26 @@
     if (box) crossfadeCover(box);
   });
 
+  // The five songs nearest the one playing, refreshed with it.
+  //
+  // Its own element and its own request rather than a block inside the
+  // inspector: that panel is replaced wholesale on every song, and the
+  // workbench replaces it again, so anything living in there would be
+  // swept away twice.
+  function showNeighbours(key) {
+    const panel = document.getElementById("neighbours");
+    if (!panel || !key) return;
+
+    // Through the filter form, because the radio may only offer what it
+    // could actually play — and what it could play is what the listing
+    // holds.
+    window.htmx.ajax("GET", "/fragments/neighbours/" + key, {
+      target: "#neighbours",
+      swap: "innerHTML",
+      source: document.getElementById("filters"),
+    });
+  }
+
   function inspect(key) {
     // Held back by an edit nobody has saved. The panel deliberately
     // stops following the player here — but it used to do it in
@@ -560,6 +615,7 @@
 
     // The song being judged is the song being heard: one cursor, not two.
     inspect(queue[index].key);
+    showNeighbours(queue[index].key);
     markInspectorCursor();
     prefetch();
 
@@ -726,8 +782,23 @@
     let travel = 0;
     let mover = null;
 
+    // Every position first, and only then the transforms.
+    //
+    // Reading a row's box and writing its transform in the same turn,
+    // nine hundred times over, asks the browser to lay the whole table
+    // out again between each pair: a Play next on a row far down the
+    // listing cost 0.6 to 0.8 seconds, measured, and the radio's first
+    // steer over two. Separated, the reads settle one layout and the
+    // writes need none.
+    const moved = [];
     seen.forEach(function (was, row) {
-      const box = row.getBoundingClientRect();
+      moved.push([row, was, row.getBoundingClientRect()]);
+    });
+
+    moved.forEach(function (found) {
+      const row = found[0];
+      const was = found[1];
+      const box = found[2];
       const mine = row.dataset.songKey === lit;
 
       // Only what can be watched. A song four hundred rows down moves
@@ -778,6 +849,7 @@
       travel = Math.max(travel, Math.abs(shift - target));
       touched.push([row, target]);
     });
+
 
     if (!touched.length) return;
 
@@ -886,6 +958,17 @@
     // one song changing place. Walking the wanted order against what is
     // there turns an insertion into a single insertBefore.
     const parent = wanted[0].parentNode;
+
+    // Out of the document while the rows are rearranged, when nothing
+    // is being animated. Every insertBefore on an attached table asks
+    // the browser to lay it out again, and replanning the radio's walk
+    // moves nine hundred of them: two seconds, measured, against
+    // twenty-odd detached. It cannot be done when a slide is due — the
+    // animation has to invert against positions the rows actually hold.
+    const holder = justMoved ? null : parent.parentNode;
+    const after = holder ? parent.nextSibling : null;
+    if (holder) holder.removeChild(parent);
+
     let cursor = parent.firstElementChild;
 
     wanted.forEach(function (row) {
@@ -896,6 +979,8 @@
 
       parent.insertBefore(row, cursor);
     });
+
+    if (holder) holder.insertBefore(parent, after);
 
     slide(seen, justMoved);
   }
@@ -1092,14 +1177,113 @@
     });
   }
 
+  // Each song's nearest few, as the radio listing brings them: the
+  // positions the browser needs to replan a walk without asking.
+  let radioMap = null;
+
+  function readRadioMap() {
+    const blob = document.getElementById("radio-map");
+    radioMap = null;
+    if (!blob) return;
+
+    try {
+      const said = JSON.parse(blob.textContent);
+      const at = new Map();
+      said.keys.forEach(function (key, position) { at.set(key, position); });
+      radioMap = { keys: said.keys, near: said.near, at: at };
+    } catch (error) {
+      // A listing that arrives without a usable table is a listing the
+      // radio simply cannot replan. It still plays.
+      radioMap = null;
+    }
+  }
+
+  // Walk the rest of the queue again from the song just chosen.
+  //
+  // This is what makes steering mean something: without it the radio
+  // plays your song and then returns to the course it was already on,
+  // which is not what "play this next" suggests.
+  //
+  // Reorders the queue and leaves the listing to `paint`, so the rows
+  // move by the same slide a hand-queued song already uses.
+  function replanFrom(key) {
+    if (playOrder !== "radio" || !radioMap) return;
+
+    const from = queue.findIndex(function (entry) {
+      return entry.key === key;
+    });
+    if (from < 0) return;
+
+    const head = queue.slice(0, from + 1);
+    const rest = queue.slice(from + 1);
+    if (rest.length < 2) return;
+
+    const waiting = new Map();
+    rest.forEach(function (entry) { waiting.set(entry.key, entry); });
+
+    const walk = [];
+    let here = key;
+    // Where the fallback has got to, so that exhausting a song's eight
+    // near the end of the walk does not rescan the whole tail each
+    // time.
+    let cursor = 0;
+
+    while (waiting.size) {
+      let next = null;
+      const near = radioMap.near[radioMap.at.get(here)] || [];
+
+      for (let at = 0; at < near.length; at++) {
+        const candidate = radioMap.keys[near[at]];
+        if (waiting.has(candidate)) { next = candidate; break; }
+      }
+
+      if (next === null) {
+        // Its eight are all behind us. Take the next one still
+        // standing, in the order the listing already had — a walk that
+        // ran out of near neighbours carries on rather than stopping.
+        while (cursor < rest.length && !waiting.has(rest[cursor].key)) {
+          cursor += 1;
+        }
+        if (cursor >= rest.length) break;
+        next = rest[cursor].key;
+      }
+
+      walk.push(waiting.get(next));
+      waiting.delete(next);
+      here = next;
+    }
+
+    queue = head.concat(walk);
+
+    // Not animated, and `playNext` just above has already animated the
+    // one row that was asked for. What this changes is the order of
+    // everything still to come — nine hundred rows crossing each other
+    // says nothing anyone could follow, and measuring them all to work
+    // out how costs two seconds, measured.
+    justMoved = null;
+    paint();
+  }
+
   function chooseOrder(order) {
-    playOrder = order === "name" || order === "shuffle" ? order : "youtube";
+    const known = ["name", "shuffle", "radio"];
+    playOrder = known.indexOf(order) === -1 ? "youtube" : order;
     showOrder();
 
     // Carried in the filter form, so a refetch for any other reason — a
     // filter, a save, a playlist change — brings the listing back in the
     // order that is playing rather than in the server's default.
     if (orderField) orderField.value = playOrder;
+
+    // Where the walk begins: the song playing, so choosing the radio
+    // carries on from what you are listening to rather than starting
+    // the library again. Empty when nothing plays, which the server
+    // reads as "from the top".
+    const startField = document.getElementById("start-field");
+    if (startField) {
+      startField.value = playOrder === "radio" && queue[index]
+        ? queue[index].key
+        : "";
+    }
 
     if (playOrder === "shuffle") {
       // No round trip: a random order is not the server's to hold, and
@@ -1369,7 +1553,13 @@
   // by settle time the arriving order is gone, and the switch would have
   // chosen the order that was already playing.
   document.body.addEventListener("htmx:afterSwap", function (event) {
-    if (event.target.id !== "list" || !orderAsked) return;
+    if (event.target.id !== "list") return;
+
+    // Whatever brought this listing: the table belongs to it, and a
+    // stale one would replan a walk over songs that are no longer here.
+    readRadioMap();
+
+    if (!orderAsked) return;
     orderAsked = false;
 
     const entries = queueFromRows();
@@ -2033,15 +2223,30 @@
 
     const lineUp = event.target.closest("[data-play-next]");
     if (lineUp) {
-      const row = lineUp.closest("tr[data-song-id]");
+      // Whatever carries the key: a row of the listing, or an entry in
+      // the neighbours panel. One button, one meaning, two places — a
+      // second handler for the panel would be a second chance for the
+      // two to disagree about what lining a song up does.
+      const holder = lineUp.closest("[data-song-key]");
 
       // Which of the two it does is read off the run itself rather than
       // off a second attribute that could disagree with the label.
-      if (row) {
-        const key = row.dataset.songKey;
+      if (holder) {
+        const key = holder.dataset.songKey;
 
-        if (lineup.indexOf(key) === -1) playNext(key);
-        else unqueue(key);
+        if (lineup.indexOf(key) === -1) {
+          playNext(key);
+          replanFrom(key);
+        } else {
+          unqueue(key);
+          // And the walk goes back to leading from the song playing.
+          // Putting the song back where it came from cannot restore the
+          // course, because the course was rebuilt around it — so the
+          // undo has to be a replan too, or taking a song out would
+          // leave the radio following a route chosen for a song no
+          // longer on it.
+          if (queue[index]) replanFrom(queue[index].key);
+        }
       }
       return;
     }

@@ -221,13 +221,19 @@ async def test_in_the_walk_the_first_neighbour_is_the_next_row(tmp_path):
         )).text
 
     rows = re.findall(r'data-song-key="(\w+)"', listing)
-    offered = re.findall(r'class="neighbour"[^>]*data-song-key="(\w+)"',
-                         panel)
+    offered = re.findall(
+        r'class="neighbour[^"]*"[^>]*data-song-key="(\w+)"', panel
+    )
 
     assert offered, panel[:300]
     assert offered[0] == rows[1], (
         f"the panel offers {offered[0]} first, the listing plays {rows[1]}"
     )
-    assert panel.count('class="k up-next"') == 1, "exactly one NEXT"
-    # And it is on the first, not sprinkled.
-    assert panel.index("up-next") < panel.index("Play next")
+    # Both states are rendered on every row and a class decides which
+    # one shows, so that lining a song up by hand can move the mark
+    # without a round trip. What must be true of the markup is that
+    # exactly one row carries the class.
+    assert panel.count("neighbour is-next") == 1, "exactly one NEXT"
+    assert panel.index("is-next") < panel.index('data-song-key="%s"' % (
+        offered[1] if len(offered) > 1 else offered[0]
+    )), "the mark is not on the first"

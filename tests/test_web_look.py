@@ -1225,10 +1225,10 @@ async def test_the_toolbar_icons_are_drawn_not_typed(tmp_path):
         css = (await client.get("/static/console.css")).text
 
     bar = _block(body, '<div id="toolbar">')
-    # Three now, one per play order. Workbench moved up to the tab row,
+    # Four now, one per play order. Workbench moved up to the tab row,
     # where it acts on the same selection but is not a choice between two
-    # views; Play all and Shuffle became two of these three.
-    assert bar.count("<svg") == 3, "not every order has a drawn icon"
+    # views; Play all and Shuffle became two of these four.
+    assert bar.count("<svg") == 4, "not every order has a drawn icon"
 
     tabs = _block(body, '<div id="tabs">')
     assert tabs.count("<svg") == 1, "the one that moved lost its icon"
@@ -1266,6 +1266,7 @@ async def test_the_switch_says_which_order_is_playing(tmp_path):
     async with _client(create_app(tmp_path)) as client:
         body = (await client.get("/")).text
         sorted_body = (await client.get("/?order=name")).text
+        radio_body = (await client.get("/?order=radio")).text
         random_body = (await client.get("/?order=shuffle")).text
 
     def lit(page):
@@ -1275,12 +1276,13 @@ async def test_the_switch_says_which_order_is_playing(tmp_path):
             r'aria-pressed="([^"]+)"', group, re.DOTALL
         )
         assert [order for order, _ in buttons] == [
-            "youtube", "name", "shuffle"
+            "youtube", "name", "radio", "shuffle"
         ], buttons
         return [order for order, pressed in buttons if pressed == "true"]
 
     assert lit(body) == ["youtube"], "a fresh page is in the playlist order"
     assert lit(sorted_body) == ["name"], "an order in the address is ignored"
+    assert lit(radio_body) == ["radio"], "the radio does not light on a reload"
 
     # A random order was made in the browser out of the rows that were
     # there; a page fetched afresh is not in it, whatever the address
