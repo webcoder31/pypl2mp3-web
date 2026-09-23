@@ -201,8 +201,10 @@ fermée.
 ### Le coût, et ce qu'il élimine
 
 944 × 40. La matrice complète des distances, c'est 890 000 calculs —
-**une dizaine de millisecondes** en numpy, recalculée à chaque changement
-de sélection sans que personne le remarque.
+**120 ms** en numpy, mesuré à la vraie taille : quatre matrices de
+distances et un tri de 445 000 paires. Puis 0,1 ms pour demander un
+voisinage. Recalculé à chaque changement de sélection sans que personne
+le remarque.
 
 Donc : **pas d'index approximatif, pas de faiss, pas de base
 vectorielle.** Un service qui lit les frames, une matrice, et c'est tout.
