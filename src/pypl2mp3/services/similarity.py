@@ -183,6 +183,11 @@ class Space:
 
         return cls(keys, videos, totals, facets, pairs)
 
+    def knows(self, key: str) -> bool:
+        """Whether this song has a vector, and so a place in the order."""
+
+        return key in self._at
+
     def neighbours(self, key, count=5, among=None) -> list[Neighbour]:
         """The nearest songs to one, nearest first.
 
@@ -253,3 +258,54 @@ class Space:
         """
 
         return min(FACETS, key=lambda name: self._facets[name][here, there])
+
+
+def chain(space: "Space", keys, start: str) -> list[str]:
+    """Order a selection as a walk from each song to its nearest.
+
+    The property the radio rests on: the song after any song is that
+    song's nearest neighbour among those not yet passed. True by
+    construction, so nothing has to decide it when a track ends — and
+    "do nothing and the closest plays next" needs no code at all.
+
+    Greedy and not optimal. The shortest path through 944 points is a
+    travelling salesman, and the difference would be audible to nobody:
+    what is heard is each step, and each step here is the best one
+    available.
+
+    Args:
+        space: the distances, built over the same selection.
+        keys: every row in the selection, in the order it arrived —
+            including songs the space does not know.
+        start: where to begin. A key nobody knows starts from the top.
+
+    Returns:
+        Every key, once. Songs with no vector come last, in the order
+        they came in: they have no place in the order the others are in,
+        which is where a song its playlist has dropped goes too.
+    """
+
+    known = [key for key in keys if space.knows(key)]
+    unknown = [key for key in keys if not space.knows(key)]
+
+    if not known:
+        return unknown
+
+    held = set(known)
+    here = start if start in held else known[0]
+
+    left = held
+    left.discard(here)
+    walk = [here]
+
+    while left:
+        # Asked of the space rather than worked out again, so the walk
+        # inherits the rule that keeps two copies of one recording from
+        # following each other.
+        nearest = space.neighbours(here, count=1, among=left)
+
+        here = nearest[0].key if nearest else next(iter(sorted(left)))
+        left.discard(here)
+        walk.append(here)
+
+    return walk + unknown

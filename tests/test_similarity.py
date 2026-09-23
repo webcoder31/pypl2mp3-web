@@ -176,3 +176,111 @@ def test_a_vector_of_the_wrong_width_is_refused():
 
     with pytest.raises(ValueError):
         Space.build([("a", "v1", [0.0] * (FEATURE_COUNT - 1))])
+
+
+def test_the_chain_goes_from_each_song_to_its_nearest_unvisited():
+    """The property the whole radio rests on: the row after any song is
+    that song's nearest neighbour among those not yet passed. True by
+    construction, which is why nothing has to decide it when a track
+    ends."""
+
+    from pypl2mp3.services.similarity import chain
+
+    # On a line, so the nearest unvisited is always the next one along.
+    entries = [(f"s{i}", f"v{i}", _vector(timbre=float(i))) for i in range(6)]
+    space = Space.build(entries)
+
+    order = chain(space, [k for k, _, _ in entries], "s3")
+
+    assert order[0] == "s3"
+
+    # Each step is the closest song not yet passed — worked out here
+    # from the positions rather than asked of the same code under test.
+    # On a line that means the nearest unused index, which is a leap
+    # back to the other end once the walk reaches one of them: greedy is
+    # not a shortest path, and the first version of this test wrongly
+    # demanded that it were.
+    seen = {3}
+    for before, after in zip(order, order[1:]):
+        at = int(before[1:])
+        expected = min(
+            (i for i in range(6) if i not in seen),
+            key=lambda i: (abs(i - at), i),
+        )
+        assert int(after[1:]) == expected, (
+            f"from s{at}, the nearest unpassed is s{expected}, not {after}"
+        )
+        seen.add(int(after[1:]))
+
+
+def test_the_chain_visits_every_song_once():
+    """It is an ordering of the selection, not a walk that can revisit —
+    a song heard twice in one run of the radio is a bug that looks like
+    a coincidence."""
+
+    from pypl2mp3.services.similarity import chain
+
+    entries = [(f"s{i}", f"v{i}", _vector(timbre=float(i % 4))) for i in range(9)]
+    space = Space.build(entries)
+
+    order = chain(space, [k for k, _, _ in entries], "s0")
+
+    assert len(order) == 9
+    assert len(set(order)) == 9
+
+
+def test_a_song_with_no_vector_goes_to_the_end():
+    """Exactly where a song its playlist has dropped goes, and for the
+    same reason: it has no place in the order the others are in."""
+
+    from pypl2mp3.services.similarity import chain
+
+    entries = [(f"s{i}", f"v{i}", _vector(timbre=float(i))) for i in range(3)]
+    space = Space.build(entries)
+
+    order = chain(space, ["s0", "nothing", "s1", "nobody", "s2"], "s0")
+
+    assert order[:3] == ["s0", "s1", "s2"]
+    # And in the order they came in, rather than shuffled by absence.
+    assert order[3:] == ["nothing", "nobody"]
+
+
+def test_a_chain_from_a_song_nobody_knows_still_orders_everything():
+    """The radio is chosen while nothing is playing, or while the
+    playing song has just been filtered out of the listing."""
+
+    from pypl2mp3.services.similarity import chain
+
+    entries = [(f"s{i}", f"v{i}", _vector(timbre=float(i))) for i in range(4)]
+    space = Space.build(entries)
+
+    order = chain(space, [k for k, _, _ in entries], "ghost")
+
+    assert len(order) == 4
+    assert order[0] == "s0", "it should fall back to the first of the selection"
+
+
+def test_the_chain_of_nothing_is_nothing():
+    from pypl2mp3.services.similarity import chain
+
+    assert chain(Space.build([]), [], "anything") == []
+
+
+def test_the_chain_keeps_a_duplicate_out_of_its_own_way():
+    """Two keys, one recording. The chain must still visit both — they
+    are two rows — but never step straight from one to the other, which
+    would play the same audio twice running."""
+
+    from pypl2mp3.services.similarity import chain
+
+    entries = [
+        ("a", "same", _vector(timbre=0.0)),
+        ("b", "same", _vector(timbre=0.0)),
+        ("c", "v3", _vector(timbre=1.0)),
+    ]
+    space = Space.build(entries)
+
+    order = chain(space, ["a", "b", "c"], "a")
+
+    assert sorted(order) == ["a", "b", "c"]
+    assert order[1] != "b", "the same recording plays twice running"
