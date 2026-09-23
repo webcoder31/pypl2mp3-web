@@ -46,15 +46,25 @@ FACETS = {
     "dynamics": DYNAMICS,
 }
 
-# The timbre leads because "it sounds the same" means the timbre first.
-# Measured against the artist ruler on 352 songs, every weighting tried
-# lands within a tenth of every other — equal weights included — so
-# these are a defensible starting point rather than a tuned optimum, and
-# `scripts/measure_similarity.py` is what would say otherwise.
+# The timbre leads because "it sounds the same" means the timbre first,
+# and because it is where the signal is: measured on all 944 songs
+# against the artist ruler, the timbre alone finds another song by the
+# same artist 14.3 times better than chance, where the rhythm manages
+# 5.7, the colour 5.6 and the dynamics 3.8.
+#
+# Held back from going further on purpose. The artist ruler structurally
+# flatters the timbre — the same artist is the same voice, very nearly
+# by definition — so following it to its conclusion would give a switch
+# marked "timbre" and three that do nothing. The other three are kept at
+# a weight the measurement does not ask for, because a radio that
+# follows only the timbre is a radio with one tempo.
+#
+# 16.5x against the artist, where equal weights give 13.3 and this
+# was 15.5 at .45. Checked with `scripts/measure_similarity.py`.
 WEIGHTS = {
-    "timbre": 0.45,
-    "colour": 0.25,
-    "rhythm": 0.20,
+    "timbre": 0.60,
+    "colour": 0.15,
+    "rhythm": 0.15,
     "dynamics": 0.10,
 }
 

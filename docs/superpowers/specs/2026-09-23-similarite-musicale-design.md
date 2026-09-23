@@ -170,9 +170,20 @@ même raison.
 
 ### Les poids
 
-Départ : **timbre 0,45 · couleur 0,25 · rythme 0,20 · dynamique 0,10.**
+**Timbre 0,60 · couleur 0,15 · rythme 0,15 · dynamique 0,10.**
+
 Le timbre domine parce que c'est ce que « ça sonne pareil » veut dire en
-premier.
+premier, et parce que c'est là qu'est le signal : mesuré sur les 944,
+le timbre seul retrouve un morceau du même artiste **14,3 fois mieux que
+le hasard**, contre 5,7 pour le rythme, 5,6 pour la couleur et 3,8 pour
+la dynamique.
+
+Et retenu délibérément en deçà de ce que la mesure réclamerait. **La
+règle de l'artiste flatte structurellement le timbre** — même artiste,
+même voix, presque par définition — donc la suivre jusqu'au bout
+donnerait un curseur « timbre » et trois qui ne font rien. Les trois
+autres gardent un poids que la mesure ne demande pas, parce qu'une radio
+qui ne suit que le timbre est une radio à un seul tempo.
 
 **Le test du genre vérifie ces poids, il ne les choisit pas.** Optimiser
 aveuglément l'accord avec l'étiquette Shazam donnerait un devineur

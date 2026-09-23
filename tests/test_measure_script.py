@@ -118,7 +118,7 @@ def test_a_song_with_no_vector_is_skipped(tmp_path):
     assert _script().measure(tmp_path)["analysed"] == 2
 
 
-def test_each_facet_is_reported_on_its_own(tmp_path):
+def test_each_facet_is_reported_on_its_own(tmp_path, monkeypatch):
     """Which axis does the work is the thing that would decide a
     re-weighting, so it has to be visible rather than inferred."""
 
@@ -129,9 +129,19 @@ def test_each_facet_is_reported_on_its_own(tmp_path):
         _song(folder, "ONE" if at < 3 else "TWO", at,
               [float(at)] * FEATURE_COUNT)
 
+    # A weighting of our own, put there by monkeypatch so it is undone
+    # whatever happens. Reading the current one instead made this test
+    # pass for the wrong reason: every run of `measure` ends on the same
+    # weighting, so once an earlier test had left the dict in that state
+    # a later one compared it against itself. It only caught anything
+    # when it happened to run first.
+    mine = {"timbre": 0.4, "colour": 0.3, "rhythm": 0.2, "dynamics": 0.1}
+    for facet, weight in mine.items():
+        monkeypatch.setitem(WEIGHTS, facet, weight)
+
     report = _script().measure(tmp_path, count=2)
 
     assert set(report["by_facet"]) == set(FACETS)
     # And the weights are put back: a module-level dict left mutated
     # would make every later measurement answer a question nobody asked.
-    assert WEIGHTS["timbre"] == pytest.approx(0.45)
+    assert WEIGHTS == mine
