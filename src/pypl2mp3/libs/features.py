@@ -380,3 +380,116 @@ def colour_of(samples: np.ndarray) -> np.ndarray:
         return np.zeros(COLOUR.stop - COLOUR.start, dtype=np.float32)
 
     return _middle_and_spread(np.concatenate(rows))
+
+
+# The range a tempo is looked for in. Outside it the autocorrelation
+# finds harmonics of the real pulse and reports them with confidence:
+# 240 is 120 counted twice, and nothing in the signal tells them apart.
+SLOWEST_BPM = 50.0
+FASTEST_BPM = 200.0
+
+
+def onset_envelope(samples: np.ndarray) -> np.ndarray:
+    """How much the spectrum changes from one frame to the next.
+
+    Only increases count: energy appearing is an attack, energy leaving
+    is a note ending, and a rhythm is made of the first kind.
+    """
+
+    flux = []
+    previous = None
+
+    for block in spectrogram(samples):
+        # The last frame of the previous block is carried over, so the
+        # difference across a block boundary is a real difference rather
+        # than a missing one every 4096 frames.
+        joined = block if previous is None else np.vstack([previous, block])
+        flux.append(np.diff(joined, axis=0).clip(min=0).sum(axis=1))
+        previous = block[-1:]
+
+    if not flux:
+        return np.zeros(0, dtype=np.float32)
+
+    envelope = np.concatenate(flux)
+
+    # Measured against its own local level, so a quiet passage still has
+    # onsets and a loud one does not drown the rest of the track.
+    window = int(FRAMES_PER_SECOND)
+    if window > 1 and len(envelope) > window:
+        smooth = np.convolve(envelope, np.ones(window) / window, mode="same")
+        envelope = (envelope - smooth).clip(min=0)
+
+    return envelope.astype(np.float32)
+
+
+def rhythm_of(samples: np.ndarray) -> np.ndarray:
+    """Tempo, pulse clarity, and how often something is struck.
+
+    Args:
+        samples: mono float32 at SAMPLE_RATE.
+
+    Returns:
+        3 values: BPM, a clarity in [0, 1], onsets per second.
+    """
+
+    nothing = np.zeros(RHYTHM.stop - RHYTHM.start, dtype=np.float32)
+
+    envelope = onset_envelope(samples)
+    if envelope.size < 4:
+        return nothing
+
+    centred = envelope - envelope.mean()
+
+    # Autocorrelation through the frequency domain: the direct form is
+    # quadratic and this envelope is twenty thousand points long.
+    size = 1 << int(np.ceil(np.log2(len(centred) * 2)))
+    spectrum = np.fft.rfft(centred, n=size)
+    acf = np.fft.irfft(spectrum * np.conj(spectrum), n=size)[:len(centred)]
+
+    if acf[0] <= 0:
+        return nothing
+
+    shortest = max(1, int(FRAMES_PER_SECOND * 60.0 / FASTEST_BPM))
+    longest = min(len(acf) - 1, int(FRAMES_PER_SECOND * 60.0 / SLOWEST_BPM))
+    if longest <= shortest:
+        return nothing
+
+    lag = shortest + int(np.argmax(acf[shortest:longest + 1]))
+
+    # A pulse at twice the period is just as periodic, so the
+    # autocorrelation peaks there too — and when the true period falls
+    # between two frames, as 150 BPM does at 34.45, the doubled peak is
+    # the sharper of the two and wins. The track then reports half its
+    # tempo, which is the one wrong answer that looks entirely
+    # plausible. Preferring the shortest lag that is nearly as strong is
+    # the standard answer: a genuinely slow track has nothing at half
+    # its period to find.
+    for divisor in (2, 3):
+        candidate = int(round(lag / divisor))
+        if candidate >= shortest and acf[candidate] >= 0.8 * acf[lag]:
+            lag = candidate
+            break
+
+    # And sub-frame resolution, by fitting a parabola through the peak
+    # and its neighbours: at 200 BPM one frame of lag is 8 BPM, which is
+    # coarser than the difference between two genres of dance music.
+    fine = float(lag)
+    if shortest < lag < longest:
+        before, peak, after = acf[lag - 1], acf[lag], acf[lag + 1]
+        curve = before - 2 * peak + after
+        if curve != 0:
+            fine += float(np.clip(0.5 * (before - after) / curve, -0.5, 0.5))
+
+    tempo = 60.0 * FRAMES_PER_SECOND / fine
+    clarity = float(np.clip(acf[lag] / acf[0], 0.0, 1.0))
+
+    # An onset is a local maximum standing above the track's own typical
+    # rise; counting every non-zero frame would count the shoulders of
+    # each attack as well as its peak.
+    threshold = envelope.mean() + envelope.std()
+    peaks = ((envelope[1:-1] > threshold)
+             & (envelope[1:-1] >= envelope[:-2])
+             & (envelope[1:-1] > envelope[2:]))
+    rate = float(peaks.sum()) / (len(envelope) / FRAMES_PER_SECOND)
+
+    return np.array([tempo, clarity, rate], dtype=np.float32)

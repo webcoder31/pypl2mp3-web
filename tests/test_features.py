@@ -176,3 +176,95 @@ def test_the_colour_is_the_size_the_layout_says():
     from pypl2mp3.libs.features import COLOUR, colour_of
 
     assert len(colour_of(_sine(440))) == COLOUR.stop - COLOUR.start
+
+
+def _clicks(bpm: float, seconds: float = 8.0) -> np.ndarray:
+    """A click track: the one signal whose tempo we know exactly."""
+
+    out = np.zeros(int(SAMPLE_RATE * seconds), dtype=np.float32)
+    step = SAMPLE_RATE * 60.0 / bpm
+
+    # 5 ms of decaying noise per click — an impulse one sample wide is
+    # not something a 46 ms window can see.
+    rng = np.random.default_rng(1)
+    length = int(SAMPLE_RATE * 0.005)
+    click = (rng.standard_normal(length)
+             * np.exp(-np.arange(length) / (length / 4))).astype(np.float32)
+
+    at = 0.0
+    while int(at) + length < len(out):
+        out[int(at):int(at) + length] += click
+        at += step
+
+    return out
+
+
+@pytest.mark.parametrize("bpm", [55.0, 90.0, 120.0, 150.0, 170.0, 190.0])
+def test_the_tempo_of_a_click_track_is_the_tempo_we_built_it_with(bpm):
+    """Measured at 0.3% across this range, so 2% is a real bound rather
+    than a formality — and loose enough that one frame of lag either way
+    does not fail it."""
+
+    from pypl2mp3.libs.features import rhythm_of
+
+    found = rhythm_of(_clicks(bpm))[0]
+
+    assert found == pytest.approx(bpm, rel=0.02), f"built {bpm}, read {found}"
+
+
+def test_a_tempo_is_not_reported_at_half_its_value():
+    """The one wrong answer that looks entirely plausible.
+
+    A pulse at twice the period is just as periodic, so the
+    autocorrelation peaks there too — and when the true period falls
+    between two frames, which 150 BPM does at 34.45, the doubled peak is
+    the sharper of the two and wins. This read 74.9 before the fix.
+    """
+
+    from pypl2mp3.libs.features import rhythm_of
+
+    found = rhythm_of(_clicks(150.0))[0]
+
+    assert found > 120.0, f"read {found:.1f}, which is about half of 150"
+
+
+def test_a_faster_track_reads_as_faster():
+    """The ratio matters more than the absolute value: an estimator that
+    halves or doubles is a known failure mode, one that inverts the
+    order of two tracks is useless."""
+
+    from pypl2mp3.libs.features import rhythm_of
+
+    slow = rhythm_of(_clicks(70.0))[0]
+    fast = rhythm_of(_clicks(140.0))[0]
+
+    assert fast > slow * 1.5, f"{slow:.0f} then {fast:.0f}"
+
+
+def test_a_steady_pulse_is_clearer_than_noise():
+    from pypl2mp3.libs.features import rhythm_of
+
+    assert rhythm_of(_clicks(120.0))[1] > rhythm_of(_noise())[1] * 2
+
+
+def test_a_denser_track_strikes_more_often():
+    """Onset rate is not tempo: a track can be slow and busy."""
+
+    from pypl2mp3.libs.features import rhythm_of
+
+    assert rhythm_of(_clicks(160.0))[2] > rhythm_of(_clicks(60.0))[2]
+
+
+def test_the_rhythm_is_the_size_the_layout_says():
+    from pypl2mp3.libs.features import RHYTHM, rhythm_of
+
+    assert len(rhythm_of(_clicks(120.0))) == RHYTHM.stop - RHYTHM.start
+
+
+def test_silence_has_a_rhythm_of_nothing_rather_than_a_crash():
+    from pypl2mp3.libs.features import RHYTHM, rhythm_of
+
+    out = rhythm_of(np.zeros(SAMPLE_RATE * 2, dtype=np.float32))
+
+    assert len(out) == RHYTHM.stop - RHYTHM.start
+    assert np.isfinite(out).all()
