@@ -17,6 +17,7 @@ from typing import Optional
 
 from pypl2mp3.libs.repository import get_repository_songs
 from pypl2mp3.libs.song import SongModel
+from pypl2mp3.libs.features import read_features
 from pypl2mp3.libs.utils import natural_sort_key
 from pypl2mp3.services.find_song import song_key_in_folder
 from pypl2mp3.services.playlist_order import read_order
@@ -121,6 +122,12 @@ class SongSummary:
     # Where the song stands in its playlist on YouTube, when a check has
     # read that order. None means nobody has looked — which is not the
     # same as being absent from it, and `off_playlist` says which.
+    # What the song sounds like, as the features module measures it, or
+    # None when nobody has analysed this file yet. Read from the mutagen
+    # object the repository cache already holds, so a listing that is
+    # warm pays nothing for it.
+    features: tuple[float, ...] | None = None
+
     playlist_rank: int | None = None
     off_playlist: bool = False
 
@@ -432,6 +439,26 @@ def in_playlist_order(
     return held + rest
 
 
+def _features_of(song: SongModel) -> tuple[float, ...] | None:
+    """The song's feature vector, if the file carries one.
+
+    Taken from the mutagen object the model already holds rather than
+    reopening the file: the repository caches parsed songs by path and
+    modification time, so this costs a dictionary lookup on a warm
+    listing and the tags are read once either way.
+    """
+
+    try:
+        found = read_features(song.mp3)
+    except Exception:
+        # A song whose tags cannot be read has no vector, which is the
+        # same as one nobody analysed: it lists, and it has no place in
+        # a walk.
+        return None
+
+    return tuple(found) if found is not None else None
+
+
 def summarize(song: SongModel) -> SongSummary:
     """Project a SongModel onto the fields a listing shows.
 
@@ -456,6 +483,7 @@ def summarize(song: SongModel) -> SongSummary:
             if song.decided_by.get(name) == "user"
         ),
         isrc=song.isrc or "",
+        features=_features_of(song),
         origin_author=song.youtube_origin.get("author") or "",
         origin_title=song.youtube_origin.get("title") or "",
         video_gone=bool(song.youtube_origin.get("gone")),

@@ -1,0 +1,58 @@
+{# The five songs nearest the one being inspected.
+
+   The five nearest overall, not one per facet: two songs at the same
+   tempo can have nothing else in common, and what this panel is for is
+   carrying on listening rather than jumping sideways. The word beside
+   each one is the facet where the gap is smallest — an explanation of a
+   neighbour already chosen, not the reason it was chosen.
+
+   Out of radio mode this is still a panel of five Play next buttons and
+   still useful; it just has no SUIVANT, because the order in force is
+   not the one the neighbours are in. #}
+<div id="neighbours-body" data-song-key="{{ key }}">
+  {% if neighbours %}
+    <p class="neighbours-title">Neighbours</p>
+    <ul class="neighbour-list">
+      {% for near in neighbours %}
+        <li class="neighbour"
+            id="neighbour-{{ near.key }}"
+            data-song-key="{{ near.key }}"
+            data-song-id="{{ near.youtube_id }}"
+            data-label="{{ near.label }}"
+            data-closeness="{{ near.dots }}">
+          <span class="neighbour-name" title="{{ near.label }}"
+            >{{ near.label }}</span>
+          {# Five marks, filled to the percentile: a distance means
+             nothing on its own, its rank among every pair in this
+             selection means something. #}
+          <span class="closeness" aria-label="closer than
+                {{ near.percentile }}% of pairs"
+            >{% for step in range(5) %}<span
+                class="pip{% if step < near.dots %} lit{% endif %}"
+              ></span>{% endfor %}</span>
+          <span class="neighbour-why">{{ near.facet }}</span>
+          {# The first is already the next row, by construction of the
+             walk. Offering to play it next would be offering to do
+             nothing. #}
+          <span class="neighbour-do">
+            {% if near.is_next %}
+              <span class="k up-next">NEXT</span>
+            {% else %}
+              <button type="button" data-play-next
+                      title="Play it after the one playing">Play next</button>
+            {% endif %}
+          </span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="neighbours-title">Neighbours</p>
+    <p class="neighbours-none">
+      {% if analysed %}
+        Nothing else in this selection to compare it with.
+      {% else %}
+        This song has not been analysed yet.
+      {% endif %}
+    </p>
+  {% endif %}
+</div>

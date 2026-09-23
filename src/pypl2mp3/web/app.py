@@ -36,6 +36,7 @@ from pypl2mp3.services.fix_junks import apply_fix, propose_fix
 from pypl2mp3.libs.features import features_for
 from pypl2mp3.services.import_playlist import import_playlist
 from pypl2mp3.services.junkize_songs import junkize_song
+from pypl2mp3.services.similarity import Space, chain
 from pypl2mp3.services.list_songs import (
     DEFAULT_MATCH_THRESHOLD,
     in_playlist_order,
@@ -451,9 +452,24 @@ def create_app(repository_path: Path) -> FastAPI:
             "error": job.error,
         }
 
+    def _label_of(song) -> str:
+        """"Artist - Title", or whichever half of it exists."""
+
+        return " - ".join(part for part in (song.artist, song.title) if part)
+
+    def _space(songs):
+        """The distances over a selection, for the songs that have a
+        vector. Built on demand and not kept: it belongs to a selection,
+        and a selection changes with every keystroke in the filter."""
+
+        return Space.build([
+            (song.key, song.youtube_id, list(song.features))
+            for song in songs if song.features
+        ])
+
     def _selection(
         playlist: str, q: str, junk: int, match: float, artist: str = "",
-        order: str = "",
+        order: str = "", start: str = "",
     ):
         """The songs a query selects. Shared by the shell and the fragment.
 
@@ -483,6 +499,16 @@ def create_app(repository_path: Path) -> FastAPI:
         #
         # Here and not in `list_songs`, because the CLI lists by artist
         # and must go on doing so.
+        if order == "radio":
+            # A walk from each song to its nearest, which makes the row
+            # after any song that song's nearest among those still to
+            # come — by construction, so nothing decides it when a track
+            # ends.
+            walk = chain(_space(songs), [song.key for song in songs], start)
+            where = {key: at for at, key in enumerate(walk)}
+
+            return sorted(songs, key=lambda song: where[song.key])
+
         ranked = in_playlist_order(app.state.repository_path, songs)
 
         if order == "name":
@@ -504,6 +530,7 @@ def create_app(repository_path: Path) -> FastAPI:
         artist: str = "",
         match: float = DEFAULT_MATCH_THRESHOLD,
         order: str = "",
+        start: str = "",
     ) -> HTMLResponse:
         """The whole application, in one page.
 
@@ -518,11 +545,13 @@ def create_app(repository_path: Path) -> FastAPI:
         # A pass over 900 songs costs 1.4s, so when nothing is filtered —
         # the usual case — the listing reuses this rather than asking
         # again for the same thing.
-        everything = _selection(playlist, "", 0, match, order=order)
+        everything = _selection(playlist, "", 0, match, order=order,
+                                start=start)
         filtered = (
             everything
             if not (q or junk or artist)
-            else _selection(playlist, q, junk, match, artist, order)
+            else _selection(playlist, q, junk, match, artist, order,
+                            start)
         )
 
         return templates.TemplateResponse(
@@ -769,6 +798,7 @@ def create_app(repository_path: Path) -> FastAPI:
         artist: str = "",
         match: float = DEFAULT_MATCH_THRESHOLD,
         order: str = "",
+        start: str = "",
     ) -> HTMLResponse:
         """The listing on its own, for the console to swap in."""
 
@@ -776,7 +806,8 @@ def create_app(repository_path: Path) -> FastAPI:
             request,
             "_list.html",
             {
-                "songs": _selection(playlist, q, junk, match, artist, order),
+                "songs": _selection(playlist, q, junk, match, artist, order,
+                                    start),
                 # Repeating one playlist's name down 874 rows teaches
                 # nothing. It earns its place only when the selection
                 # spans more than one.
@@ -812,6 +843,70 @@ def create_app(repository_path: Path) -> FastAPI:
             request,
             "_inspector.html",
             {"song": _summary_or_404(key)},
+        )
+
+    @app.get("/fragments/neighbours/{key}", response_class=HTMLResponse)
+    def neighbours_fragment(
+        key: str,
+        request: Request,
+        playlist: str = "",
+        q: str = "",
+        junk: int = 0,
+        artist: str = "",
+        match: float = DEFAULT_MATCH_THRESHOLD,
+        order: str = "",
+        start: str = "",
+    ) -> HTMLResponse:
+        """The five songs nearest this one, inside the current selection.
+
+        It carries the filters because the radio may only offer what it
+        could actually play, and what it could play is what the listing
+        holds. In "All songs" that is the whole library; filtered to one
+        playlist, it stays inside it.
+        """
+
+        songs = _selection(playlist, q, junk, match, artist, order, start)
+        space = _space(songs)
+        by_key = {song.key: song for song in songs}
+
+        # Only what is still ahead: offering the song just played would
+        # be offering to go backwards, which the player already has a
+        # button for.
+        after = [song.key for song in songs]
+        if key in after:
+            after = after[after.index(key) + 1:]
+
+        found = space.neighbours(key, count=5, among=set(after))
+
+        return templates.TemplateResponse(
+            request,
+            "_neighbours.html",
+            {
+                "key": key,
+                "analysed": space.knows(key),
+                "neighbours": [
+                    {
+                        "key": near.key,
+                        "youtube_id": by_key[near.key].youtube_id,
+                        "label": _label_of(by_key[near.key]),
+                        "percentile": round(near.percentile),
+                        # Five marks rather than a number nobody can
+                        # read: 99th and above is five, then 97, 93, 85.
+                        "dots": sum(
+                            1 for step in (0, 85, 93, 97, 99)
+                            if near.percentile >= step
+                        ),
+                        "facet": near.facet,
+                        # The walk puts the nearest next, so in radio
+                        # order the first of these IS the row after this
+                        # one. Said by comparing the two rather than
+                        # assumed, because a song lined up by hand can
+                        # have taken that place.
+                        "is_next": bool(after) and near.key == after[0],
+                    }
+                    for near in found
+                ],
+            },
         )
 
     @app.get("/fragments/workbench/{key}", response_class=HTMLResponse)
