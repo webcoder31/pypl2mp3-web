@@ -29,12 +29,14 @@ Repository: https://github.com/webcoder31/pypl2mp3
 import math
 from pathlib import Path
 import struct
+import subprocess
 from typing import Sequence
 
 # Third-party packages
 from mutagen.id3 import PRIV
 import mutagen
 import mutagen.mp3
+import numpy as np
 
 
 # Four facets, and the slice each one occupies. Fixed for the lifetime
@@ -123,3 +125,63 @@ def store_features(song_path: Path, values: Sequence[float]) -> None:
 
     mp3.tags.add(PRIV(owner=FEATURE_OWNER, data=data))
     mp3.save(v1=0, v2_version=3)
+
+
+# High enough that the timbre exists. The waveform settles for 8 kHz
+# because it only measures how loud each slice is; here the top of a
+# cymbal has to be on the other side of Nyquist from the bottom of a
+# bass line, which 11 kHz gives and 4 kHz does not.
+SAMPLE_RATE = 22050
+
+# A pathological file must not tie up a worker forever. Five minutes is
+# a file that will never finish; a real one takes half a second.
+EXTRACT_TIMEOUT = 300
+
+
+def extract_samples(song_path: Path) -> np.ndarray:
+    """Decode one file to mono samples at SAMPLE_RATE.
+
+    Args:
+        song_path: the audio file to decode.
+
+    Returns:
+        float32 in [-1, 1], one channel.
+
+    Raises:
+        FeatureError: if ffmpeg is missing, fails, or does not finish.
+    """
+
+    try:
+        completed = subprocess.run(
+            [
+                "ffmpeg",
+                "-v", "error",
+                # Without this, ffmpeg inherits the server's stdin and
+                # can block on a prompt nobody will ever answer.
+                "-nostdin",
+                "-i", str(song_path),
+                "-ac", "1",
+                "-ar", str(SAMPLE_RATE),
+                "-f", "s16le",
+                "-",
+            ],
+            capture_output=True,
+            check=True,
+            timeout=EXTRACT_TIMEOUT,
+        )
+    except FileNotFoundError as error:
+        raise FeatureError("ffmpeg is not installed") from error
+    except subprocess.TimeoutExpired as error:
+        raise FeatureError(f"{song_path.name}: decoding timed out") from error
+    except subprocess.CalledProcessError as error:
+        detail = error.stderr.decode("utf-8", "replace").strip()
+        raise FeatureError(f"{song_path.name}: {detail}") from error
+
+    raw = np.frombuffer(completed.stdout, dtype="<i2")
+    if raw.size == 0:
+        raise FeatureError(f"{song_path.name}: decoded to nothing")
+
+    # Copied out of the buffer rather than viewed into it: `frombuffer`
+    # gives a read-only array, and every window below is multiplied in
+    # place by its own window function.
+    return np.array(raw, dtype=np.float32) / 32768.0
