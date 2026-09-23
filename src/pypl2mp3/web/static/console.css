@@ -725,11 +725,54 @@ button:has(.icon) { display: inline-flex; align-items: center;
                  letter-spacing: 0; text-transform: none; }
 #imports-badge:empty { display: none; }
 
-/* One pane at a time. Both are in the document; the body says which. */
-body[data-tab="playlist"] #imports,
-body[data-tab="imports"] #toolbar,
-body[data-tab="imports"] #list { display: none; }
+/* One pane at a time. All three are in the document; the body says
+   which. */
+#imports, #map { display: none; }
 body[data-tab="imports"] #imports { display: block; }
+body[data-tab="map"] #map { display: flex; }
+body[data-tab="imports"] #toolbar,
+body[data-tab="imports"] #list,
+body[data-tab="map"] #toolbar,
+body[data-tab="map"] #list { display: none; }
+
+/* The cloud, and the two lines that read it. Twelve colours and a grey
+   for everything else: forty-nine distinct genres would not be a
+   legend, it would be a second problem. Chosen to stay apart from each
+   other and from the page's own accent, and given twice so the map
+   turns with the theme like the rest. */
+:root {
+  --map-1: #4cc9b0; --map-2: #e8833a; --map-3: #6ba3e8; --map-4: #d95f7d;
+  --map-5: #9b7ede; --map-6: #7fc45c; --map-7: #e5c04b; --map-8: #4fb3c9;
+  --map-9: #c96fa8; --map-10: #8a9a5b; --map-11: #d4784f; --map-12: #6f86d6;
+  --map-dim: #6a7280;
+}
+#map {
+  flex-direction: column;
+  min-height: 0;
+  padding: var(--space-4) var(--block-pad-x);
+  gap: var(--space-3);
+}
+#map-frame { flex: 1 1 auto; min-height: 0; position: relative; }
+#map-canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+#map-canvas:active { cursor: grabbing; }
+#map-note { margin: 0; color: var(--text-3); font-size: var(--fs-sm); }
+/* One line, always there: a readout that appears and disappears moves
+   the cloud above it every time the pointer crosses a song. */
+#map-hover {
+  margin: 0;
+  min-height: 1.2em;
+  color: var(--text);
+  font-size: var(--fs-sm);
+}
+#map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.map-genre { display: inline-flex; align-items: center; gap: var(--space-1); }
+.map-pip { width: 8px; height: 8px; border-radius: 50%; }
 #imports { overflow-y: auto; min-height: 0; }
 
 /* No side padding: the inventory below is a table, and a table whose

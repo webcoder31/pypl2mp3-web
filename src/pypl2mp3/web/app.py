@@ -7,6 +7,7 @@ passed the wrong flag.
 """
 
 import asyncio
+import collections
 import json
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -37,6 +38,7 @@ from pypl2mp3.services.fix_junks import apply_fix, propose_fix
 from pypl2mp3.libs.features import features_for
 from pypl2mp3.services.import_playlist import import_playlist
 from pypl2mp3.services.junkize_songs import junkize_song
+from pypl2mp3.services import song_map
 from pypl2mp3.services.similarity import Space, chain
 from pypl2mp3.services.list_songs import (
     DEFAULT_MATCH_THRESHOLD,
@@ -856,6 +858,69 @@ def create_app(repository_path: Path) -> FastAPI:
             "_inspector.html",
             {"song": _summary_or_404(key)},
         )
+
+    # The layout costs two seconds over 944 songs, so it is kept —
+    # keyed on exactly the songs it was computed for, which is what
+    # makes a stale one impossible rather than unlikely. Two entries:
+    # the whole library, and whatever is being looked at beside it.
+    app.state.map_cache = {}
+
+    @app.get("/map/points")
+    async def map_points(
+        playlist: str = "",
+        q: str = "",
+        junk: int = 0,
+        artist: str = "",
+        match: float = DEFAULT_MATCH_THRESHOLD,
+    ):
+        """Where every song in the selection sits, and what colours it.
+
+        Position comes from the sound and colour from the genre, which
+        is two independent sources on purpose: if the colours clump, the
+        vector caught something real; if they are peppered at random, it
+        did not. The map checks itself.
+        """
+
+        songs = _selection(playlist, q, junk, match, artist)
+        signature = tuple(song.key for song in songs)
+
+        places = app.state.map_cache.get(signature)
+        if places is None:
+            space = _space(songs)
+            # In a worker thread: numpy blocks, and the event loop has a
+            # player to go on answering.
+            places = await asyncio.to_thread(
+                song_map.layout, space, [song.key for song in songs]
+            )
+            if len(app.state.map_cache) > 2:
+                app.state.map_cache.clear()
+            app.state.map_cache[signature] = places
+
+        # The genres worth a colour of their own. Forty-nine distinct
+        # ones would not be a legend, it would be a second problem.
+        counted = collections.Counter(
+            song.genre for song in songs if song.genre
+        )
+        lit = [name for name, _ in counted.most_common(12)]
+        shade = {name: at for at, name in enumerate(lit)}
+
+        return {
+            "genres": lit,
+            "points": [
+                {
+                    "key": song.key,
+                    "id": song.youtube_id,
+                    "label": _label_of(song),
+                    "genre": song.genre,
+                    # -1 for the thirty-seven that share a grey, and for
+                    # the hundred and twenty-four with no genre at all.
+                    "shade": shade.get(song.genre, -1),
+                    "at": [round(value, 4) for value in places[song.key]],
+                    "known": bool(song.features),
+                }
+                for song in songs
+            ],
+        }
 
     @app.get("/fragments/neighbours/{key}", response_class=HTMLResponse)
     def neighbours_fragment(

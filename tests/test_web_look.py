@@ -1236,7 +1236,7 @@ async def test_the_toolbar_icons_are_drawn_not_typed(tmp_path):
     # A tablist holds tabs and nothing else, so the role sits on the pair
     # rather than on the row that carries them and the button.
     strip = _block(body, '<div class="tab-strip" role="tablist">')
-    assert strip.count('role="tab"') == 2, strip
+    assert strip.count('role="tab"') == 3, strip
     assert "data-queue-action" not in strip, (
         "a button that is not a tab is inside the tablist"
     )

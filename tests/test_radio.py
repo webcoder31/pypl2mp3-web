@@ -237,3 +237,94 @@ async def test_in_the_walk_the_first_neighbour_is_the_next_row(tmp_path):
     assert panel.index("is-next") < panel.index('data-song-key="%s"' % (
         offered[1] if len(offered) > 1 else offered[0]
     )), "the mark is not on the first"
+
+
+async def test_the_map_places_every_song_and_colours_twelve_genres(tmp_path):
+    """Position from the sound, colour from the genre: two independent
+    sources, so the picture checks itself. Colours that clump mean the
+    vectors caught something; colours peppered evenly mean they did
+    not."""
+
+    import json
+    from mutagen.id3 import TCON
+
+    keys = _line(tmp_path, count=8)
+    folder = tmp_path / PLAYLIST
+    for at, path in enumerate(sorted(folder.glob("*.mp3"))):
+        frames = ID3(path)
+        frames.add(TCON(encoding=3, text="Techno" if at < 4 else "Folk"))
+        frames.save(path)
+
+    async with _client(tmp_path) as client:
+        said = (await client.get("/map/points")).json()
+
+    assert len(said["points"]) == 8
+    assert set(said["genres"]) == {"Techno", "Folk"}
+
+    for one in said["points"]:
+        assert len(one["at"]) == 3
+        assert one["known"] is True
+        assert one["shade"] >= 0
+        assert one["key"] in keys
+
+
+async def test_a_song_nobody_analysed_is_on_the_map_and_says_so(tmp_path):
+    """It has no place in the cloud, so it goes on the shell around it —
+    and the point carries the fact, because a grey dot in the crowd and
+    a grey dot on the shell mean different things."""
+
+    _line(tmp_path, count=4)
+
+    folder = tmp_path / PLAYLIST
+    bare = folder / "ARTIST - Song 9 [00000000009].mp3"
+    bare.write_bytes(_MP3_FRAME * 8)
+    frames = ID3()
+    frames.add(TXXX(encoding=3, desc="YouTube ID", text="00000000009"))
+    frames.save(bare)
+
+    async with _client(tmp_path) as client:
+        said = (await client.get("/map/points")).json()
+
+    unknown = [one for one in said["points"] if not one["known"]]
+    assert len(unknown) == 1
+    assert unknown[0]["id"] == "00000000009"
+
+
+async def test_the_map_stays_inside_the_filter(tmp_path):
+    _line(tmp_path, count=4)
+    _song(tmp_path, 9, 0.5, artist="SOMEBODY ELSE")
+
+    async with _client(tmp_path) as client:
+        said = (await client.get("/map/points?artist=SOMEBODY+ELSE")).json()
+
+    assert [one["id"] for one in said["points"]] == ["00000000009"]
+
+
+async def test_the_same_selection_is_placed_once_and_a_new_one_afresh(
+    tmp_path
+):
+    """Two seconds of numpy over the library, so asking twice for the
+    same songs must not pay it twice.
+
+    And the narrow selection is asked for first, on purpose: a cache
+    that answers every question with the same drawer would then be
+    handed songs it has never placed. Asking the same thing twice
+    proves nothing — it was the first version of this test, and it
+    passed with the key replaced by a constant.
+    """
+
+    _line(tmp_path, count=4)
+    _song(tmp_path, 9, 0.5, artist="SOMEBODY ELSE")
+
+    async with _client(tmp_path) as client:
+        narrow = (await client.get(
+            "/map/points?artist=SOMEBODY+ELSE"
+        )).json()
+        whole = (await client.get("/map/points")).json()
+        again = (await client.get("/map/points")).json()
+
+    assert len(narrow["points"]) == 1
+    assert len(whole["points"]) == 5
+
+    assert [one["at"] for one in whole["points"]] == \
+           [one["at"] for one in again["points"]], "placed twice"

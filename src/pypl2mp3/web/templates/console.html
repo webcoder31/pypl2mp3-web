@@ -253,6 +253,8 @@
           <button type="button" role="tab" data-tab="imports"
                   aria-selected="false">Imports<span id="imports-badge"></span>
           </button>
+          <button type="button" role="tab" data-tab="map"
+                  aria-selected="false">Map</button>
         </div>
         {# Not a tab, and drawn as what it is: it does not switch the
            pane under this row, it replaces the whole frame with one
@@ -365,6 +367,24 @@
             hx-trigger="songsChanged from:body"
             hx-include="#filters">{% include "_list.html" %}</main>
 
+      {# The third pane. A cloud of the whole selection, one point per
+         song, placed by what the songs sound like and coloured by the
+         genre Shazam gave them — two independent sources, so the
+         picture checks itself: colours that clump mean the vector
+         caught something, colours peppered at random mean it did not.
+
+         Drawn by three.js, which is the first front-end library here
+         after htmx: 355 KB for it and 39 for the orbit controls,
+         against htmx's 50. Vendored, not built — the import map below
+         is what lets the controls ask for "three" by name without
+         either file being edited. #}
+      <section id="map">
+        <div id="map-frame"><canvas id="map-canvas"></canvas></div>
+        <p id="map-note">Opening the map…</p>
+        <div id="map-legend"></div>
+        <p id="map-hover" aria-live="polite"></p>
+      </section>
+
       {# The other pane. It polls while a check or an import is running
          and stops on its own the moment neither is — same rule as every
          other self-polling fragment here: the returned markup simply
@@ -392,5 +412,12 @@
 
 
     <script src="/static/console.js"></script>
+    {# So that the vendored orbit controls can import "three" by name,
+       as they ship, without that file being edited — an edit would be
+       lost the next time either is updated. #}
+    <script type="importmap">
+      {"imports": {"three": "/static/three.module.js"}}
+    </script>
+    <script type="module" src="/static/map.js"></script>
   </body>
 </html>
