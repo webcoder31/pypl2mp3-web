@@ -33,6 +33,7 @@ from pypl2mp3.services.find_song import (
     song_key,
 )
 from pypl2mp3.services.fix_junks import apply_fix, propose_fix
+from pypl2mp3.libs.features import features_for
 from pypl2mp3.services.import_playlist import import_playlist
 from pypl2mp3.services.junkize_songs import junkize_song
 from pypl2mp3.services.list_songs import (
@@ -374,6 +375,49 @@ def create_app(repository_path: Path) -> FastAPI:
                 "_imports.html",
                 _imports_context(request, playlist_id),
             )
+
+        return {"job_id": job.job_id}
+
+    @app.post("/features/analyse")
+    async def start_analysis():
+        """Give every song in the repository a vector.
+
+        One job for the whole library rather than one per playlist: the
+        neighbours and the map both span everything, and a half-analysed
+        library is exactly what draws a map with holes in it.
+        """
+
+        repository_path = app.state.repository_path
+
+        async def work(job) -> dict:
+            songs = sorted(Path(repository_path).glob("*/*.mp3"))
+
+            def analyse() -> dict:
+                analysed = failed = 0
+
+                for song in songs:
+                    try:
+                        features_for(song)
+                        analysed += 1
+                    except Exception:
+                        # One unreadable file must not cost the other
+                        # nine hundred and forty-three.
+                        failed += 1
+
+                return {"analysed": analysed, "failed": failed,
+                        "total": len(songs)}
+
+            # In a worker thread: ffmpeg and numpy both block, and the
+            # event loop has a player to go on answering.
+            return await asyncio.to_thread(analyse)
+
+        try:
+            job = app.state.jobs.start("features", work)
+        except JobAlreadyRunning:
+            # Joining the run rather than refusing: two passes over the
+            # same files, each rewriting the same tags, is how a library
+            # ends up with a half-written MP3 in it.
+            job = app.state.jobs.get("features")
 
         return {"job_id": job.job_id}
 
