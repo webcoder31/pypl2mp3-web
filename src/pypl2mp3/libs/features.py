@@ -185,3 +185,146 @@ def extract_samples(song_path: Path) -> np.ndarray:
     # gives a read-only array, and every window below is multiplied in
     # place by its own window function.
     return np.array(raw, dtype=np.float32) / 32768.0
+
+
+# 46 ms of signal every 12 ms. The window is long enough to resolve a
+# bass note and short enough that a drum hit is one frame rather than
+# smeared across three — the same compromise serves the timbre and the
+# onsets, which is why there is one spectrogram here and not two.
+FRAME_SIZE = 1024
+HOP = 256
+FRAMES_PER_SECOND = SAMPLE_RATE / HOP
+
+# How many frames are held at once. Everything downstream reduces each
+# block to a handful of numbers, so this bounds the cost of a long track
+# without changing any result: ten minutes at this hop is 51 000 frames
+# of 513 bins, which is 105 MB held for nothing.
+BLOCK = 4096
+
+MEL_BANDS = 26
+MEL_LOW = 40.0
+MEL_HIGH = 10000.0
+
+# Thirteen coefficients, and the first is deliberately not among them:
+# C0 is the frame's total energy, which is what the dynamics facet
+# measures. Keeping it would let the volume vote twice and call it
+# timbre.
+CEPSTRA = 13
+
+
+def _to_mel(hz):
+    return 2595.0 * np.log10(1.0 + np.asarray(hz) / 700.0)
+
+
+def _from_mel(mel):
+    return 700.0 * (10.0 ** (np.asarray(mel) / 2595.0) - 1.0)
+
+
+def _mel_filters() -> np.ndarray:
+    """Triangular filters, evenly spaced on the mel scale.
+
+    Returns:
+        (MEL_BANDS, FRAME_SIZE // 2 + 1) of weights.
+    """
+
+    bins = FRAME_SIZE // 2 + 1
+    edges = _from_mel(
+        np.linspace(_to_mel(MEL_LOW), _to_mel(MEL_HIGH), MEL_BANDS + 2)
+    )
+    points = np.floor((FRAME_SIZE + 1) * edges / SAMPLE_RATE).astype(int)
+    points = np.clip(points, 0, bins - 1)
+
+    filters = np.zeros((MEL_BANDS, bins), dtype=np.float32)
+    for band in range(MEL_BANDS):
+        left, centre, right = points[band:band + 3]
+        # Bands crowd together at the bottom of the scale, where two
+        # edges can land on the same bin. A filter one bin wide is still
+        # a filter; a filter zero bins wide is a division by zero.
+        centre = max(centre, left + 1)
+        right = max(right, centre + 1)
+        if right >= bins:
+            continue
+        filters[band, left:centre] = np.linspace(0, 1, centre - left,
+                                                 endpoint=False)
+        filters[band, centre:right] = np.linspace(1, 0, right - centre,
+                                                  endpoint=False)
+
+    return filters
+
+
+def _dct_basis() -> np.ndarray:
+    """DCT-II as a matrix, because numpy has no dct and scipy is not a
+    dependency of this project."""
+
+    k = np.arange(CEPSTRA + 1)[:, None]
+    n = np.arange(MEL_BANDS)[None, :]
+
+    return np.cos(np.pi * k * (2 * n + 1) / (2 * MEL_BANDS)).astype(np.float32)
+
+
+_MEL = _mel_filters()
+_DCT = _dct_basis()
+_WINDOW = np.hanning(FRAME_SIZE).astype(np.float32)
+
+
+def spectrogram(samples: np.ndarray):
+    """Magnitude spectra, in blocks.
+
+    Args:
+        samples: mono float32.
+
+    Yields:
+        Arrays of shape (n, FRAME_SIZE // 2 + 1), n at most BLOCK.
+        Nothing at all when the signal is shorter than one window.
+    """
+
+    if len(samples) < FRAME_SIZE:
+        return
+
+    count = 1 + (len(samples) - FRAME_SIZE) // HOP
+
+    for start in range(0, count, BLOCK):
+        stop = min(start + BLOCK, count)
+        frames = np.stack([
+            samples[at * HOP:at * HOP + FRAME_SIZE]
+            for at in range(start, stop)
+        ])
+
+        yield np.abs(np.fft.rfft(frames * _WINDOW, axis=1)).astype(np.float32)
+
+
+def _middle_and_spread(values: np.ndarray) -> np.ndarray:
+    """Median and interquartile range, down each column.
+
+    Robust on purpose: a silent intro or a fade-out pulls a mean, and
+    every song here has one or the other.
+    """
+
+    low, middle, high = np.percentile(values, [25, 50, 75], axis=0)
+
+    return np.concatenate([middle, high - low]).astype(np.float32)
+
+
+def timbre_of(samples: np.ndarray) -> np.ndarray:
+    """13 cepstral coefficients, as a median and a spread each.
+
+    Args:
+        samples: mono float32 at SAMPLE_RATE.
+
+    Returns:
+        26 values: 13 medians, then 13 interquartile ranges.
+    """
+
+    cepstra = []
+    for block in spectrogram(samples):
+        # Power into the filters, log out of them: hearing is closer to
+        # logarithmic than linear, and the log is also what turns a
+        # filter's gain into an additive offset the DCT can separate.
+        energies = (block ** 2) @ _MEL.T
+        cepstra.append(np.log(energies + 1e-10) @ _DCT.T)
+
+    if not cepstra:
+        return np.zeros(TIMBRE.stop - TIMBRE.start, dtype=np.float32)
+
+    # [:, 1:] drops C0 — see CEPSTRA.
+    return _middle_and_spread(np.concatenate(cepstra)[:, 1:])

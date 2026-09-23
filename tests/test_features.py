@@ -70,3 +70,59 @@ def test_a_file_that_is_not_there_is_a_feature_error(tmp_path):
 
     with pytest.raises(FeatureError):
         extract_samples(tmp_path / "gone.mp3")
+
+
+def _sine(hz: float, seconds: float = 4.0, gain: float = 0.5) -> np.ndarray:
+    time = np.arange(int(SAMPLE_RATE * seconds), dtype=np.float32) / SAMPLE_RATE
+    return (gain * np.sin(2 * np.pi * hz * time)).astype(np.float32)
+
+
+def _noise(seconds: float = 4.0, gain: float = 0.5) -> np.ndarray:
+    # Seeded: a test that fails one run in twenty teaches nothing.
+    rng = np.random.default_rng(20260923)
+    count = int(SAMPLE_RATE * seconds)
+    return (gain * rng.standard_normal(count)).astype(np.float32)
+
+
+def test_two_different_sounds_have_different_timbres():
+    from pypl2mp3.libs.features import timbre_of
+
+    apart = np.abs(timbre_of(_noise()) - timbre_of(_sine(220))).max()
+
+    # Measured at 79 on this pair. The threshold sits an order of
+    # magnitude below it and still an order of magnitude above the 0.014
+    # that the volume test calls invariance — a gap that wide is what
+    # makes both numbers mean something.
+    assert apart > 10.0, "white noise and a low sine read as the same timbre"
+
+
+def test_the_same_sound_played_louder_keeps_its_timbre():
+    """The whole point of dropping the first cepstral coefficient: it is
+    energy, and energy is what the dynamics facet is for. A timbre that
+    moved with the volume would make every loud song neighbour every
+    other loud song."""
+
+    from pypl2mp3.libs.features import timbre_of
+
+    quiet = timbre_of(_sine(440, gain=0.1))
+    loud = timbre_of(_sine(440, gain=0.8))
+
+    # Measured at 0.014 for a volume multiplied by eight.
+    assert np.abs(quiet - loud).max() < 0.1, "the timbre followed the volume"
+
+
+def test_the_timbre_is_the_size_the_layout_says():
+    from pypl2mp3.libs.features import TIMBRE, timbre_of
+
+    assert len(timbre_of(_sine(440))) == TIMBRE.stop - TIMBRE.start
+
+
+def test_a_signal_shorter_than_one_window_is_not_a_crash():
+    """Every library has a two-second interlude in it somewhere."""
+
+    from pypl2mp3.libs.features import TIMBRE, timbre_of
+
+    out = timbre_of(np.zeros(100, dtype=np.float32))
+
+    assert len(out) == TIMBRE.stop - TIMBRE.start
+    assert np.isfinite(out).all()
