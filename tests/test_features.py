@@ -9,6 +9,7 @@ ffmpeg reads WAV, so the one test that needs a real decode writes one
 with the standard library instead of requiring an MP3 encoder.
 """
 
+import math
 from pathlib import Path
 import wave
 
@@ -268,3 +269,102 @@ def test_silence_has_a_rhythm_of_nothing_rather_than_a_crash():
 
     assert len(out) == RHYTHM.stop - RHYTHM.start
     assert np.isfinite(out).all()
+
+
+def test_a_compressed_signal_has_a_lower_crest_than_a_peaky_one():
+    """Crest factor is production, not composition — and production is
+    much of what makes two tracks sound like they belong together."""
+
+    from pypl2mp3.libs.features import dynamics_of
+
+    steady = dynamics_of(_sine(440, gain=0.5))[1]
+
+    peaky = np.zeros(int(SAMPLE_RATE * 4), dtype=np.float32)
+    peaky[::5000] = 0.9
+
+    assert dynamics_of(peaky)[1] > steady + 6.0
+
+
+def test_a_louder_signal_reads_as_louder():
+    from pypl2mp3.libs.features import dynamics_of
+
+    assert dynamics_of(_sine(440, gain=0.8))[0] > \
+           dynamics_of(_sine(440, gain=0.1))[0]
+
+
+def test_a_track_that_swells_has_a_wider_range_than_a_steady_one():
+    """What separates a symphony from a pop master: not how loud, but
+    how much the loudness moves."""
+
+    from pypl2mp3.libs.features import dynamics_of
+
+    steady = _sine(440, seconds=8.0, gain=0.5)
+    swelling = steady * np.linspace(0.02, 1.0, len(steady)).astype(np.float32)
+
+    assert dynamics_of(swelling)[2] > dynamics_of(steady)[2] + 10.0
+
+
+def test_the_whole_vector_is_the_length_the_frame_expects():
+    from pypl2mp3.libs.features import FEATURE_COUNT, features_of
+
+    values = features_of(_clicks(120.0))
+
+    assert len(values) == FEATURE_COUNT
+    assert all(math.isfinite(v) for v in values), values
+
+
+def test_every_facet_lands_in_its_own_slice():
+    """The layout is a contract between the writer and every later
+    reader. A rhythm written where the colour is read would still be
+    forty finite numbers, and nothing downstream could tell."""
+
+    from pypl2mp3.libs.features import (
+        COLOUR, DYNAMICS, RHYTHM, TIMBRE,
+        colour_of, dynamics_of, features_of, rhythm_of, timbre_of,
+    )
+
+    samples = _clicks(120.0)
+    whole = np.array(features_of(samples))
+
+    assert whole[TIMBRE] == pytest.approx(timbre_of(samples), rel=1e-5)
+    assert whole[RHYTHM] == pytest.approx(rhythm_of(samples), rel=1e-5)
+    assert whole[COLOUR] == pytest.approx(colour_of(samples), rel=1e-5)
+    assert whole[DYNAMICS] == pytest.approx(dynamics_of(samples), rel=1e-5)
+
+
+def test_silence_produces_a_vector_rather_than_a_nan(tmp_path):
+    """A log of zero somewhere upstream poisons every distance this song
+    takes part in, and poisons them silently: comparisons against NaN
+    are false rather than wrong."""
+
+    from pypl2mp3.libs.features import FEATURE_COUNT, features_of
+
+    values = features_of(np.zeros(SAMPLE_RATE * 3, dtype=np.float32))
+
+    assert len(values) == FEATURE_COUNT
+    assert all(math.isfinite(v) for v in values)
+
+
+def test_a_song_is_analysed_once_and_read_back_after(tmp_path, monkeypatch):
+    """The second call must not decode. That is the difference between
+    opening the inspector and waiting a second for it."""
+
+    from pypl2mp3.libs import features as mod
+
+    # Eight frames and not one: mutagen cannot sync to a single MPEG
+    # frame, store_features swallows the error as it is meant to, and
+    # the test then measures the fallback instead of the cache.
+    path = tmp_path / "ARTIST - Title [aaaaaaaaaaa].mp3"
+    path.write_bytes((b"\xff\xfb\x90\xc0" + b"\x00" * 413) * 8)
+
+    decodes = []
+    monkeypatch.setattr(
+        mod, "extract_samples",
+        lambda p: (decodes.append(p), _clicks(120.0))[1],
+    )
+
+    first = mod.features_for(path)
+    second = mod.features_for(path)
+
+    assert len(decodes) == 1, f"decoded {len(decodes)} times"
+    assert second == pytest.approx(first, rel=1e-5)

@@ -493,3 +493,111 @@ def rhythm_of(samples: np.ndarray) -> np.ndarray:
     rate = float(peaks.sum()) / (len(envelope) / FRAMES_PER_SECOND)
 
     return np.array([tempo, clarity, rate], dtype=np.float32)
+
+
+# How long a "short-term" loudness lasts. 400 ms is the window EBU R128
+# uses for the same purpose, and roughly the length of a syllable.
+SHORT_TERM = 0.4
+
+
+def dynamics_of(samples: np.ndarray) -> np.ndarray:
+    """Level, crest factor, and how much the level moves.
+
+    All three in decibels, so a doubling is the same distance wherever
+    it happens — which is what makes them comparable once standardized.
+
+    Args:
+        samples: mono float32 at SAMPLE_RATE.
+
+    Returns:
+        3 values: RMS level (dBFS), crest factor (dB), and the spread of
+        the short-term levels (dB).
+    """
+
+    if samples.size == 0:
+        return np.zeros(DYNAMICS.stop - DYNAMICS.start, dtype=np.float32)
+
+    rms = float(np.sqrt(np.mean(samples.astype(np.float64) ** 2)))
+    peak = float(np.abs(samples).max())
+
+    level = 20.0 * math.log10(rms + 1e-10)
+    crest = 20.0 * math.log10((peak + 1e-10) / (rms + 1e-10))
+
+    step = int(SAMPLE_RATE * SHORT_TERM)
+    usable = len(samples) // step * step
+
+    if usable >= step * 4:
+        blocks = samples[:usable].astype(np.float64).reshape(-1, step)
+        short = 10.0 * np.log10((blocks ** 2).mean(axis=1) + 1e-10)
+        # The bottom tenth is cut and the top twentieth kept: a fade-in
+        # would otherwise set the floor for the whole track, while a
+        # single loud bar is a real part of its range.
+        low, high = np.percentile(short, [10, 95])
+        spread = float(high - low)
+    else:
+        # Too short to have a range. Zero says "no variation observed",
+        # which is true, rather than a number invented from three blocks.
+        spread = 0.0
+
+    return np.array([level, crest, spread], dtype=np.float32)
+
+
+def features_of(samples: np.ndarray) -> list[float]:
+    """The whole vector for one decoded signal.
+
+    Args:
+        samples: mono float32 at SAMPLE_RATE.
+
+    Returns:
+        FEATURE_COUNT finite numbers, laid out as TIMBRE, RHYTHM,
+        COLOUR, DYNAMICS.
+    """
+
+    whole = np.zeros(FEATURE_COUNT, dtype=np.float32)
+    whole[TIMBRE] = timbre_of(samples)
+    whole[RHYTHM] = rhythm_of(samples)
+    whole[COLOUR] = colour_of(samples)
+    whole[DYNAMICS] = dynamics_of(samples)
+
+    # A silent or pathological file can produce a log of zero somewhere
+    # upstream. One NaN poisons every distance this song takes part in,
+    # and poisons them silently, because comparisons against NaN are
+    # false rather than wrong.
+    return [float(v) if math.isfinite(float(v)) else 0.0 for v in whole]
+
+
+def features_for(song_path: Path) -> list[float]:
+    """The vector of one song, computed once and kept in the file.
+
+    Args:
+        song_path: the MP3 to describe.
+
+    Returns:
+        FEATURE_COUNT numbers.
+
+    Raises:
+        FeatureError: if the file carries no vector and cannot be
+            decoded.
+    """
+
+    try:
+        stored = read_features(mutagen.mp3.MP3(song_path))
+    except (mutagen.MutagenError, OSError):
+        # A file whose tags cannot be read is not this function's
+        # verdict to give. Let the decoder be the judge.
+        stored = None
+
+    if stored is not None:
+        return stored
+
+    values = features_of(extract_samples(song_path))
+
+    try:
+        store_features(song_path, values)
+    except Exception:
+        # A read-only file, a full disk, a file being written by another
+        # process: none of that is a reason to refuse the vector we
+        # already hold. It gets recomputed next time.
+        pass
+
+    return values
