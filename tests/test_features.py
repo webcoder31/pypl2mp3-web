@@ -126,3 +126,53 @@ def test_a_signal_shorter_than_one_window_is_not_a_crash():
 
     assert len(out) == TIMBRE.stop - TIMBRE.start
     assert np.isfinite(out).all()
+
+
+def test_a_bright_sound_has_a_higher_centroid_than_a_dark_one():
+    from pypl2mp3.libs.features import colour_of
+
+    low = colour_of(_sine(200))[0]
+    high = colour_of(_sine(5000))[0]
+
+    assert high > low * 3, f"centroids {low:.0f} and {high:.0f} barely differ"
+
+
+def test_noise_is_flatter_than_a_tone():
+    """Flatness is the one number that separates a texture from a note,
+    and it is what puts a distorted guitar nearer a cymbal than a clean
+    one."""
+
+    from pypl2mp3.libs.features import colour_of
+
+    tone = colour_of(_sine(440))[2]
+    noise = colour_of(_noise())[2]
+
+    assert noise > tone * 5, f"flatness {tone:.4f} vs {noise:.4f}"
+
+
+def test_a_tone_between_two_bins_still_reads_as_a_tone():
+    """What the Hann window is for, and the only test that can see it.
+
+    A sine whose frequency falls between two FFT bins cannot be
+    represented by either, and without a window the error spills across
+    the whole spectrum — a pure tone then measures as flat as noise.
+    Every window here is 22050/1024 = 21.53 Hz wide, so half of that is
+    the worst case.
+    """
+
+    from pypl2mp3.libs.features import FRAME_SIZE, SAMPLE_RATE, colour_of
+
+    spacing = SAMPLE_RATE / FRAME_SIZE
+    on_bin = colour_of(_sine(spacing * 20))[2]
+    between = colour_of(_sine(spacing * 20.5))[2]
+
+    assert between < on_bin * 50, (
+        f"a tone off the bin grid reads as {between:.4f} against "
+        f"{on_bin:.4f} on it — the leak is not being windowed"
+    )
+
+
+def test_the_colour_is_the_size_the_layout_says():
+    from pypl2mp3.libs.features import COLOUR, colour_of
+
+    assert len(colour_of(_sine(440))) == COLOUR.stop - COLOUR.start

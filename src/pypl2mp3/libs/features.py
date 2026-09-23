@@ -328,3 +328,55 @@ def timbre_of(samples: np.ndarray) -> np.ndarray:
 
     # [:, 1:] drops C0 — see CEPSTRA.
     return _middle_and_spread(np.concatenate(cepstra)[:, 1:])
+
+
+# Where the energy sits, how noisy it is, how spread out. Taken from the
+# spectrogram the timbre already computes: ffmpeg's aspectralstats would
+# give the same four in C, at the cost of a second decode and a text
+# format to parse.
+ROLLOFF = 0.85
+
+_FREQS = np.fft.rfftfreq(FRAME_SIZE, 1.0 / SAMPLE_RATE).astype(np.float32)
+
+
+def colour_of(samples: np.ndarray) -> np.ndarray:
+    """Four spectral descriptors, as a median and a spread each.
+
+    Args:
+        samples: mono float32 at SAMPLE_RATE.
+
+    Returns:
+        8 values: medians of centroid (Hz), rolloff (Hz), flatness and
+        entropy, then their four interquartile ranges.
+    """
+
+    rows = []
+
+    for block in spectrogram(samples):
+        total = block.sum(axis=1) + 1e-10
+
+        centroid = (block @ _FREQS) / total
+
+        # The frequency below which ROLLOFF of the energy lies. Found by
+        # walking the cumulative sum rather than by sorting: the spectrum
+        # is already in frequency order, which is the order that matters.
+        running = np.cumsum(block, axis=1)
+        reached = running >= (ROLLOFF * total)[:, None]
+        rolloff = _FREQS[np.argmax(reached, axis=1)]
+
+        # Geometric over arithmetic mean: near 1 for noise, near 0 for a
+        # tone. Computed through logs because the geometric mean of 513
+        # magnitudes underflows a float otherwise.
+        logs = np.log(block + 1e-10).mean(axis=1)
+        flatness = np.exp(logs) / (block.mean(axis=1) + 1e-10)
+
+        share = block / total[:, None]
+        entropy = -(share * np.log(share + 1e-10)).sum(axis=1)
+        entropy /= np.log(block.shape[1])
+
+        rows.append(np.stack([centroid, rolloff, flatness, entropy], axis=1))
+
+    if not rows:
+        return np.zeros(COLOUR.stop - COLOUR.start, dtype=np.float32)
+
+    return _middle_and_spread(np.concatenate(rows))
