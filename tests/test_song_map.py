@@ -175,3 +175,114 @@ def test_the_relaxation_is_what_places_them():
 
     assert parted(1) < 1.5, "the hash alone already separates them"
     assert parted(150) > 2.0, "the rounds do not separate them"
+
+
+def test_an_edge_needs_both_songs_to_name_the_other():
+    """Tested on the graph itself rather than read off the picture: a
+    layout separates two groups that are far enough apart whatever the
+    edges say, so a test on positions passes without this rule being
+    obeyed at all — which is how the first version of it was written."""
+
+    from pypl2mp3.services.song_map import mutual_edges
+
+    # a names b and c. b names a back, so a-b is mutual; c names only d,
+    # so a's liking of c is one-way — and a is already held by b, which
+    # is what makes the one-way edge droppable rather than a song's last
+    # thread. That distinction is the whole rule, and a fixture without
+    # it passes just as well with no rule at all: the first version of
+    # this test did.
+    table = {
+        "keys": ["a", "b", "c", "d"],
+        "near": [[1, 2], [0], [3], [2]],
+    }
+    known = ["a", "b", "c", "d"]
+    at_of = {key: at for at, key in enumerate(known)}
+
+    starts, ends = mutual_edges(table, known, at_of)
+    held = {(int(a), int(b)) for a, b in zip(starts, ends)}
+
+    assert (0, 1) in held and (1, 0) in held, "the mutual pair was dropped"
+    assert (2, 3) in held and (3, 2) in held, "the mutual pair was dropped"
+
+    assert (0, 2) not in held, (
+        "a is bound to c, which never named it back — and a had b "
+        "already, so this edge is not holding anything up"
+    )
+
+
+def test_a_song_nobody_names_back_still_holds_one_thread():
+    """A third of the edges do not survive the rule, and it leaves 165
+    songs of 944 naming others that never name back. A point with
+    nothing pulling on it has only the repulsion left, and the
+    repulsion's whole job is to push it away — so it would end in a halo
+    round the outside, where a song nobody has analysed goes, saying
+    something quite different about it."""
+
+    from pypl2mp3.services.song_map import mutual_edges
+
+    table = {"keys": ["a", "b", "c"], "near": [[1], [2], [1]]}
+    known = ["a", "b", "c"]
+    at_of = {key: at for at, key in enumerate(known)}
+
+    starts, _ = mutual_edges(table, known, at_of)
+
+    assert 0 in set(int(a) for a in starts), "a is held by nothing"
+
+
+def test_two_groups_end_up_apart():
+    """The one rule that turns the picture from a sheet into a
+    landscape.
+
+    With every song's eight kept whatever the other thinks, one song's
+    opinion is enough to tie two groups together — and with nine hundred
+    songs each holding eight such threads, nothing can come apart: the
+    cloud relaxes into an even, slightly twisted slab. Measured over the
+    library, going mutual took the third principal axis from 0.16 of the
+    first to 0.79, the clumping from 0.20 to 0.71, and how often a
+    song's neighbours are by the same artist from 6.5x chance to 10.6x.
+    """
+
+    # Two groups, joined by nothing that both sides agree on.
+    entries = _two_clumps(24)
+    space = Space.build(entries)
+    keys = [key for key, _, _ in entries]
+
+    places = layout(space, keys)
+    half = len(keys) // 2
+    here = np.array([places[k] for k in keys[:half]])
+    there = np.array([places[k] for k in keys[half:]])
+
+    wide = max(
+        np.linalg.norm(here - here.mean(axis=0), axis=1).max(),
+        np.linalg.norm(there - there.mean(axis=0), axis=1).max(),
+    )
+    apart = np.linalg.norm(here.mean(axis=0) - there.mean(axis=0))
+
+    assert apart > wide * 3, (
+        f"the two groups are {apart:.2f} apart and {wide:.2f} wide — "
+        "a directed graph gives about two, a mutual one much more"
+    )
+
+
+def test_a_song_nobody_names_back_is_not_flung_out_of_the_map():
+    """Keeping only mutual edges leaves some songs holding none, and a
+    point with nothing pulling on it has only the repulsion left. It
+    must still land somewhere a camera framing the cloud can see."""
+
+    entries = _two_clumps(24)
+    # One song far from everything: it names its eight, none name it.
+    entries.append(("hermit", "vx", _vector(500.0)))
+
+    space = Space.build(entries)
+    keys = [key for key, _, _ in entries]
+    places = layout(space, keys)
+
+    known = np.array([places[key] for key, _, _ in entries[:-1]])
+    middle = known.mean(axis=0)
+    furthest = np.linalg.norm(known - middle, axis=1).max()
+    out = np.linalg.norm(np.array(places["hermit"]) - middle)
+
+    assert np.isfinite(out)
+    assert out < furthest * 6, (
+        f"it is {out:.1f} from the middle of a cloud {furthest:.1f} wide"
+    )
