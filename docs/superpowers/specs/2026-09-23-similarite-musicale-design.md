@@ -17,18 +17,27 @@ en 3D.
 
 La question qui décide de tout — « des traits calculés à la main
 suffisent-ils, ou faut-il un modèle appris ? » — n'a pas à être tranchée
-par une opinion. 820 des 944 morceaux (86 %) portent déjà un genre, posé
-par Shazam. Ça donne une règle graduée : pour un morceau, combien de ses
-cinq plus proches voisins partagent son genre ?
+par une opinion. La bibliothèque porte déjà de quoi juger : pour un
+morceau, combien de ses cinq plus proches voisins sont **du même
+artiste** ?
 
-Deux morceaux tirés au hasard partagent un genre avec une probabilité de
-**12,1 %** — la somme des carrés des proportions sur les 49 genres
-présents, pas le poids de la classe majoritaire. Un vecteur qui vaut
-quelque chose doit donc atteindre **36 %** au moins, trois fois le
-hasard. En dessous, il a échoué.
+Deux morceaux tirés au hasard le sont avec une probabilité de **0,7 %**
+— la somme des carrés des proportions. C'est une règle exigeante, et
+c'est la bonne : deux morceaux du même artiste se ressemblent
+effectivement, par la voix, la production, l'instrumentation. C'est
+exactement ce que « ça sonne pareil » veut dire.
 
-Et cette règle est gratuite : elle n'est pas un test qu'on écrit, c'est
-une étiquette qui est déjà là.
+**Le genre a d'abord servi de règle, et il ne valait rien.** 86 % des
+morceaux en portent un, posé par Shazam, ce qui en faisait le candidat
+évident. Mesuré : le vecteur livré atteint 1,4 fois le hasard sur le
+genre, et **11,6 fois le hasard sur l'artiste** — sur le même corpus,
+avec les mêmes vecteurs, le même jour. Les traits ne sont donc pas
+faibles ; c'est l'étiquette qui l'est. « Alternative » et « Pop » sont
+des catégories commerciales, pas acoustiques : deux morceaux Pop de 1985
+et 2020 partagent un libellé et rien d'autre.
+
+Le genre reste rapporté, parce qu'un chiffre qui monte serait une bonne
+nouvelle et qu'il colore la carte. Il ne décide plus rien.
 
 ## Ce que ça licencie
 
@@ -353,11 +362,22 @@ traits** — et elle ne peut pas être un test unitaire, parce qu'elle
 dépend de 4,2 Go qui ne sont pas dans le dépôt.
 
 Donc un script, là où ce dépôt en met déjà sept :
-`scripts/measure_similarity.py` sort le taux d'accord de genre entre un
-morceau et ses cinq voisins, globalement et par facette, pour une
-pondération donnée. Référence : **12,1 %** au hasard, **36 %** pour que
-le vecteur vaille quelque chose. C'est cet instrument qui tranchera le
-passage éventuel à l'empreinte apprise, pas une opinion.
+`scripts/measure_similarity.py` sort le taux d'accord **d'artiste**
+entre un morceau et ses cinq voisins, globalement et par facette, pour
+une pondération donnée — et le taux d'accord de genre à côté, pour
+information.
+
+Références mesurées sur 352 morceaux : hasard **0,7 %** pour l'artiste,
+**12,3 %** pour le genre. Le vecteur livré atteint **11,6×** sur
+l'artiste et 1,4× sur le genre. Un témoin de vecteurs aléatoires donne
+exactement le hasard sur les deux, ce qui dit que la mesure elle-même
+est saine.
+
+Le plancher est **5× sur l'artiste** : nettement au-dessus du hasard,
+nettement en dessous de ce qui est atteint, donc un garde-fou contre une
+régression plutôt qu'une cible à viser. En dessous, quelque chose s'est
+cassé — ou l'empreinte apprise devient l'option, et c'est cet instrument
+qui le dira.
 
 ### Ce que les tests tiennent
 
@@ -439,13 +459,19 @@ La parade, si ça devient gênant à l'usage, est d'ancrer la relaxation sur
 les positions précédentes. Pas dans le socle, parce qu'on ne sait pas
 encore si le problème se posera.
 
-## Le seuil de 36 % est un pari
+## Ce que la mesure de l'artiste ne dit pas
 
-Trois fois le hasard est un seuil raisonnable, pas un seuil démontré.
-Il se peut que 30 % donnent déjà une radio agréable, ou que 45 % restent
-décevants — le genre Shazam est lui-même bruité (« Alternative » couvre
-161 morceaux qui n'ont pas grand-chose en commun). Le nombre sert à
-décider, il ne remplace pas l'écoute.
+Elle dit que le vecteur trouve la ressemblance acoustique. Elle ne dit
+pas que la carte s'organisera en genres — et la mesure du genre à 1,4×
+suggère plutôt le contraire. **Les amas seront des familles acoustiques**
+(une voix, une production, une époque de studio) et non les étiquettes
+que Shazam donne. Colorer par genre montrera une correspondance
+partielle, ce qui reste informatif : c'est la carte qui dira laquelle
+des deux lectures est la plus juste.
+
+Et aucun nombre ne remplace l'écoute. 11,6× sur l'artiste veut dire que
+les voisins sonnent comme le morceau ; il reste à savoir si on a envie
+de les entendre l'un après l'autre.
 
 ## Le coût de la première passe
 
