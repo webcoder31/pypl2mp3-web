@@ -57,7 +57,7 @@ Mesurées, pas supposées, parce qu'elles ont fermé une porte :
 | onnxruntime **1.23.2** a la roue (1.30.0 courante) | la porte reste ouverte, avec un runtime légèrement en retard |
 | **numpy 1.26.4 déjà installé** (transitif de moviepy) | le calcul des traits ne coûte rien à installer |
 | pas de scipy | tout ce qui suit s'écrit en numpy seul |
-| **ffmpeg 8.0.1** avec `aspectralstats`, `astats`, `ebur128` | les moments spectraux sont calculés en C, gratuitement |
+| **ffmpeg 8.0.1** | décode ; ses filtres d'analyse se sont révélés inutiles, la STFT du timbre donnant déjà la couleur |
 | GPU Intel Iris Pro, 1,5 Go | 944 points en WebGL : sans effort |
 | décodage mono 22 kHz : **0,41 s** par morceau | le coût sera dans le calcul, pas dans le décodage |
 
@@ -75,8 +75,8 @@ pour que le timbre existe.
 |---|---|---|
 | **Timbre** | 13 MFCC (mel → cosinus discret), médiane + écart interquartile | 26 |
 | **Rythme** | enveloppe d'attaques → autocorrélation : tempo, netteté de pulsation, densité d'attaques | 3 |
-| **Couleur** | centroïde, rolloff, flatness, entropie (`aspectralstats`), médiane + écart | 8 |
-| **Dynamique** | loudness intégrée et *loudness range* (`ebur128`), facteur de crête | 3 |
+| **Couleur** | centroïde, rolloff, flatness, entropie, médiane + écart | 8 |
+| **Dynamique** | niveau RMS, facteur de crête, dispersion des niveaux courts | 3 |
 
 **Médiane et écart interquartile, pas moyenne et écart-type.** Une intro
 silencieuse ou une fin en fondu tirent une moyenne ; elles ne tirent pas
@@ -87,8 +87,19 @@ ne se ressemblent pas pour autant, et le chroma coûte cher pour un gain
 indéfendable a priori. Si la mesure de fin de chantier montre qu'il
 manque quelque chose, il entrera derrière le même numéro de version.
 
-Coût : ~1,5 s par morceau dont 0,41 s de décodage, soit **~25 min pour
-944 en séquentiel, ~7 min sur 4 cœurs**, une seule fois.
+**Un seul décodage, une seule STFT.** La première rédaction faisait venir
+la couleur d'`aspectralstats` et la dynamique d'`ebur128`, au motif que
+ffmpeg les calcule en C gratuitement. L'argument supposait qu'on n'avait
+pas déjà le spectre en main — or le timbre en calcule un, et centroïde,
+rolloff, flatness et entropie s'en déduisent en trois lignes. Deux passes
+ffmpeg et deux analyseurs de sortie texte disparaissent.
+
+La dynamique se dérive du PCM plutôt que d'une loudness EBU R128 : la
+LUFS est une mesure perceptive pour la normalisation de diffusion, et
+tout le vecteur est standardisé de toute façon.
+
+Coût : ~0,9 s par morceau dont 0,41 s de décodage, soit **~15 min pour
+944 en séquentiel, ~4 min sur 4 cœurs**, une seule fois.
 
 ### Où ça vit
 
