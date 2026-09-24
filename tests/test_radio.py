@@ -451,3 +451,37 @@ async def test_the_neighbour_name_recedes_and_the_row_answers_the_pointer(
     assert re.search(r"\n\.neighbour \{[^}]*cursor: pointer", css), (
         "the row does not say it can be clicked"
     )
+
+
+async def test_the_save_button_is_not_offered_from_the_neighbours(tmp_path):
+    """There is nothing to save from that face, and a disabled button is
+    an offer withdrawn rather than an offer not made. A word stands in
+    its place — in the same cell, so the row is as wide as the wider of
+    the two and the filename beside it holds its place when the face
+    changes. Measured in a browser: 88px of cell and the filename at the
+    same x, both ways.
+    """
+
+    keys = _line(tmp_path, count=6)
+
+    async with _client(tmp_path) as client:
+        panel = (await client.get(f"/fragments/inspector/{keys[0]}")).text
+        css = (await client.get("/static/console.css")).text
+
+    cell = re.search(
+        r'<span class="inspector-save">(.*?)</span>\s*</span>', panel, re.S
+    )
+    assert cell, "the button and its stand-in no longer share a container"
+    assert 'type="submit"' in cell.group(1)
+    assert "MP3 file" in cell.group(1)
+
+    assert ".inspector-save > * { grid-area: 1 / 1; }" in css, (
+        "the two no longer stack, so the filename will move"
+    )
+    for selector in (
+        r"#inspector-body:not\(\.showing-edit\) \.inspector-save button",
+        r"#inspector-body\.showing-edit \.save-label",
+    ):
+        rule = re.search(selector + r" \{([^}]*)\}", css, re.S)
+        assert rule, f"{selector} is gone"
+        assert "visibility: hidden" in rule.group(1), selector

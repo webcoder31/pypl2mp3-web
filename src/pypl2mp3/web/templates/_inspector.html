@@ -175,8 +175,18 @@
            available invites the click that rewrites a file with exactly
            what it already held — which costs a rename, a timestamp, and
            the cover's cached address. The page enables it on the first
-           edit, and on taking Shazam's answer. #}
-        <button type="submit" disabled>Save MP3</button>
+           edit, and on taking Shazam's answer.
+
+           And it is not shown at all while the neighbours are up: there
+           is nothing to save from that face, and a disabled button is
+           an offer withdrawn rather than an offer not made. A word
+           stands in its place — in the same cell, so the row is as wide
+           as the wider of the two and the filename beside it does not
+           move when the face changes. #}
+        <span class="inspector-save">
+          <button type="submit" disabled>Save MP3</button>
+          <span class="save-label">MP3 file</span>
+        </span>
         {% if saved %}<span class="job-new">Saved.</span>{% endif %}
         {# Beside the button that rewrites it: saving renames the file,
            so this is the line that is about to change. #}

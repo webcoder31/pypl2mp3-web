@@ -1347,6 +1347,18 @@ tbody tr.playing td.num { color: var(--accent); }
    whichever fires wins. */
 #inspector-body:not(.showing-edit) .inspector-fields { visibility: hidden; }
 #inspector-body.showing-edit #neighbours { visibility: hidden; }
+
+/* The Save button and the word that stands in for it share one cell,
+   so the row is as wide as the wider of the two whichever is up and the
+   filename beside it holds its place. Hidden both ways and never set
+   back to visible, for the reason above. */
+.inspector-save { display: grid; align-items: center; justify-items: start; }
+.inspector-save > * { grid-area: 1 / 1; }
+.save-label { font-size: var(--fs-sm); color: var(--text-3); }
+#inspector-body:not(.showing-edit) .inspector-save button {
+  visibility: hidden;
+}
+#inspector-body.showing-edit .save-label { visibility: hidden; }
 /* Shazam's answer covers whichever of the two was up. A sibling
    selector did this when there were only two of them; with three, the
    one in between would have escaped it. */
