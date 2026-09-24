@@ -473,7 +473,8 @@ async def test_the_save_button_is_not_offered_from_the_neighbours(tmp_path):
     )
     assert cell, "the button and its stand-in no longer share a container"
     assert 'type="submit"' in cell.group(1)
-    assert "MP3 file" in cell.group(1)
+    # The arrow the player's preview uses, pointing at what it names.
+    assert "MP3 file →" in cell.group(1)
 
     assert ".inspector-save > * { grid-area: 1 / 1; }" in css, (
         "the two no longer stack, so the filename will move"
