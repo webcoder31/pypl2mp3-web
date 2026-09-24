@@ -34,9 +34,42 @@ import math
 import numpy as np
 
 
-# How many neighbours hold a song in place. Enough that the clusters
-# hold together, few enough that they do not merge into one.
-EDGES = 8
+# How many neighbours hold a song in place.
+#
+# Four, and the number was measured rather than reasoned about. At eight
+# the cloud came out as a sphere with three quarters of the library
+# packed into the inner half of its radius — a dense core with a few
+# filaments escaping and a handful of songs orbiting outside. The cause
+# is the graph: a song held by eight mutual threads is held by the crowd
+# it is in, and a crowd all holding each other cannot come apart.
+#
+# Thinning is the only one of three levers that helps. Measured over the
+# library, with the share of songs inside half the radius, the third
+# principal axis over the first, and how often a song's neighbours are
+# by the same artist:
+#
+#     k        core   volume   artist
+#     8         74%     0.68     11.0x
+#     6         67%     0.65     11.2x
+#     4         50%     0.83     10.6x
+#     3         36%     0.75      9.7x
+#
+# Three is past the end: the artist agreement finally drops, and 390
+# songs of 944 are left hanging on the single fallback thread below —
+# which is the halo this was meant to avoid, wearing another hat.
+#
+# Between four and eight that agreement wanders between 10.2x and 11.2x
+# with no trend, so those differences are the particular graph rather
+# than a law; what is monotone is the core and, near enough, the volume.
+# Four takes the core from three quarters to half at no cost the ruler
+# can see.
+#
+# The other two levers were tried and dropped. An attraction growing
+# with distance — Fruchterman-Reingold's spring — empties the core too,
+# and costs: 11.0x falls to 9.4x at eight neighbours. It spreads without
+# structuring. Weighting each edge by how near it is flattens the cloud
+# instead: the volume falls from 0.68 to 0.43.
+EDGES = 4
 
 # Fixed, and not a tolerance: a relaxation that stops when it stops
 # moving stops at a different place on a different machine, and the
@@ -147,8 +180,10 @@ def mutual_edges(table, known, at_of):
     left, and the repulsion's whole job is to push it away. A song whose
     liking is unreturned still belongs beside the song it likes, and not
     in a halo round the outside where a song nobody has analysed goes.
-    With the thread, no song is held by nothing and the cloud reaches
-    4.15 from its middle against a median of 1.40 — no stragglers.
+    With the thread no song is held by nothing at all. At four
+    neighbours 573 songs of 944 hang by a single edge, 313 of them the
+    fallback — which is what a thinned graph looks like, and why three
+    is past the end: there it is 390 on the fallback alone.
 
     Args:
         table: the neighbour table, as `Space.table` returns it.
