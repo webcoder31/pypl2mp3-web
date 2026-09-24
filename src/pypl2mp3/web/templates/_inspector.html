@@ -186,8 +186,11 @@
         <span class="inspector-save">
           <button type="submit" disabled>Save MP3</button>
           {# The same arrow the player's preview uses, pointing at what
-             it names. #}
-          <span class="save-label">MP3 file →</span>
+             it names — and sitting in the space between, rather than
+             tight against the word, so it reads as pointing across the
+             gap instead of trailing the label. #}
+          <span class="save-label">MP3 file<span class="save-arrow"
+            >→</span></span>
         </span>
         {% if saved %}<span class="job-new">Saved.</span>{% endif %}
         {# Beside the button that rewrites it: saving renames the file,

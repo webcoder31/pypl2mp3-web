@@ -2278,7 +2278,9 @@
     // rule the listing follows — a click anywhere on a row acts on that
     // row — so the button is where the two states are *said*, not the
     // only place they can be reached.
-    const near = event.target.closest("#neighbours .neighbour");
+    // The row already next is not one of them: it is where the walk was
+    // going anyway, so there is nothing for a click to ask for.
+    const near = event.target.closest("#neighbours .neighbour:not(.is-next)");
     if (near && !event.target.closest("button, a")) {
       lineUpOrTakeOut(near.dataset.songKey);
       return;

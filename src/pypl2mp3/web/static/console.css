@@ -1354,7 +1354,18 @@ tbody tr.playing td.num { color: var(--accent); }
    back to visible, for the reason above. */
 .inspector-save { display: grid; align-items: center; justify-items: start; }
 .inspector-save > * { grid-area: 1 / 1; }
-.save-label { font-size: var(--fs-sm); color: var(--text-3); }
+.save-label {
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  /* The arrow takes what the word leaves and centres itself in it, so
+     it lands between the two things it joins rather than against one of
+     them. No measured offset: the word's width is the font's business
+     and it changes with the theme's size. */
+  display: flex;
+  align-items: baseline;
+  width: 100%;
+}
+.save-arrow { flex: 1; text-align: center; }
 #inspector-body:not(.showing-edit) .inspector-save button {
   visibility: hidden;
 }
@@ -1402,6 +1413,10 @@ tbody tr.playing td.num { color: var(--accent); }
   grid-template-columns: 1fr auto 4.5rem 4.5rem;
   align-items: center;
   gap: var(--space-2);
+  /* A little air at both ends, so a name does not start hard against
+     the panel's edge and the tint under the pointer has somewhere to
+     stop. */
+  padding: 0 var(--space-2);
   font-size: var(--fs-sm);
   min-width: 0;
 }
@@ -1411,6 +1426,12 @@ tbody tr.playing td.num { color: var(--accent); }
    tint on hover is what says so, and it is the listing's own. */
 .neighbour { cursor: pointer; }
 .neighbour:hover { background: var(--hover); }
+/* Except the one already next: there is nothing for a click to ask
+   for, so it does not offer itself. */
+.neighbour.is-next, .neighbour.is-next:hover {
+  cursor: default;
+  background: none;
+}
 /* Lined up by hand and waiting, the same ground the listing gives it. */
 .neighbour.queued { background: var(--queued); }
 .neighbour-name {
@@ -1421,9 +1442,30 @@ tbody tr.playing td.num { color: var(--accent); }
   min-width: 0;
 }
 .neighbour-why { font-size: var(--fs-xs); color: var(--text-3); }
+/* Both fill the column, so they are the same width whatever their
+   words are: "Next" is shorter than "Play next", and a marker that
+   shrank to its own text would make the column jog from row to row. */
 .neighbour-do { text-align: right; }
-.neighbour-do button { padding: 0 var(--space-1); font-size: var(--fs-xs); }
-.neighbour .up-next { display: none; }
+.neighbour-do button,
+.neighbour-do .up-next {
+  width: 100%;
+  text-align: center;
+  padding: 0 var(--space-1);
+  font-size: var(--fs-xs);
+}
+/* The same box as the buttons it stands among — the base `button`
+   rule's line-height and border width, and this column's own padding
+   and size — so the column holds still whichever row is next. Filled,
+   because it is not an offer being made but a fact being stated. */
+.neighbour .up-next {
+  display: none;
+  line-height: 1.35;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
 .neighbour.is-next .up-next { display: inline-block; }
 .neighbour.is-next [data-play-next] { display: none; }
 

@@ -417,10 +417,14 @@ def test_the_whole_neighbour_row_lines_a_song_up():
     )
 
     row = re.search(
-        r'closest\("#neighbours \.neighbour"\);\n(.*?)\n    \}',
+        r'closest\("#neighbours \.neighbour:not\(\.is-next\)"\);\n(.*?)\n    \}',
         source, re.S,
     )
     assert row, "a click on the row itself does nothing"
+
+    # And the row already next is left out: it is where the walk was
+    # going anyway, so there is nothing for a click to ask for.
+    assert ":not(.is-next)" in source
     assert 'closest("button, a")' in row.group(1), (
         "the button inside the row would fire twice, or the link would "
         "be swallowed"
@@ -473,8 +477,12 @@ async def test_the_save_button_is_not_offered_from_the_neighbours(tmp_path):
     )
     assert cell, "the button and its stand-in no longer share a container"
     assert 'type="submit"' in cell.group(1)
-    # The arrow the player's preview uses, pointing at what it names.
-    assert "MP3 file →" in cell.group(1)
+    # The arrow the player's preview uses, pointing at what it names —
+    # and in its own element, because it sits in the space between
+    # rather than tight against the word.
+    assert "MP3 file" in cell.group(1)
+    assert 'class="save-arrow"' in cell.group(1)
+    assert "→" in cell.group(1)
 
     assert ".inspector-save > * { grid-area: 1 / 1; }" in css, (
         "the two no longer stack, so the filename will move"
@@ -486,3 +494,35 @@ async def test_the_save_button_is_not_offered_from_the_neighbours(tmp_path):
         rule = re.search(selector + r" \{([^}]*)\}", css, re.S)
         assert rule, f"{selector} is gone"
         assert "visibility: hidden" in rule.group(1), selector
+
+
+async def test_the_next_mark_is_the_size_of_the_buttons_beside_it(tmp_path):
+    """"Next" is a shorter word than "Play next", so a mark sized to its
+    own text would make the column jog from row to row. Both fill the
+    column instead. Measured in a browser: 72px by 17px each, right
+    edges to the pixel.
+
+    Filled rather than outlined, and not a button at all: nothing is
+    being withheld there, only stated. Which is also why that row is the
+    one row a click does not act on — it is where the walk was going
+    anyway.
+    """
+
+    _line(tmp_path, count=8)
+
+    async with _client(tmp_path) as client:
+        css = (await client.get("/static/console.css")).text
+
+    both = re.search(
+        r"\.neighbour-do button,\n\.neighbour-do \.up-next \{([^}]*)\}", css
+    )
+    assert both, "the mark and the buttons no longer share a size"
+    assert "width: 100%" in both.group(1), both.group(1)
+
+    mark = re.search(r"\n\.neighbour \.up-next \{([^}]*)\}", css)
+    assert mark and "background: var(--accent)" in mark.group(1), mark
+
+    quiet = re.search(
+        r"\n\.neighbour\.is-next, \.neighbour\.is-next:hover \{([^}]*)\}", css
+    )
+    assert quiet and "cursor: default" in quiet.group(1), quiet
