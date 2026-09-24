@@ -3259,3 +3259,24 @@ async def test_the_panel_s_own_margins_outrank_its_paragraph_rule(tmp_path):
             f".{band} sets its margin without an id, so #inspector p wins "
             f"and the margin does nothing"
         )
+
+
+def test_no_custom_property_is_declared_twice_in_one_theme():
+    """A second declaration of the same name does not warn: the later
+    one simply wins, and the earlier is dead.
+
+    That happened. A green-grey for the neighbours' names was added as
+    `--accent-dim`, which already existed and meant something else — a
+    translucent accent whose contrast had been measured against the
+    player's background for the transport glyphs. The new value never
+    applied, and nothing said so.
+    """
+
+    css = Path("src/pypl2mp3/web/static/console.css").read_text()
+
+    # Each theme is one block of declarations; counting per name across
+    # the file would flag every legitimate light/dark pair.
+    for block in re.findall(r"\{([^{}]*)\}", css):
+        names = re.findall(r"(--[a-z0-9-]+)\s*:", block)
+        twice = {name for name in names if names.count(name) > 1}
+        assert not twice, f"declared twice in one block: {sorted(twice)}"

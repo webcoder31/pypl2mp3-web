@@ -71,6 +71,13 @@
   --accent: #0a8f7c;
   --accent-text: #ffffff;
   --accent-soft: rgba(10, 143, 124, 0.13);
+  /* Text that belongs to the accent's family but must recede: a
+     green-grey, quieter than --text and warmer than --text-2. The five
+     neighbours are read at a glance, not word by word.
+     Not --accent-dim, which exists already and means something else —
+     a translucent accent whose contrast was measured against the
+     player's background for the transport glyphs. */
+  --text-green: #4a6b66;
   /* A song waiting in the run. One step between the hover at
      0.055 and the playing row at 0.13, so it is neither mistaken
      for the pointer passing nor for the song that is on. */
@@ -205,6 +212,7 @@
   --accent: #46c9b1;
   --accent-text: #04211c;
   --accent-soft: rgba(70, 201, 177, 0.15);
+  --text-green: #8fa8a3;
   --queued: rgba(70, 201, 177, 0.09);
   --accent-line: rgba(70, 201, 177, 0.35);
   --accent-dim: rgba(70, 201, 177, 0.5);
@@ -1386,9 +1394,15 @@ tbody tr.playing td.num { color: var(--accent); }
   min-width: 0;
 }
 .neighbour + .neighbour { border-top: 1px solid var(--line); }
+/* The whole row lines the song up, not only its button — the same rule
+   the listing follows, where a click anywhere on a row plays it. The
+   tint on hover is what says so, and it is the listing's own. */
+.neighbour { cursor: pointer; }
+.neighbour:hover { background: var(--hover); }
 /* Lined up by hand and waiting, the same ground the listing gives it. */
 .neighbour.queued { background: var(--queued); }
 .neighbour-name {
+  color: var(--text-green);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -400,3 +400,54 @@ async def test_the_last_song_of_a_listing_still_has_neighbours(tmp_path):
 
     assert len(_offered(panel)) == 5, _offered(panel)
     assert "Nothing else" not in panel
+
+
+def test_the_whole_neighbour_row_lines_a_song_up():
+    """The same rule the listing follows: a click anywhere on a row acts
+    on that row. The button is where the two states are said, not the
+    only place they can be reached — and both go through one function,
+    so they cannot come to disagree about what a click does."""
+
+    source = Path("src/pypl2mp3/web/static/console.js").read_text()
+
+    assert source.count("function lineUpOrTakeOut(") == 1
+    # Twice: once from the button, once from the row around it.
+    assert source.count("lineUpOrTakeOut(") == 3, (
+        "the button and the row do not both go through it"
+    )
+
+    row = re.search(
+        r'closest\("#neighbours \.neighbour"\);\n(.*?)\n    \}',
+        source, re.S,
+    )
+    assert row, "a click on the row itself does nothing"
+    assert 'closest("button, a")' in row.group(1), (
+        "the button inside the row would fire twice, or the link would "
+        "be swallowed"
+    )
+
+
+async def test_the_neighbour_name_recedes_and_the_row_answers_the_pointer(
+    tmp_path
+):
+    """Five names read at a glance, not word by word, so they are quieter
+    than the body text — and the row says it can be clicked before it is.
+    """
+
+    _line(tmp_path, count=6)
+
+    async with _client(tmp_path) as client:
+        css = (await client.get("/static/console.css")).text
+
+    name = re.search(r"\n\.neighbour-name \{([^}]*)\}", css)
+    assert name and "var(--text-green)" in name.group(1), name
+
+    # Defined in both themes, or the dark one falls back to nothing.
+    assert css.count("--accent-dim:") == 2, "one theme has no value for it"
+
+    assert re.search(r"\n\.neighbour:hover \{[^}]*var\(--hover\)", css), (
+        "the row does not tint under the pointer"
+    )
+    assert re.search(r"\n\.neighbour \{[^}]*cursor: pointer", css), (
+        "the row does not say it can be clicked"
+    )

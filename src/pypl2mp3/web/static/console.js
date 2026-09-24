@@ -1048,6 +1048,29 @@
     }
   }
 
+  // Line a song up, or take it back out. Which of the two it does is
+  // read off the run itself rather than off an attribute that could
+  // disagree with the label — and it lives here rather than in the
+  // click handler because two places now reach it: the button, and the
+  // row around it.
+  function lineUpOrTakeOut(key) {
+    if (!key) return;
+
+    if (lineup.indexOf(key) === -1) {
+      playNext(key);
+      replanFrom(key);
+      return;
+    }
+
+    unqueue(key);
+    // And the walk goes back to leading from the song playing. Putting
+    // the song back where it came from cannot restore the course,
+    // because the course was rebuilt around it — so the undo has to be
+    // a replan too, or taking a song out would leave the radio
+    // following a route chosen for a song no longer on it.
+    if (queue[index]) replanFrom(queue[index].key);
+  }
+
   // Play this one after the one playing — and after the last one asked
   // for before it, so picking three songs out of a listing plays them in
   // the order they were picked rather than in reverse.
@@ -2247,25 +2270,17 @@
       // two to disagree about what lining a song up does.
       const holder = lineUp.closest("[data-song-key]");
 
-      // Which of the two it does is read off the run itself rather than
-      // off a second attribute that could disagree with the label.
-      if (holder) {
-        const key = holder.dataset.songKey;
+      if (holder) lineUpOrTakeOut(holder.dataset.songKey);
+      return;
+    }
 
-        if (lineup.indexOf(key) === -1) {
-          playNext(key);
-          replanFrom(key);
-        } else {
-          unqueue(key);
-          // And the walk goes back to leading from the song playing.
-          // Putting the song back where it came from cannot restore the
-          // course, because the course was rebuilt around it — so the
-          // undo has to be a replan too, or taking a song out would
-          // leave the radio following a route chosen for a song no
-          // longer on it.
-          if (queue[index]) replanFrom(queue[index].key);
-        }
-      }
+    // And the whole neighbour row does what its button does. The same
+    // rule the listing follows — a click anywhere on a row acts on that
+    // row — so the button is where the two states are *said*, not the
+    // only place they can be reached.
+    const near = event.target.closest("#neighbours .neighbour");
+    if (near && !event.target.closest("button, a")) {
+      lineUpOrTakeOut(near.dataset.songKey);
       return;
     }
 
