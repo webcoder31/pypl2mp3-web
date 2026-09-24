@@ -443,9 +443,16 @@ async def test_the_block_takes_the_fields_place_rather_than_pushing_them(
     # let the slot collapse to the block's height. Every rule that hides
     # one of the three has to use `visibility` for the same reason — the
     # constant height is the whole point of the cell.
+    # And no rule anywhere puts a face back to `visible`: one that did
+    # would carry the extra class that beats the rule covering it, which
+    # is how asking Shazam with the fields up drew both at once.
+    assert "visibility: visible" not in css, (
+        "a rule sets visibility back, and will out-weigh one that hides"
+    )
+
     for selector in (
         r"#shazam\.showing ~ \*",
-        r"\.inspector-slot > \.inspector-fields",
+        r"#inspector-body:not\(\.showing-edit\) \.inspector-fields",
         r"#inspector-body\.showing-edit #neighbours",
     ):
         rule = re.search(selector + r" \{([^}]*)\}", css)

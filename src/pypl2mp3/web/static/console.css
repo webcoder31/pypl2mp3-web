@@ -1331,8 +1331,13 @@ tbody tr.playing td.num { color: var(--accent); }
    The default face is the neighbours. Listening is continuous and
    correcting is occasional, and the fields were holding a place all the
    time that they earn only now and then. */
-.inspector-slot > .inspector-fields { visibility: hidden; }
-#inspector-body.showing-edit .inspector-fields { visibility: visible; }
+/* Only ever hidden, never set back to visible. Writing the default as
+   "hidden, and visible under .showing-edit" put two classes against the
+   one that covers them both when Shazam answers — so asking Shazam
+   while the fields were up drew the answer *under* them, both at once
+   and neither readable. Nothing here competes: every rule hides, and
+   whichever fires wins. */
+#inspector-body:not(.showing-edit) .inspector-fields { visibility: hidden; }
 #inspector-body.showing-edit #neighbours { visibility: hidden; }
 /* Shazam's answer covers whichever of the two was up. A sibling
    selector did this when there were only two of them; with three, the
