@@ -401,10 +401,11 @@ async def test_the_block_takes_the_fields_place_rather_than_pushing_them(
     the three inputs down the panel at the moment you were about to read
     them — and moved them back when it went.
 
-    They share one grid cell now. Both stay in it whichever is showing,
-    because the hidden one is `visibility` and not `display`, so the slot
-    is always as tall as the taller of the two. Measured in a browser:
-    280px of panel before, during and after.
+    They share one grid cell now — three of them, since the neighbours
+    joined. All stay in it whichever is showing, because the hidden ones
+    are `visibility` and not `display`, so the slot is always as tall as
+    the tallest. Measured in a browser: 280px of panel before, during
+    and after.
     """
 
     _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
@@ -414,18 +415,23 @@ async def test_the_block_takes_the_fields_place_rather_than_pushing_them(
             f"/fragments/inspector/{_key('aaaaaaaaaaa')}", headers=HX)).text
         css = (await client.get("/static/console.css")).text
 
-    slot = re.search(
-        r'<div class="inspector-slot">(.*?)</div>\s*</div>', panel, re.DOTALL
+    at = panel.index('<div class="inspector-slot">')
+    slot = panel[at:panel.index('<p class="inspector-actions">', at)]
+
+    for part in ('id="shazam"', 'id="neighbours"', 'class="inspector-fields"'):
+        assert part in slot, f"{part} left the cell"
+
+    assert slot.index('id="shazam"') < slot.index('id="neighbours"'), (
+        "the block covers what follows it, so it has to come first"
     )
-    assert slot, "the fields and the block no longer share a container"
-    assert slot.group(1).index('id="shazam"') < slot.group(1).index(
-        'class="inspector-fields"'
-    ), "the sibling selector that hides the fields needs the block first"
 
     assert ".inspector-slot > * { grid-area: 1 / 1; }" in css, (
-        "the two no longer stack in one cell, so the panel will jump"
+        "the three no longer stack in one cell, so the panel will jump"
     )
-    assert "#shazam.showing + .inspector-fields { visibility: hidden; }" in css
+    # A sibling selector did this when the cell held two. With the
+    # neighbours between them the `+` no longer reached the fields, so
+    # the block covers everything that follows it instead.
+    assert "#shazam.showing ~ * { visibility: hidden; }" in css
 
     # And the fragment has to claim the class the selector waits for.
     # Without it the block simply draws over nothing and the fields stay
@@ -433,11 +439,19 @@ async def test_the_block_takes_the_fields_place_rather_than_pushing_them(
     block = Path("src/pypl2mp3/web/templates/_shazam.html").read_text()
     root = block[block.index("<div id=\"shazam\""):block.index(">", block.index("<div id=\"shazam\""))]
     assert "showing" in root, root
-    # `display: none` would take the fields out of the grid and let the
-    # slot collapse to the block's height.
-    assert "display: none" not in re.search(
-        r"#shazam\.showing \+ \.inspector-fields \{([^}]*)\}", css
-    ).group(1)
+    # `display: none` would take the covered faces out of the grid and
+    # let the slot collapse to the block's height. Every rule that hides
+    # one of the three has to use `visibility` for the same reason — the
+    # constant height is the whole point of the cell.
+    for selector in (
+        r"#shazam\.showing ~ \*",
+        r"\.inspector-slot > \.inspector-fields",
+        r"#inspector-body\.showing-edit #neighbours",
+    ):
+        rule = re.search(selector + r" \{([^}]*)\}", css)
+        assert rule, f"{selector} is gone"
+        assert "display: none" not in rule.group(1), selector
+        assert "visibility" in rule.group(1), selector
 
 
 async def test_the_answer_offers_both_ways_out(tmp_path):
@@ -721,3 +735,30 @@ async def test_the_answer_shows_what_it_says_about_the_release(
         r"#shazam\.showing \.proposal \.proposal-actions \{ margin-top: [\d.]+rem; \}",
         css,
     ), "the row of actions has no gap of its own before it"
+
+
+def test_the_panel_switch_does_not_share_a_name_with_the_flap_board():
+    """Two `function showFace` in one scope is not an error: the second
+    replaces the first, silently, and every call in the file goes to
+    whichever came last.
+
+    That is what happened. The switch between the neighbours and the
+    fields was written with the same name and the same attribute as the
+    split-flap board on the identity line, so the board's calls arrived
+    at the switch with an element where a name belonged, and the
+    switch's calls arrived at the board. Nothing threw. The suite stayed
+    green.
+    """
+
+    source = Path("src/pypl2mp3/web/static/console.js").read_text()
+
+    assert source.count("function showFace(") == 1, (
+        "two functions share the name showFace; the later one wins and "
+        "every call in the file goes to it"
+    )
+
+    # And the attributes stay apart, or one click handler answers for
+    # both.
+    panel = Path("src/pypl2mp3/web/templates/_inspector.html").read_text()
+    assert 'data-shows="neighbours"' in panel and 'data-shows="edit"' in panel
+    assert 'data-face="neighbours"' not in panel

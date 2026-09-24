@@ -95,6 +95,30 @@
   // It publishes what the badge should say and this copies it across
   // after every swap — including the first, where the shell rendered the
   // pane inline and no swap ever happens.
+  // Neighbours or fields. A class on the panel rather than two hidden
+  // attributes, because the stylesheet already stacks the three
+  // occupants of that cell and only needs telling which is up.
+  // Named apart from the split-flap board's own `showFace` below, and
+  // its attribute apart from that board's `data-face`. The first
+  // version of this used both names: a second `function showFace` in
+  // the same scope silently replaces the first, so the board's calls
+  // arrived here with an element where a name was expected and this
+  // switch's calls arrived there. Nothing threw, nothing was tested for
+  // it, and the whole suite stayed green.
+  function showPanelFace(name) {
+    const body = document.getElementById("inspector-body");
+    if (!body) return;
+
+    body.classList.toggle("showing-edit", name === "edit");
+    document.querySelectorAll("#inspector [data-shows]").forEach(
+      function (button) {
+        button.setAttribute(
+          "aria-pressed", String(button.dataset.shows === name)
+        );
+      }
+    );
+  }
+
   function paintBadge() {
     const pane = document.getElementById("imports-body");
     const badge = document.getElementById("imports-badge");
@@ -114,6 +138,14 @@
 
       box.checked = true;
       box.dispatchEvent(new Event("change", { bubbles: true }));
+      return;
+    }
+
+    // Which of the two shares the cell: the five nearest, or the fields
+    // that change this song's tags.
+    const face = event.target.closest("[data-shows]");
+    if (face) {
+      showPanelFace(face.dataset.shows);
       return;
     }
 
@@ -546,26 +578,6 @@
     if (box) crossfadeCover(box);
   });
 
-  // The five songs nearest the one playing, refreshed with it.
-  //
-  // Its own element and its own request rather than a block inside the
-  // inspector: that panel is replaced wholesale on every song, and the
-  // workbench replaces it again, so anything living in there would be
-  // swept away twice.
-  function showNeighbours(key) {
-    const panel = document.getElementById("neighbours");
-    if (!panel || !key) return;
-
-    // Through the filter form, because the radio may only offer what it
-    // could actually play — and what it could play is what the listing
-    // holds.
-    window.htmx.ajax("GET", "/fragments/neighbours/" + key, {
-      target: "#neighbours",
-      swap: "innerHTML",
-      source: document.getElementById("filters"),
-    });
-  }
-
   function inspect(key) {
     // Held back by an edit nobody has saved. The panel deliberately
     // stops following the player here — but it used to do it in
@@ -587,7 +599,14 @@
     const wanted = inWorkbench() ? "workbench" : "inspector";
     if (shown && shown.dataset.songKey === key && showing === wanted) return;
 
-    window.htmx.ajax("GET", "/fragments/" + wanted + "/" + key, "#inspector");
+    // Through the filter form, because the panel now carries this
+    // song's neighbours and those may only offer what the listing
+    // holds. The workbench has none and ignores them.
+    window.htmx.ajax("GET", "/fragments/" + wanted + "/" + key, {
+      target: "#inspector",
+      swap: "innerHTML",
+      source: document.getElementById("filters"),
+    });
   }
 
   function play(i) {
@@ -615,7 +634,6 @@
 
     // The song being judged is the song being heard: one cursor, not two.
     inspect(queue[index].key);
-    showNeighbours(queue[index].key);
     markInspectorCursor();
     prefetch();
 
@@ -2337,6 +2355,13 @@
 
   function markDirty() {
     dirty = true;
+
+    // And show what has changed. This is the one place both ways of
+    // changing a field arrive — typing, and taking Shazam's answer — so
+    // it is the one place that has to reveal the fields when the panel
+    // is showing the neighbours instead. A form filled behind a face
+    // nobody is looking at is a trap.
+    showPanelFace("edit");
 
     const save = document.querySelector(
       "#inspector form button[type='submit']"

@@ -8,6 +8,7 @@ passed the wrong flag.
 
 import asyncio
 import collections
+import urllib.parse
 import json
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -850,13 +851,35 @@ def create_app(repository_path: Path) -> FastAPI:
             raise HTTPException(status_code=404, detail="unknown song")
 
     @app.get("/fragments/inspector/{key}", response_class=HTMLResponse)
-    def inspector_fragment(key: str, request: Request) -> HTMLResponse:
-        """One song's details and the form that changes them."""
+    def inspector_fragment(
+        key: str,
+        request: Request,
+        playlist: str = "",
+        q: str = "",
+        junk: int = 0,
+        artist: str = "",
+        match: float = DEFAULT_MATCH_THRESHOLD,
+        order: str = "",
+        start: str = "",
+    ) -> HTMLResponse:
+        """One song's details, the form that changes them, and its five
+        nearest — all three sharing one cell, so the panel is the same
+        height whichever is showing.
+
+        It carries the filters for the neighbours' sake: they may only
+        offer what the listing holds.
+        """
 
         return templates.TemplateResponse(
             request,
             "_inspector.html",
-            {"song": _summary_or_404(key)},
+            {
+                "song": _summary_or_404(key),
+                "filters": _filter_query(playlist, q, junk, artist, match,
+                                         order, start),
+                **_neighbours_of(key, playlist, q, junk, match, artist,
+                                 order, start),
+            },
         )
 
     # The layout costs two seconds over 944 songs, so it is kept —
@@ -922,24 +945,39 @@ def create_app(repository_path: Path) -> FastAPI:
             ],
         }
 
-    @app.get("/fragments/neighbours/{key}", response_class=HTMLResponse)
-    def neighbours_fragment(
-        key: str,
-        request: Request,
-        playlist: str = "",
-        q: str = "",
-        junk: int = 0,
-        artist: str = "",
-        match: float = DEFAULT_MATCH_THRESHOLD,
-        order: str = "",
-        start: str = "",
-    ) -> HTMLResponse:
-        """The five songs nearest this one, inside the current selection.
+    def _filter_query(playlist, q, junk, artist, match, order, start) -> str:
+        """The current selection, as a query string.
 
-        It carries the filters because the radio may only offer what it
+        It rides on the save form's action rather than in its body. The
+        filter form has an `artist` field and so does the inspector's,
+        and `hx-include` would post both under one name — the save would
+        then write the artist you were filtering by onto the song.
+        """
+
+        said = {
+            "playlist": playlist, "q": q, "artist": artist,
+            "order": order, "start": start,
+        }
+        parts = [(name, value) for name, value in said.items() if value]
+        if junk:
+            parts.append(("junk", "1"))
+        if match != DEFAULT_MATCH_THRESHOLD:
+            parts.append(("match", str(match)))
+
+        return ("?" + urllib.parse.urlencode(parts)) if parts else ""
+
+    def _neighbours_of(key: str, playlist, q, junk, match, artist,
+                       order, start) -> dict:
+        """The five songs nearest one, inside the current selection.
+
+        It takes the filters because the radio may only offer what it
         could actually play, and what it could play is what the listing
         holds. In "All songs" that is the whole library; filtered to one
         playlist, it stays inside it.
+
+        Returns the panel's whole context, because the inspector renders
+        the panel inside itself: one request a song rather than two, and
+        the two can no longer disagree about which song is being shown.
         """
 
         songs = _selection(playlist, q, junk, match, artist, order, start)
@@ -949,16 +987,22 @@ def create_app(repository_path: Path) -> FastAPI:
         # Only what is still ahead: offering the song just played would
         # be offering to go backwards, which the player already has a
         # button for.
-        after = [song.key for song in songs]
-        if key in after:
-            after = after[after.index(key) + 1:]
+        every = [song.key for song in songs]
+        after = every
+        if key in every:
+            after = every[every.index(key) + 1:]
 
         found = space.neighbours(key, count=5, among=set(after))
 
-        return templates.TemplateResponse(
-            request,
-            "_neighbours.html",
-            {
+        # Unless there is nothing ahead. The last song of any listing has
+        # nothing after it — and so did any song that a save had just
+        # renamed to the end of the alphabet — which left the panel empty
+        # for no reason the reader could see. Behind is better than
+        # nothing: you can still line up a song you passed.
+        if not found:
+            found = space.neighbours(key, count=5)
+
+        return {
                 "key": key,
                 "analysed": space.knows(key),
                 "neighbours": [
@@ -982,8 +1026,7 @@ def create_app(repository_path: Path) -> FastAPI:
                     }
                     for near in found
                 ],
-            },
-        )
+        }
 
     @app.get("/fragments/workbench/{key}", response_class=HTMLResponse)
     def workbench_fragment(
@@ -1077,8 +1120,26 @@ def create_app(repository_path: Path) -> FastAPI:
         return {"cancelled": app.state.jobs.cancel(f"shazam:{key}")}
 
     @app.post("/songs/{key}/fix")
-    async def submit_fix(key: str, request: Request):
-        """Write the metadata the user settled on."""
+    async def submit_fix(
+        key: str,
+        request: Request,
+        playlist: str = "",
+        q: str = "",
+        junk: int = 0,
+        artist: str = "",
+        match: float = DEFAULT_MATCH_THRESHOLD,
+        order: str = "",
+        start: str = "",
+    ):
+        """Write the metadata the user settled on.
+
+        The selection rides in on the query string, because what comes
+        back is the whole panel — neighbours included — and those may
+        only offer what the listing holds. Without it the panel returned
+        with no neighbours at all, which it reported as "this song has
+        not been analysed yet": a sentence about the file, for what was
+        really a missing argument.
+        """
 
         form = await request.form()
 
@@ -1108,7 +1169,14 @@ def create_app(repository_path: Path) -> FastAPI:
             response = templates.TemplateResponse(
                 request,
                 "_inspector.html",
-                {"song": song, "saved": True},
+                {
+                    "song": song,
+                    "saved": True,
+                    "filters": _filter_query(playlist, q, junk, artist,
+                                             match, order, start),
+                    **_neighbours_of(song.key, playlist, q, junk, match,
+                                     artist, order, start),
+                },
             )
             response.headers["HX-Trigger"] = "songsChanged"
             return response

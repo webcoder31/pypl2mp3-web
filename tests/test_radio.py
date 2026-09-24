@@ -55,6 +55,15 @@ def _ids(page: str) -> list[str]:
     return re.findall(r'data-song-id="(\w+)"', page)
 
 
+def _offered(panel: str) -> list[str]:
+    """The neighbours only. The panel lives inside the inspector now, and
+    that carries the inspected song's own id as well."""
+
+    return re.findall(
+        r'class="neighbour[^"]*"[^>]*data-song-id="(\w+)"', panel, re.S
+    )
+
+
 async def test_the_radio_orders_the_listing_as_a_walk(tmp_path):
     """Chosen from a song in the middle, the listing steps outwards
     rather than staying where the alphabet left it."""
@@ -123,9 +132,9 @@ async def test_the_panel_names_five_neighbours_nearest_first(tmp_path):
     keys = _line(tmp_path, count=8)
 
     async with _client(tmp_path) as client:
-        panel = (await client.get(f"/fragments/neighbours/{keys[0]}")).text
+        panel = (await client.get(f"/fragments/inspector/{keys[0]}")).text
 
-    found = _ids(panel)
+    found = _offered(panel)
 
     assert len(found) == 5
     assert found[0] == "00000000001", found
@@ -139,7 +148,7 @@ async def test_the_panel_says_how_close_and_along_which_axis(tmp_path):
     keys = _line(tmp_path, count=8)
 
     async with _client(tmp_path) as client:
-        panel = (await client.get(f"/fragments/neighbours/{keys[0]}")).text
+        panel = (await client.get(f"/fragments/inspector/{keys[0]}")).text
 
     assert re.search(r'data-closeness="\d', panel), panel[:400]
 
@@ -179,10 +188,10 @@ async def test_the_panel_only_offers_what_the_filter_holds(tmp_path):
 
     async with _client(tmp_path) as client:
         panel = (await client.get(
-            f"/fragments/neighbours/{mine}?artist=AAA+ELSE"
+            f"/fragments/inspector/{mine}?artist=AAA+ELSE"
         )).text
 
-    assert _ids(panel) == ["00000000009"], panel
+    assert _offered(panel) == ["00000000009"], panel
 
 
 async def test_a_song_nobody_analysed_has_a_panel_that_says_so(tmp_path):
@@ -198,10 +207,10 @@ async def test_a_song_nobody_analysed_has_a_panel_that_says_so(tmp_path):
 
     async with _client(tmp_path) as client:
         panel = (await client.get(
-            f"/fragments/neighbours/{song_key(PLAYLIST_ID, '00000000009')}"
+            f"/fragments/inspector/{song_key(PLAYLIST_ID, '00000000009')}"
         )).text
 
-    assert _ids(panel) == []
+    assert _offered(panel) == []
     assert "not been analysed" in panel or "no neighbours" in panel.lower()
 
 
@@ -217,7 +226,7 @@ async def test_in_the_walk_the_first_neighbour_is_the_next_row(tmp_path):
             f"/fragments/list?order=radio&start={keys[3]}"
         )).text
         panel = (await client.get(
-            f"/fragments/neighbours/{keys[3]}?order=radio&start={keys[3]}"
+            f"/fragments/inspector/{keys[3]}?order=radio&start={keys[3]}"
         )).text
 
     rows = re.findall(r'data-song-key="(\w+)"', listing)
@@ -328,3 +337,66 @@ async def test_the_same_selection_is_placed_once_and_a_new_one_afresh(
 
     assert [one["at"] for one in whole["points"]] == \
            [one["at"] for one in again["points"]], "placed twice"
+
+
+async def test_saving_a_song_brings_its_neighbours_back_with_it(tmp_path):
+    """Saving re-renders the whole panel, and the panel now holds the
+    five nearest. Without the selection travelling with the POST they
+    came back empty, which the panel reported as "this song has not been
+    analysed yet" — a sentence about the file, for what was really a
+    missing argument. The file is untouched: a save keeps the vector and
+    the waveform through the rename, which is why they live in the MP3.
+    """
+
+    keys = _line(tmp_path, count=8)
+
+    async with _client(tmp_path) as client:
+        before = (await client.get(f"/fragments/inspector/{keys[0]}")).text
+        assert len(_offered(before)) == 5
+
+        after = (await client.post(
+            f"/songs/{keys[0]}/fix",
+            data={"artist": "AAA RENAMED", "title": "Also Renamed",
+                  "cover_art_url": ""},
+            headers={"HX-Request": "true"},
+        )).text
+
+    assert "not been analysed" not in after, after[:400]
+    assert len(_offered(after)) == 5, _offered(after)
+
+
+async def test_the_save_form_carries_the_selection_and_not_the_filter_artist(
+    tmp_path
+):
+    """Both forms have an `artist` field. Posting the filter's alongside
+    the song's — which `hx-include` would do — would write the name you
+    were filtering by onto the song you were correcting."""
+
+    keys = _line(tmp_path, count=4)
+
+    async with _client(tmp_path) as client:
+        panel = (await client.get(
+            f"/fragments/inspector/{keys[0]}?artist=ARTIST&q=Song"
+        )).text
+
+    action = re.search(r'<form hx-post="([^"]+)"', panel).group(1)
+
+    assert action.startswith(f"/songs/{keys[0]}/fix?"), action
+    assert "artist=ARTIST" in action and "q=Song" in action, action
+    assert "hx-include" not in panel, "the filters are in the body too"
+
+
+async def test_the_last_song_of_a_listing_still_has_neighbours(tmp_path):
+    """Nothing comes after it, and "only what is ahead" then left the
+    panel empty for no reason a reader could see. Behind is better than
+    nothing: a song you have passed can still be lined up."""
+
+    keys = _line(tmp_path, count=6)
+
+    async with _client(tmp_path) as client:
+        listing = (await client.get("/fragments/list")).text
+        last = re.findall(r'data-song-key="(\w+)"', listing)[-1]
+        panel = (await client.get(f"/fragments/inspector/{last}")).text
+
+    assert len(_offered(panel)) == 5, _offered(panel)
+    assert "Nothing else" not in panel

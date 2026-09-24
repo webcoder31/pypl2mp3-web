@@ -121,13 +121,6 @@
         <p class="job-none">Select a song.</p>
       </section>
 
-      {# Beside the song being inspected rather than inside its panel:
-         the inspector is replaced wholesale on every song, and the
-         workbench replaces it too, so anything living in there would be
-         swept away twice. It is drawn as a continuation of the panel
-         above it, because that is what it is about. #}
-      <section id="neighbours" data-swap-region></section>
-
       {# Under the song it is playing, not at the foot of the page: the
        inspector follows the queue, so the art, the tags and the
        transport all describe the same track. Still not a swap region,
