@@ -308,7 +308,8 @@ UMAP** séparent superbement, mais c'est scikit-learn ou numba en plus, et
 aucun des deux n'est déterministe sans qu'on s'y emploie.
 
 Retenu : **la solution de cairn** (`src/lib/graph-3d.ts`). Un graphe des
-**k = 8** plus proches voisins — assez pour que les amas se tiennent,
+**k = 4** plus proches voisins **et réciproques** — assez pour que les
+amas se tiennent,
 assez peu pour qu'ils ne fusionnent pas ; la valeur est un réglage, pas
 une constante de la nature, et la carte dira si elle est bonne —, relâché
 dans l'espace par une relaxation à
@@ -472,19 +473,37 @@ La parade, si ça devient gênant à l'usage, est d'ancrer la relaxation sur
 les positions précédentes. Pas dans le socle, parce qu'on ne sait pas
 encore si le problème se posera.
 
-## Ce que la mesure de l'artiste ne dit pas
+## Ce que la carte a donné, une fois construite
 
-Elle dit que le vecteur trouve la ressemblance acoustique. Elle ne dit
-pas que la carte s'organisera en genres — et la mesure du genre à 1,4×
-suggère plutôt le contraire. **Les amas seront des familles acoustiques**
-(une voix, une production, une époque de studio) et non les étiquettes
-que Shazam donne. Colorer par genre montrera une correspondance
-partielle, ce qui reste informatif : c'est la carte qui dira laquelle
-des deux lectures est la plus juste.
+Elle montre des îlots répartis dans tout le volume de la sphère. Il a
+fallu deux corrections que la conception n'avait pas vues, et toutes
+deux portaient sur le **graphe**, pas sur la relaxation.
 
-Et aucun nombre ne remplace l'écoute. 11,6× sur l'artiste veut dire que
-les voisins sonnent comme le morceau ; il reste à savoir si on a envie
-de les entendre l'un après l'autre.
+**Les arêtes doivent être réciproques.** Gardées dans un seul sens, un
+morceau en entraîne un autre sans réciproque et, avec neuf cents
+morceaux tenant chacun huit fils, plus rien ne peut se défaire : le
+nuage se relâche en une dalle régulière et légèrement vrillée. Mutuel,
+l'accord d'artiste passe de 6,5× à 11,0×.
+
+**Et il en faut quatre, pas huit.** À huit, les trois quarts de la
+bibliothèque s'entassent dans la moitié intérieure du rayon — une
+sphère à cœur plein. À quatre, la moitié, et le volume passe de 0,68 à
+0,83 sans que le juge bouge (10,6×).
+
+Deux autres leviers ont été essayés et écartés par la mesure : une
+attraction croissant avec la distance vide le cœur mais fait tomber
+l'accord d'artiste à 9,4× — elle étale sans structurer ; pondérer les
+arêtes par la proximité aplatit le nuage.
+
+**Sur le genre, la prédiction tient : 1,2× sur la carte.** Les amas sont
+des familles acoustiques — une voix, une production, une époque de
+studio — et non les étiquettes que Shazam donne. La couleur reste un
+contrôle visuel, pas une promesse.
+
+Et aucun nombre ne remplace l'écoute. 15,5× sur l'artiste dans les
+quarante dimensions, 10,6× sur la carte, veut dire que les voisins
+sonnent comme le morceau ; il reste à savoir si on a envie de les
+entendre l'un après l'autre.
 
 ## Le coût de la première passe
 
