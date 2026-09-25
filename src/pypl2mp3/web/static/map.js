@@ -42,6 +42,50 @@ let drawn = null;
 let points = [];
 let asked = null;
 
+// One renderer for the life of the page, and not one per drawing.
+//
+// A canvas holds a single WebGL context and a browser grants a page
+// only so many — Chrome drops the oldest at about sixteen and then
+// refuses. Building a fresh renderer every time the selection changed
+// leaked one each time, and the map eventually stopped opening with
+// "could not create a WebGL context" on a machine where it had been
+// working all along.
+let renderer = null;
+
+function canvasRenderer() {
+  if (renderer) return renderer;
+
+  renderer = new THREE.WebGLRenderer({
+    canvas: canvas, antialias: true, alpha: true,
+  });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+  return renderer;
+}
+
+// Why it will not draw, in words that say what to do about it. "This
+// browser will not open a 3D canvas" is true of a GPU switched off, of
+// a blocklisted driver and of a page that has run out of contexts, and
+// those want three different things from the reader.
+function whyNot(error) {
+  let context = null;
+  try {
+    context = canvas.getContext("webgl2") || canvas.getContext("webgl");
+  } catch (ignored) {
+    context = null;
+  }
+
+  if (context) {
+    return "The 3D canvas opened but the map could not be built: "
+      + (error && error.message ? error.message : String(error));
+  }
+
+  return "This browser will not open a 3D canvas, so the map cannot be "
+    + "drawn. chrome://gpu says whether hardware acceleration is off or "
+    + "the driver is blocklisted. Everything else on the page works "
+    + "without it.";
+}
+
 function filters() {
   const form = document.getElementById("filters");
   if (!form) return "";
@@ -82,9 +126,7 @@ async function draw() {
     // console look exactly like a page that is still loading.
     drawn = null;
     asked = null;
-    note.textContent =
-      "This browser will not open a 3D canvas, so the map cannot be "
-      + "drawn. Everything else on the page works without it.";
+    note.textContent = whyNot(error);
     note.hidden = false;
     return;
   }
@@ -101,10 +143,7 @@ function build(said) {
     55, frame.clientWidth / frame.clientHeight, 0.1, 2000
   );
 
-  const renderer = new THREE.WebGLRenderer({
-    canvas: canvas, antialias: true, alpha: true,
-  });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  const renderer = canvasRenderer();
 
   // Where the cloud is and how big, so the camera frames it whatever
   // the relaxation settled on rather than at a distance written here.
@@ -222,8 +261,11 @@ function build(said) {
       renderer.domElement.removeEventListener("pointermove", look);
       renderer.domElement.removeEventListener("click", play);
       controls.dispose();
+      scene.remove(dots);
       cloud.dispose();
       dots.material.dispose();
+      // The renderer itself stays: it owns the one context this page
+      // gets, and throwing it away is what exhausted them.
     },
   };
 }
