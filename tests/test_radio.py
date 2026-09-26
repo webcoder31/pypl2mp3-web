@@ -663,6 +663,12 @@ def test_the_cloud_turns_by_itself_and_stops_under_the_hand():
     revolution in 87 seconds, at a rate that does not vary. A rate that
     wandered was meant to read as less mechanical and read as a wobble.
 
+    The axis drifts as well, and at its own constant rate: a radian
+    either way, 29 degrees in half a minute, a full sweep in four
+    minutes. It reverses at the ends rather than being clamped there,
+    because a drag can leave the tilt outside the range and clamping
+    would snap it back the moment the pointer left.
+
     The breath goes right inside the cloud: from the 2.4 radii that
     frame it down to 0.47, halfway to the middle, and back, over 81
     seconds. Probed through the module at the first, much smaller
@@ -687,6 +693,20 @@ def test_the_cloud_turns_by_itself_and_stops_under_the_hand():
     )
 
     assert "yaw += TURN;" in source, "the turn is not at a constant rate"
+    assert "pitch += TIP * tilting;" in source, (
+        "the axis is fixed, or drifts at a rate that varies"
+    )
+    assert re.search(
+        r"if \(tilting > 0 \? pitch >= SWING : pitch <= -SWING\)"
+        r" tilting = -tilting;", source
+    ), "the tilt is turned round by something other than its own travel"
+
+    # Clamping the tilt inside drift() is the bug this shape avoids: a
+    # drag may leave it past SWING, and a clamp would jump it back.
+    walk_for_clamp = source[source.index("function drift() {"):]
+    walk_for_clamp = walk_for_clamp[:walk_for_clamp.index("\n  }")]
+    assert "Math.max(-1.45" not in walk_for_clamp, walk_for_clamp
+    assert "pitch = Math.max" not in walk_for_clamp, walk_for_clamp
     assert "const DIVE = 1.5;" in source and "const RISE = 0.12;" in source, (
         "the breath no longer reaches inside the sphere"
     )

@@ -318,6 +318,18 @@ function build(said) {
   // that wandered was meant to read as less mechanical and read as a
   // wobble instead.
   //
+  // The axis it turns on drifts as well, at its own constant rate. A
+  // spin alone shows the cloud from one latitude for ever, so the same
+  // islands stay in front of the same islands; tipping the axis across
+  // a radian either way brings the rest round in turn.
+  //
+  // It turns back at the ends rather than running on. Past a quarter
+  // turn the cloud is upside down and a drag upwards sends it down,
+  // which is why the pointer is stopped at 1.45 — a drift that ran on
+  // would either stop dead against that or hand over an inverted
+  // cloud. Reversing is the only discontinuity in the whole movement:
+  // two moments in a sweep of fourteen thousand frames.
+  //
   // The breath goes in far enough to arrive inside the sphere. At the
   // top of it the eye sits a little outside the distance that frames
   // the whole cloud; at the bottom it is at about a fifth of that,
@@ -330,12 +342,15 @@ function build(said) {
   // in. `home` is what it is a factor of, taken from the eye's own
   // place each time the drift starts, so resuming never jumps.
   const TURN = 0.0012;
+  const TIP = 0.00028;
+  const SWING = 1.0;
   const DIVE = 1.5;
   const RISE = 0.12;
   const WIND = 0.0013;
 
   let clock = 0;
   let home = away;
+  let tilting = 1;
 
   // It is a frame a tick for as long as it runs — under 3 ms of
   // processor on this machine — so it runs only while somebody could be
@@ -365,6 +380,13 @@ function build(said) {
   function drift() {
     clock += 1;
     yaw += TURN;
+
+    // Reversed rather than clamped: a drag can leave the tilt outside
+    // this range, and clamping would snap it back the moment the
+    // pointer left. Turning it round instead costs one frame's worth
+    // of travel and brings it home on its own.
+    pitch += TIP * tilting;
+    if (tilting > 0 ? pitch >= SWING : pitch <= -SWING) tilting = -tilting;
 
     away = Math.max(reach * 0.25, Math.min(reach * 12, home * breath()));
 
