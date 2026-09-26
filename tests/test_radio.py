@@ -528,36 +528,187 @@ async def test_the_next_mark_is_the_size_of_the_buttons_beside_it(tmp_path):
     assert quiet and "cursor: default" in quiet.group(1), quiet
 
 
-def test_the_map_falls_back_to_a_flat_canvas():
+def test_the_map_is_drawn_on_a_plain_2d_canvas():
     """Every browser has a 2D context; a WebGL one is a privilege. A
     point cloud asks a renderer for very little — a rotation, a
-    projection, a depth order and a filled circle each — so it does not
+    projection, a depth order and a shaded circle each — so it does not
     need the privilege.
 
-    This is also the only rendering path anyone here can check: the
+    It is also the only rendering path anyone here can check: the
     browser these are driven in has its GPU process switched off, which
-    is the same fault the map was reported with.
+    is the fault the map was reported with, and the WebGL version was
+    never once watched running. It went, and with it 760 KB of
+    three.js.
     """
 
     source = Path("src/pypl2mp3/web/static/map.js").read_text()
 
-    assert "function buildFlat(" in source
-    assert "drawn = buildFlat(said);" in source, (
-        "nothing reaches the flat renderer when WebGL refuses"
-    )
+    assert "drawn = build(said);" in source
+    assert "getContext(\"2d\")" in source, "the cloud is not drawn on a 2D canvas"
 
-    flat = source[source.index("function buildFlat("):]
+    # Past the header, which says in prose why three.js went — the
+    # code is what must not reach for it. The library, not the word:
+    # banning "three" outright failed on a comment counting periods,
+    # which is a test governing prose rather than behaviour.
+    code = source[source.index("*/") + 2:]
+    for gone in ('"three', "three.module", "three-orbit",
+                 "webglrenderer", "import "):
+        assert gone not in code.lower(), f"{gone} is still in the map"
+
+    page = Path("src/pypl2mp3/web/templates/console.html").read_text()
+    assert "importmap" not in page, "the page still names modules nothing imports"
+
+    flat = source[source.index("function build("):]
     flat = flat[:flat.index("\nfunction showLegend(")]
 
-    # Drawn when something changes, not sixty times a second: every
-    # frame is rasterised by the processor on the machine this was
-    # written for.
-    assert "requestAnimationFrame" not in flat, (
-        "a still cloud is being redrawn in a loop"
+    # One place asks for frames, and it re-arms only when something
+    # moved. Every frame is rasterised by the processor on the machine
+    # this was written for, so the accounting has to be exact.
+    assert flat.count("requestAnimationFrame") == 1, (
+        "more than one place asks for frames, so one of them is a loop"
     )
+    assert "if (easing || gone) return;" in flat, (
+        "frames can be asked for twice over, which is two loops"
+    )
+    assert re.search(
+        r"if \(moved\) \{\n\s*redraw\(\);\n\s*keepEasing\(\);", flat
+    ), "the loop re-arms whether or not anything moved"
 
     # Far to near, which is the whole of what a depth buffer did.
     assert "b.depth - a.depth" in flat, "the points are not depth-sorted"
+
+    # Every gradient on a sphere starts where the light is. One centred
+    # on the disc instead darkens its whole edge equally, which on the
+    # light theme's white reads as a black outline drawn round every
+    # point rather than as a sphere turning away — reported from a
+    # browser, and the reason the shade moved off centre.
+    lamps = re.findall(
+        r"createRadialGradient\(\s*([^,]+),\s*([^,]+),", flat
+    )
+    assert lamps, "nothing on the sphere is shaded"
+    assert len({(x.strip(), y.strip()) for x, y in lamps}) == 1, lamps
+
+
+def test_the_map_calls_nothing_it_does_not_own():
+    """map.js is a module and console.js is not, so a name console.js
+    holds is not a name map.js can call — and a name nobody holds is a
+    ReferenceError the moment the tab opens, not when the file loads.
+
+    Taking three.js out sliced `filters()` away with it. Every test
+    passed; the map was dead in the first minute in a browser, which is
+    what this now asks instead.
+    """
+
+    source = Path("src/pypl2mp3/web/static/map.js").read_text()
+
+    code = re.sub(r"/\*.*?\*/", "", source, flags=re.S)
+    code = re.sub(r"//[^\n]*", "", code)
+    # "rgba(0, 0, 0, 0)" is a colour, not a call.
+    code = re.sub(r'"(?:[^"\\]|\\.)*"', '""', code)
+    code = re.sub(r"'(?:[^'\\]|\\.)*'", "''", code)
+
+    called = set(re.findall(r"(?<![.\w$])([a-z][A-Za-z0-9_$]*)\s*\(", code))
+    held = set(re.findall(r"function\s+([A-Za-z0-9_$]+)\s*\(", code))
+    held |= set(re.findall(
+        r"(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*function", code))
+
+    # `if (`, `for (` and the rest read as calls to this and are not.
+    grammar = {"if", "for", "while", "switch", "catch", "return",
+               "typeof", "function"}
+    # The three the browser itself provides.
+    browser = {"fetch", "getComputedStyle", "requestAnimationFrame"}
+
+    assert called - held - grammar - browser == set(), (
+        "the map calls a name it does not define and the browser does not"
+    )
+
+
+def test_the_map_settles_rather_than_stopping_dead():
+    """A wheel notch and a flick are gestures, not jumps. The zoom is a
+    spring — it arrives about a tenth past where the wheel asked and
+    comes back, which is the bounce — and a drag lets go of its spin
+    rather than freezing where the fingers were.
+
+    Simulated over ninety frames before it was written: k=0.22, d=0.62
+    overshoots 11% and is settled by frame 19, a third of a second.
+    Looser constants bounced twice as far and took half again as long.
+    """
+
+    source = Path("src/pypl2mp3/web/static/map.js").read_text()
+
+    assert "const SPRING = 0.22;" in source
+    assert "const DAMP = 0.62;" in source
+    assert "zooming = (zooming + gap * SPRING) * DAMP;" in source, (
+        "the zoom is not a spring, so it cannot overshoot and come back"
+    )
+
+    # The wheel moves the target, never the eye: moving both is how a
+    # spring is given nothing to pull against.
+    roll = source[source.index("function roll("):]
+    roll = roll[:roll.index("\n  }")]
+    assert "wantAway *=" in roll and "away *=" not in roll, roll
+
+    # And the spin the pointer handed over runs down instead of being
+    # dropped.
+    assert "turning *= GLIDE;" in source
+    assert "if (spun && !stillness.matches) keepEasing();" in source, (
+        "a flick does not carry, or carries for somebody who asked for "
+        "no animation"
+    )
+
+
+def test_the_cloud_turns_by_itself_and_stops_under_the_hand():
+    """A still projection of a sphere does not say which islands are in
+    front. A turn does, without anyone having to take hold of it — one
+    revolution in 87 seconds, at a rate that does not vary. A rate that
+    wandered was meant to read as less mechanical and read as a wobble.
+
+    The breath goes right inside the cloud: from the 2.4 radii that
+    frame it down to 0.47, halfway to the middle, and back, over 81
+    seconds. Probed through the module at the first, much smaller
+    setting, the eye swung 1.71 to 2.44 radii — the 1.425 the arithmetic
+    predicts, bounded, no drift — which is the same mechanism, only
+    wider and no longer symmetrical.
+
+    It is a frame a tick while it runs, so it runs only where somebody
+    could be looking and is not already touching: measured in a browser,
+    60 frames a second at rest, 0 with the pointer on the map, 0 on
+    another tab, 60 again on coming back.
+    """
+
+    source = Path("src/pypl2mp3/web/static/map.js").read_text()
+
+    assert "resting = onScreen && !pointerOn && !stillness.matches;" in source, (
+        "the drift does not stop for the pointer, the tab, or somebody "
+        "who asked for no animation"
+    )
+    assert "let moved = resting;\n    if (resting) drift();" in source, (
+        "the drift is not what keeps the loop alive at rest"
+    )
+
+    assert "yaw += TURN;" in source, "the turn is not at a constant rate"
+    assert "const DIVE = 1.5;" in source and "const RISE = 0.12;" in source, (
+        "the breath no longer reaches inside the sphere"
+    )
+
+    walk = source[source.index("function drift() {"):]
+    walk = walk[:walk.index("\n  }")]
+
+    # The breath is a factor of where the eye was left, not of where it
+    # has got to: compounding a factor frame after frame is a drift, and
+    # this one has to come back.
+    assert "home * breath()" in walk, walk
+
+    # And the place the wheel asked for comes along, so the spring sees
+    # no gap and does not fight the breath every frame.
+    assert "wantAway = away;" in walk, walk
+
+    # Resuming takes its reference from the eye's own place, so it never
+    # jumps — the wheel may have moved it while the drift was stopped.
+    assert "if (resting && !was) home = away / breath();" in source
+
+    # Off the tab, nobody is looking.
+    assert "else if (drawn) drawn.showing(false);" in source
 
 
 def test_a_drag_across_the_map_does_not_play_what_it_stops_over():

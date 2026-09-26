@@ -366,11 +366,11 @@
          picture checks itself: colours that clump mean the vector
          caught something, colours peppered at random mean it did not.
 
-         Drawn by three.js, which is the first front-end library here
-         after htmx: 355 KB for it and 39 for the orbit controls,
-         against htmx's 50. Vendored, not built — the import map below
-         is what lets the controls ask for "three" by name without
-         either file being edited. #}
+         Drawn on a plain 2D canvas. It was three.js first, vendored at
+         760 KB against htmx's 50, and it turned out that the machine
+         this is written on cannot boot a GPU process at all — so that
+         version was never once watched running, and the one that
+         replaced it showed up two defects in its first ten minutes. #}
       <section id="map">
         <div id="map-frame"><canvas id="map-canvas"></canvas></div>
         <p id="map-note">Opening the map…</p>
@@ -405,12 +405,6 @@
 
 
     <script src="/static/console.js"></script>
-    {# So that the vendored orbit controls can import "three" by name,
-       as they ship, without that file being edited — an edit would be
-       lost the next time either is updated. #}
-    <script type="importmap">
-      {"imports": {"three": "/static/three.module.js"}}
-    </script>
     <script type="module" src="/static/map.js"></script>
   </body>
 </html>

@@ -67,7 +67,7 @@ Mesurées, pas supposées, parce qu'elles ont fermé une porte :
 | **numpy 1.26.4 déjà installé** (transitif de moviepy) | le calcul des traits ne coûte rien à installer |
 | pas de scipy | tout ce qui suit s'écrit en numpy seul |
 | **ffmpeg 8.0.1** | décode ; ses filtres d'analyse se sont révélés inutiles, la STFT du timbre donnant déjà la couleur |
-| GPU Intel Iris Pro, 1,5 Go | 944 points en WebGL : sans effort |
+| GPU Intel Iris Pro, 1,5 Go — **mais processus GPU désactivé dans Chrome** | WebGL indisponible ; la carte se dessine sur un canvas 2D |
 | décodage mono 22 kHz : **0,41 s** par morceau | le coût sera dans le calcul, pas dans le décodage |
 
 ---
@@ -350,13 +350,33 @@ périphérie de la structure.
 ### Le rendu
 
 Un onglet **Carte** à côté de Playlist et Imports. Le serveur calcule les
-coordonnées, le navigateur dessine avec **three.js**.
+coordonnées, le navigateur dessine sur un **canvas 2D**, sans aucune
+bibliothèque.
 
-C'est la première bibliothèque front-end après htmx, et elle coûte :
-`htmx.min.js` pèse 50 Ko dans `/static/`, three.js en pèse ~600, douze
-fois plus. Pas de build, pas de npm — un fichier déposé à côté, comme
-htmx l'est déjà. 944 points forment un seul objet `Points`, pas 944
-objets.
+Ce n'est pas le choix de départ. La spec prévoyait **three.js** — 600 Ko
+à côté des 50 Ko d'htmx, sans build ni npm, un fichier déposé comme htmx
+l'est déjà — et le tableau des contraintes annonçait « 944 points en
+WebGL : sans effort ». Le GPU était là, le pilote non : le Chrome de
+cette machine refuse d'ouvrir un processus GPU (`GPU access is disabled
+due to frequent crashes`), donc la version WebGL n'a **jamais** été vue
+tourner. Celle en 2D a révélé deux défauts dans ses dix premières
+minutes.
+
+Un nuage de points demande très peu à un moteur de rendu : une rotation,
+une projection, un tri en profondeur et un disque ombré par point. Les
+944 points coûtent **1,7 ms par image**, mesurés dans le navigateur, et
+la boucle d'animation ne tourne que pendant un mouvement — une carte
+qu'on ne touche pas est une image fixe et ne coûte rien, ce qui compte
+quand chaque pixel est tramé par le processeur.
+
+Les points sont des sphères : une seule est ombrée par couleur dans un
+canvas hors écran, puis estampée. Ombrer chaque point où il atterrit
+construirait neuf cents dégradés par image ; celui-ci en construit
+treize pour la vie du dessin.
+
+Le zoom est un ressort (dépassement de 11 %, stabilisé en 19 images) et
+la rotation garde son élan à la relâche pendant environ une seconde. Qui
+a demandé à son système de ne pas animer ne reçoit que la cible.
 
 Survoler nomme le morceau ; cliquer le joue, la carte devenant une entrée
 dans la file comme une ligne de la liste ; le morceau en cours est
