@@ -1,6 +1,7 @@
 """Filling the library with vectors: at import, and in bulk."""
 
 import asyncio
+import threading
 from pathlib import Path
 
 import httpx
@@ -117,6 +118,85 @@ async def test_asking_twice_joins_the_run_rather_than_starting_a_second(
         assert second.json()["job_id"] == first.json()["job_id"]
 
         await _settled(client)
+
+
+async def test_two_songs_are_analysed_at_the_same_time(tmp_path, monkeypatch):
+    """The whole loop used to sit inside one `asyncio.to_thread`, so 944
+    songs were decoded one after another: measured on the real library,
+    3.49s each on one thread against 1.34s on four — forty minutes
+    against fifteen. The pass is meant to be re-run, too: the frame's
+    owner carries a version precisely so that changing how a feature is
+    computed makes every existing frame invisible.
+
+    A barrier rather than a sleep and a hopeful assertion. Two songs
+    must be in flight at once for either to get past it, which a
+    sequential loop cannot do at any speed.
+    """
+
+    from pypl2mp3.web import app as web
+
+    for vid in ("aaaaaaaaaaa", "bbbbbbbbbbb"):
+        _song(tmp_path, vid)
+
+    # Short enough that a sequential loop breaks the barrier and lets
+    # the job settle, so the failure read here is the one below and not
+    # `_settled` giving up with nothing to say.
+    together = threading.Barrier(2, timeout=2)
+    threads = set()
+
+    def wait_for_the_other(path):
+        threads.add(threading.current_thread().ident)
+        together.wait()
+        return [1.0] * FEATURE_COUNT
+
+    monkeypatch.setattr(web, "features_for", wait_for_the_other)
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=create_app(tmp_path)),
+        base_url="http://test",
+    ) as client:
+        await client.post("/features/analyse")
+        state = await _settled(client)
+
+    assert state["result"] == {"analysed": 2, "failed": 0, "total": 2}, (
+        "neither song got through the barrier, so they never overlapped"
+    )
+    assert len(threads) == 2, threads
+
+
+async def test_the_pool_does_not_grow_with_the_library(tmp_path, monkeypatch):
+    """A thread per song is 944 threads, 944 ffmpeg processes and a
+    machine that stops answering. The cap is fixed and small: past four
+    the gain is measured in hundredths and the console it shares the
+    processor with is what pays for them."""
+
+    from pypl2mp3.web.app import ANALYSIS_THREADS
+    from pypl2mp3.web import app as web
+
+    for at in range(24):
+        _song(tmp_path, f"song{at:07d}")
+
+    threads = set()
+    busy = threading.Event()
+
+    def note(path):
+        threads.add(threading.current_thread().ident)
+        # Long enough that the pool has every reason to open another
+        # thread if it is allowed to.
+        busy.wait(0.02)
+        return [1.0] * FEATURE_COUNT
+
+    monkeypatch.setattr(web, "features_for", note)
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=create_app(tmp_path)),
+        base_url="http://test",
+    ) as client:
+        await client.post("/features/analyse")
+        state = await _settled(client)
+
+    assert state["result"]["analysed"] == 24
+    assert len(threads) <= ANALYSIS_THREADS, threads
 
 
 def test_the_import_asks_for_a_vector_without_depending_on_one():

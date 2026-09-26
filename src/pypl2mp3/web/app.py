@@ -8,8 +8,10 @@ passed the wrong flag.
 
 import asyncio
 import collections
+import os
 import urllib.parse
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -52,6 +54,37 @@ from pypl2mp3.web.web_progress import WebProgress
 
 # Arbitrary, memorable, unlikely to collide with a dev server.
 DEFAULT_PORT = 8731
+
+# How many songs the bulk analysis decodes at once.
+#
+# ffmpeg is a subprocess and numpy drops the interpreter lock for the
+# transforms, so the threads genuinely overlap. Measured on the real
+# library, twelve songs a round: 3.49s a song on one thread, 2.35 on
+# two, 1.87 on three, 1.78 on four, 2.23 on six, 2.16 on eight. Four
+# physical cores, and the curve says so — past them the threads take
+# the work off each other rather than adding any.
+#
+# Three and four are the same number twice: run head to head, four
+# rounds each, alternated so a slow patch could not favour one, the
+# medians were 22.5s and 21.4s with ranges that almost entirely
+# overlap. Four is kept because it is what the machine has.
+#
+# `min` because this runs on other people's machines and a smaller one
+# should not be oversubscribed. The literal is not cpu_count(): that
+# reports eight here, the hyperthreads, and eight measured worse than
+# two.
+#
+# End to end through this route, on sixteen real songs with their
+# frames stripped: 52.8s on one thread against 27.9s on four, 3.30s a
+# song against 1.75 — 1.89x, which puts a full library nearer twenty
+# minutes than forty.
+#
+# It is not free. The console answers while it runs, which is what the
+# worker thread was for, but a list fragment goes from a median of
+# 4.1ms to 9.2ms and a worst of 24.5ms to 53.0ms, measured over
+# hundreds of requests during the pass. Both are far under anything a
+# hand notices; neither is nothing.
+ANALYSIS_THREADS = min(4, os.cpu_count() or 4)
 
 
 def create_app(repository_path: Path) -> FastAPI:
@@ -400,20 +433,31 @@ def create_app(repository_path: Path) -> FastAPI:
             def analyse() -> dict:
                 analysed = failed = 0
 
-                for song in songs:
-                    try:
-                        features_for(song)
-                        analysed += 1
-                    except Exception:
-                        # One unreadable file must not cost the other
-                        # nine hundred and forty-three.
-                        failed += 1
+                # The counting happens here, in the one thread draining
+                # the results, so there is nothing for the workers to
+                # share and nothing to lock.
+                with ThreadPoolExecutor(
+                    max_workers=ANALYSIS_THREADS,
+                    thread_name_prefix="analyse",
+                ) as pool:
+                    waiting = [pool.submit(features_for, song)
+                               for song in songs]
+
+                    for done in as_completed(waiting):
+                        try:
+                            done.result()
+                            analysed += 1
+                        except Exception:
+                            # One unreadable file must not cost the
+                            # other nine hundred and forty-three.
+                            failed += 1
 
                 return {"analysed": analysed, "failed": failed,
                         "total": len(songs)}
 
-            # In a worker thread: ffmpeg and numpy both block, and the
-            # event loop has a player to go on answering.
+            # Off the event loop: ffmpeg and numpy both block, and there
+            # is a player to go on answering. The pool lives inside that
+            # one thread, which waits on it.
             return await asyncio.to_thread(analyse)
 
         try:
