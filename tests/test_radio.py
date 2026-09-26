@@ -526,3 +526,51 @@ async def test_the_next_mark_is_the_size_of_the_buttons_beside_it(tmp_path):
         r"\n\.neighbour\.is-next, \.neighbour\.is-next:hover \{([^}]*)\}", css
     )
     assert quiet and "cursor: default" in quiet.group(1), quiet
+
+
+def test_the_map_falls_back_to_a_flat_canvas():
+    """Every browser has a 2D context; a WebGL one is a privilege. A
+    point cloud asks a renderer for very little — a rotation, a
+    projection, a depth order and a filled circle each — so it does not
+    need the privilege.
+
+    This is also the only rendering path anyone here can check: the
+    browser these are driven in has its GPU process switched off, which
+    is the same fault the map was reported with.
+    """
+
+    source = Path("src/pypl2mp3/web/static/map.js").read_text()
+
+    assert "function buildFlat(" in source
+    assert "drawn = buildFlat(said);" in source, (
+        "nothing reaches the flat renderer when WebGL refuses"
+    )
+
+    flat = source[source.index("function buildFlat("):]
+    flat = flat[:flat.index("\nfunction showLegend(")]
+
+    # Drawn when something changes, not sixty times a second: every
+    # frame is rasterised by the processor on the machine this was
+    # written for.
+    assert "requestAnimationFrame" not in flat, (
+        "a still cloud is being redrawn in a loop"
+    )
+
+    # Far to near, which is the whole of what a depth buffer did.
+    assert "b.depth - a.depth" in flat, "the points are not depth-sorted"
+
+
+def test_a_drag_across_the_map_does_not_play_what_it_stops_over():
+    """`dragging` is moved to the pointer on every step so that the
+    turning is incremental. Comparing the release against it measured
+    the last pixel rather than the journey, so every drag ended in a
+    click — measured in a browser: one song playing after a 130-pixel
+    drag, none after the fix."""
+
+    source = Path("src/pypl2mp3/web/static/map.js").read_text()
+
+    assert "let began = null;" in source
+    assert re.search(r"spun = began && \(", source), (
+        "the drag is judged against where it got to, not where it began"
+    )
+    assert "if (spun || over < 0) return;" in source
