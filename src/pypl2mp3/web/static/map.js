@@ -52,12 +52,25 @@ let asked = null;
 // working all along.
 let renderer = null;
 
+// Remembered whether it worked *or not*. Caching only the success left
+// every later selection asking again on a browser that cannot answer,
+// and three.js logs a paragraph each time: four attempts, four walls of
+// text, for one thing that was settled on the first.
+let refused = null;
+
 function canvasRenderer() {
   if (renderer) return renderer;
+  if (refused) throw refused;
 
-  renderer = new THREE.WebGLRenderer({
-    canvas: canvas, antialias: true, alpha: true,
-  });
+  try {
+    renderer = new THREE.WebGLRenderer({
+      canvas: canvas, antialias: true, alpha: true,
+    });
+  } catch (error) {
+    refused = error;
+    throw error;
+  }
+
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
   return renderer;
