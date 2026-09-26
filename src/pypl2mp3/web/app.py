@@ -7,6 +7,9 @@ passed the wrong flag.
 """
 
 import asyncio
+import collections
+import urllib.parse
+import json
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -33,8 +36,11 @@ from pypl2mp3.services.find_song import (
     song_key,
 )
 from pypl2mp3.services.fix_junks import apply_fix, propose_fix
+from pypl2mp3.libs.features import features_for
 from pypl2mp3.services.import_playlist import import_playlist
 from pypl2mp3.services.junkize_songs import junkize_song
+from pypl2mp3.services import song_map
+from pypl2mp3.services.similarity import Space, chain
 from pypl2mp3.services.list_songs import (
     DEFAULT_MATCH_THRESHOLD,
     in_playlist_order,
@@ -377,6 +383,49 @@ def create_app(repository_path: Path) -> FastAPI:
 
         return {"job_id": job.job_id}
 
+    @app.post("/features/analyse")
+    async def start_analysis():
+        """Give every song in the repository a vector.
+
+        One job for the whole library rather than one per playlist: the
+        neighbours and the map both span everything, and a half-analysed
+        library is exactly what draws a map with holes in it.
+        """
+
+        repository_path = app.state.repository_path
+
+        async def work(job) -> dict:
+            songs = sorted(Path(repository_path).glob("*/*.mp3"))
+
+            def analyse() -> dict:
+                analysed = failed = 0
+
+                for song in songs:
+                    try:
+                        features_for(song)
+                        analysed += 1
+                    except Exception:
+                        # One unreadable file must not cost the other
+                        # nine hundred and forty-three.
+                        failed += 1
+
+                return {"analysed": analysed, "failed": failed,
+                        "total": len(songs)}
+
+            # In a worker thread: ffmpeg and numpy both block, and the
+            # event loop has a player to go on answering.
+            return await asyncio.to_thread(analyse)
+
+        try:
+            job = app.state.jobs.start("features", work)
+        except JobAlreadyRunning:
+            # Joining the run rather than refusing: two passes over the
+            # same files, each rewriting the same tags, is how a library
+            # ends up with a half-written MP3 in it.
+            job = app.state.jobs.get("features")
+
+        return {"job_id": job.job_id}
+
     @app.get("/jobs/{job_id}")
     def job_status(job_id: str, request: Request):
         job = app.state.jobs.get(job_id)
@@ -407,9 +456,24 @@ def create_app(repository_path: Path) -> FastAPI:
             "error": job.error,
         }
 
+    def _label_of(song) -> str:
+        """"Artist - Title", or whichever half of it exists."""
+
+        return " - ".join(part for part in (song.artist, song.title) if part)
+
+    def _space(songs):
+        """The distances over a selection, for the songs that have a
+        vector. Built on demand and not kept: it belongs to a selection,
+        and a selection changes with every keystroke in the filter."""
+
+        return Space.build([
+            (song.key, song.youtube_id, list(song.features))
+            for song in songs if song.features
+        ])
+
     def _selection(
         playlist: str, q: str, junk: int, match: float, artist: str = "",
-        order: str = "",
+        order: str = "", start: str = "",
     ):
         """The songs a query selects. Shared by the shell and the fragment.
 
@@ -439,6 +503,16 @@ def create_app(repository_path: Path) -> FastAPI:
         #
         # Here and not in `list_songs`, because the CLI lists by artist
         # and must go on doing so.
+        if order == "radio":
+            # A walk from each song to its nearest, which makes the row
+            # after any song that song's nearest among those still to
+            # come — by construction, so nothing decides it when a track
+            # ends.
+            walk = chain(_space(songs), [song.key for song in songs], start)
+            where = {key: at for at, key in enumerate(walk)}
+
+            return sorted(songs, key=lambda song: where[song.key])
+
         ranked = in_playlist_order(app.state.repository_path, songs)
 
         if order == "name":
@@ -460,6 +534,7 @@ def create_app(repository_path: Path) -> FastAPI:
         artist: str = "",
         match: float = DEFAULT_MATCH_THRESHOLD,
         order: str = "",
+        start: str = "",
     ) -> HTMLResponse:
         """The whole application, in one page.
 
@@ -474,11 +549,13 @@ def create_app(repository_path: Path) -> FastAPI:
         # A pass over 900 songs costs 1.4s, so when nothing is filtered —
         # the usual case — the listing reuses this rather than asking
         # again for the same thing.
-        everything = _selection(playlist, "", 0, match, order=order)
+        everything = _selection(playlist, "", 0, match, order=order,
+                                start=start)
         filtered = (
             everything
             if not (q or junk or artist)
-            else _selection(playlist, q, junk, match, artist, order)
+            else _selection(playlist, q, junk, match, artist, order,
+                            start)
         )
 
         return templates.TemplateResponse(
@@ -493,11 +570,14 @@ def create_app(repository_path: Path) -> FastAPI:
                 "query": q,
                 "junk_only": bool(junk),
                 "artist": artist,
-                # Which of the three orders the listing arrived in, so a
-                # reload lights the icon that is actually true. Never
+                # Which order the listing arrived in, so a reload
+                # lights the icon that is actually true. Never
                 # "shuffle": a random order lives in the browser, so a
                 # page fetched afresh is not in one whatever was asked.
-                "order": "name" if order == "name" else "youtube",
+                # The radio is not like that — the server can walk a
+                # selection from the top without being told where to
+                # start — so it survives a reload as the other two do.
+                "order": order if order in ("name", "radio") else "youtube",
                 "total_songs": sum(s.total_songs for s in summaries),
                 "total_junk": sum(s.junk_songs for s in summaries),
                 "repository": str(app.state.repository_path),
@@ -725,14 +805,24 @@ def create_app(repository_path: Path) -> FastAPI:
         artist: str = "",
         match: float = DEFAULT_MATCH_THRESHOLD,
         order: str = "",
+        start: str = "",
     ) -> HTMLResponse:
         """The listing on its own, for the console to swap in."""
+
+        songs = _selection(playlist, q, junk, match, artist, order, start)
 
         return templates.TemplateResponse(
             request,
             "_list.html",
             {
-                "songs": _selection(playlist, q, junk, match, artist, order),
+                "songs": songs,
+                # Only with the radio, and only then: it is 48 KB over
+                # this library, which is nothing once but not nothing on
+                # every keystroke in the filter box.
+                "radio_map": (
+                    json.dumps(_space(songs).table(), separators=(",", ":"))
+                    if order == "radio" else ""
+                ),
                 # Repeating one playlist's name down 874 rows teaches
                 # nothing. It earns its place only when the selection
                 # spans more than one.
@@ -761,14 +851,182 @@ def create_app(repository_path: Path) -> FastAPI:
             raise HTTPException(status_code=404, detail="unknown song")
 
     @app.get("/fragments/inspector/{key}", response_class=HTMLResponse)
-    def inspector_fragment(key: str, request: Request) -> HTMLResponse:
-        """One song's details and the form that changes them."""
+    def inspector_fragment(
+        key: str,
+        request: Request,
+        playlist: str = "",
+        q: str = "",
+        junk: int = 0,
+        artist: str = "",
+        match: float = DEFAULT_MATCH_THRESHOLD,
+        order: str = "",
+        start: str = "",
+    ) -> HTMLResponse:
+        """One song's details, the form that changes them, and its five
+        nearest — all three sharing one cell, so the panel is the same
+        height whichever is showing.
+
+        It carries the filters for the neighbours' sake: they may only
+        offer what the listing holds.
+        """
 
         return templates.TemplateResponse(
             request,
             "_inspector.html",
-            {"song": _summary_or_404(key)},
+            {
+                "song": _summary_or_404(key),
+                "filters": _filter_query(playlist, q, junk, artist, match,
+                                         order, start),
+                **_neighbours_of(key, playlist, q, junk, match, artist,
+                                 order, start),
+            },
         )
+
+    # The layout costs two seconds over 944 songs, so it is kept —
+    # keyed on exactly the songs it was computed for, which is what
+    # makes a stale one impossible rather than unlikely. Two entries:
+    # the whole library, and whatever is being looked at beside it.
+    app.state.map_cache = {}
+
+    @app.get("/map/points")
+    async def map_points(
+        playlist: str = "",
+        q: str = "",
+        junk: int = 0,
+        artist: str = "",
+        match: float = DEFAULT_MATCH_THRESHOLD,
+    ):
+        """Where every song in the selection sits, and what colours it.
+
+        Position comes from the sound and colour from the genre, which
+        is two independent sources on purpose: if the colours clump, the
+        vector caught something real; if they are peppered at random, it
+        did not. The map checks itself.
+        """
+
+        songs = _selection(playlist, q, junk, match, artist)
+        signature = tuple(song.key for song in songs)
+
+        places = app.state.map_cache.get(signature)
+        if places is None:
+            space = _space(songs)
+            # In a worker thread: numpy blocks, and the event loop has a
+            # player to go on answering.
+            places = await asyncio.to_thread(
+                song_map.layout, space, [song.key for song in songs]
+            )
+            if len(app.state.map_cache) > 2:
+                app.state.map_cache.clear()
+            app.state.map_cache[signature] = places
+
+        # The genres worth a colour of their own. Forty-nine distinct
+        # ones would not be a legend, it would be a second problem.
+        counted = collections.Counter(
+            song.genre for song in songs if song.genre
+        )
+        lit = [name for name, _ in counted.most_common(12)]
+        shade = {name: at for at, name in enumerate(lit)}
+
+        return {
+            "genres": lit,
+            "points": [
+                {
+                    "key": song.key,
+                    "id": song.youtube_id,
+                    "label": _label_of(song),
+                    "genre": song.genre,
+                    # -1 for the thirty-seven that share a grey, and for
+                    # the hundred and twenty-four with no genre at all.
+                    "shade": shade.get(song.genre, -1),
+                    "at": [round(value, 4) for value in places[song.key]],
+                    "known": bool(song.features),
+                }
+                for song in songs
+            ],
+        }
+
+    def _filter_query(playlist, q, junk, artist, match, order, start) -> str:
+        """The current selection, as a query string.
+
+        It rides on the save form's action rather than in its body. The
+        filter form has an `artist` field and so does the inspector's,
+        and `hx-include` would post both under one name — the save would
+        then write the artist you were filtering by onto the song.
+        """
+
+        said = {
+            "playlist": playlist, "q": q, "artist": artist,
+            "order": order, "start": start,
+        }
+        parts = [(name, value) for name, value in said.items() if value]
+        if junk:
+            parts.append(("junk", "1"))
+        if match != DEFAULT_MATCH_THRESHOLD:
+            parts.append(("match", str(match)))
+
+        return ("?" + urllib.parse.urlencode(parts)) if parts else ""
+
+    def _neighbours_of(key: str, playlist, q, junk, match, artist,
+                       order, start) -> dict:
+        """The five songs nearest one, inside the current selection.
+
+        It takes the filters because the radio may only offer what it
+        could actually play, and what it could play is what the listing
+        holds. In "All songs" that is the whole library; filtered to one
+        playlist, it stays inside it.
+
+        Returns the panel's whole context, because the inspector renders
+        the panel inside itself: one request a song rather than two, and
+        the two can no longer disagree about which song is being shown.
+        """
+
+        songs = _selection(playlist, q, junk, match, artist, order, start)
+        space = _space(songs)
+        by_key = {song.key: song for song in songs}
+
+        # Only what is still ahead: offering the song just played would
+        # be offering to go backwards, which the player already has a
+        # button for.
+        every = [song.key for song in songs]
+        after = every
+        if key in every:
+            after = every[every.index(key) + 1:]
+
+        found = space.neighbours(key, count=5, among=set(after))
+
+        # Unless there is nothing ahead. The last song of any listing has
+        # nothing after it — and so did any song that a save had just
+        # renamed to the end of the alphabet — which left the panel empty
+        # for no reason the reader could see. Behind is better than
+        # nothing: you can still line up a song you passed.
+        if not found:
+            found = space.neighbours(key, count=5)
+
+        return {
+                "key": key,
+                "analysed": space.knows(key),
+                "neighbours": [
+                    {
+                        "key": near.key,
+                        "youtube_id": by_key[near.key].youtube_id,
+                        "label": _label_of(by_key[near.key]),
+                        "percentile": round(near.percentile),
+                        # Five marks rather than a number nobody can
+                        # read. The scale is the space's own, because it
+                        # has to mean the same thing over eleven songs
+                        # and over nine hundred.
+                        "dots": space.closeness(near.distance),
+                        "facet": near.facet,
+                        # The walk puts the nearest next, so in radio
+                        # order the first of these IS the row after this
+                        # one. Said by comparing the two rather than
+                        # assumed, because a song lined up by hand can
+                        # have taken that place.
+                        "is_next": bool(after) and near.key == after[0],
+                    }
+                    for near in found
+                ],
+        }
 
     @app.get("/fragments/workbench/{key}", response_class=HTMLResponse)
     def workbench_fragment(
@@ -862,8 +1120,26 @@ def create_app(repository_path: Path) -> FastAPI:
         return {"cancelled": app.state.jobs.cancel(f"shazam:{key}")}
 
     @app.post("/songs/{key}/fix")
-    async def submit_fix(key: str, request: Request):
-        """Write the metadata the user settled on."""
+    async def submit_fix(
+        key: str,
+        request: Request,
+        playlist: str = "",
+        q: str = "",
+        junk: int = 0,
+        artist: str = "",
+        match: float = DEFAULT_MATCH_THRESHOLD,
+        order: str = "",
+        start: str = "",
+    ):
+        """Write the metadata the user settled on.
+
+        The selection rides in on the query string, because what comes
+        back is the whole panel — neighbours included — and those may
+        only offer what the listing holds. Without it the panel returned
+        with no neighbours at all, which it reported as "this song has
+        not been analysed yet": a sentence about the file, for what was
+        really a missing argument.
+        """
 
         form = await request.form()
 
@@ -893,7 +1169,14 @@ def create_app(repository_path: Path) -> FastAPI:
             response = templates.TemplateResponse(
                 request,
                 "_inspector.html",
-                {"song": song, "saved": True},
+                {
+                    "song": song,
+                    "saved": True,
+                    "filters": _filter_query(playlist, q, junk, artist,
+                                             match, order, start),
+                    **_neighbours_of(song.key, playlist, q, junk, match,
+                                     artist, order, start),
+                },
             )
             response.headers["HX-Trigger"] = "songsChanged"
             return response

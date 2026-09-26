@@ -1,0 +1,67 @@
+{# The five songs nearest the one being inspected.
+
+   The five nearest overall, not one per facet: two songs at the same
+   tempo can have nothing else in common, and what this panel is for is
+   carrying on listening rather than jumping sideways. The word beside
+   each one is the facet where the gap is smallest — an explanation of a
+   neighbour already chosen, not the reason it was chosen.
+
+   Out of radio mode this is still a panel of five Play next buttons and
+   still useful; it just has no NEXT, because the order in force is not
+   the one the neighbours are in.
+
+   It shares a cell with the fields that change the song's tags and with
+   the block Shazam answers into, so the panel is the same height
+   whichever of the three is showing. Which one that is, is a class on
+   the body — and the default is this, because listening is continuous
+   and correcting is occasional. #}
+<div id="neighbours" data-song-key="{{ key }}">
+  {% if neighbours %}
+    <ul class="neighbour-list">
+      {% for near in neighbours %}
+        <li class="neighbour{% if near.is_next %} is-next{% endif %}"
+            id="neighbour-{{ near.key }}"
+            data-song-key="{{ near.key }}"
+            data-song-id="{{ near.youtube_id }}"
+            data-label="{{ near.label }}"
+            data-closeness="{{ near.dots }}">
+          <span class="neighbour-name" title="{{ near.label }}"
+            >{{ near.label }}</span>
+          {# Five marks, filled to the percentile: a distance means
+             nothing on its own, its rank among every pair in this
+             selection means something. #}
+          <span class="closeness" aria-label="closer than
+                {{ near.percentile }}% of pairs"
+            >{% for step in range(5) %}<span
+                class="pip{% if step < near.dots %} lit{% endif %}"
+              ></span>{% endfor %}</span>
+          <span class="neighbour-why">{{ near.facet }}</span>
+          {# Whichever of these two is shown is decided by `is-next` on
+             the row, and both are rendered: the mark has to be able to
+             move without a round trip. Lining a song up by hand makes
+             it the next row a tenth of a second later, and a panel that
+             went on naming the old one would be saying something false
+             about what is about to play. #}
+          <span class="neighbour-do">
+            {# Shaped like the buttons beside it so the column does not
+               jog, and filled rather than outlined because it is not an
+               offer: it says what is about to happen. A span and not a
+               disabled button — nothing is being withheld here, there
+               is only a fact. #}
+            <span class="up-next">Next</span>
+            <button type="button" data-play-next
+                    title="Play it after the one playing">Play next</button>
+          </span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="neighbours-none">
+      {% if analysed %}
+        Nothing else in this selection to compare it with.
+      {% else %}
+        This song has not been analysed yet.
+      {% endif %}
+    </p>
+  {% endif %}
+</div>

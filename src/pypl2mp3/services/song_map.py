@@ -1,0 +1,332 @@
+#!/usr/bin/env python3
+"""
+PYPL2MP3: YouTube playlist MP3 converter and player,
+with Shazam song identification and tagging capabilities.
+
+Where each song sits, once the forty numbers become three.
+
+Not a projection. A principal component analysis is free and
+deterministic, but it keeps the global variance rather than the local
+structure: on audio features it gives one uniform potato in which
+everything overlaps. t-SNE and UMAP separate beautifully and cost a
+dependency and a seed.
+
+So: a graph of each song's nearest few, relaxed in space by a fixed
+number of rounds — attraction along the edges, repulsion between every
+pair. The same corpus gives the same cloud on every machine, which
+matters because the map must not jump when an import has happened.
+
+Three dimensions for real, and not a flat layout lifted by a hash.
+Keeping the structure in two axes gives a picture that is technically
+three-dimensional and reads as a flat map with jitter; letting the
+islands find their shape in all three makes clusters you can orbit.
+
+Copyright 2024 © Thierry Thiers <webcoder31@gmail.com>
+License: CeCILL-C (http://www.cecill.info)
+Repository: https://github.com/webcoder31/pypl2mp3
+"""
+
+# Python core modules
+import hashlib
+import math
+
+# Third-party packages
+import numpy as np
+
+
+# How many neighbours hold a song in place.
+#
+# Four, and the number was measured rather than reasoned about. At eight
+# the cloud came out as a sphere with three quarters of the library
+# packed into the inner half of its radius — a dense core with a few
+# filaments escaping and a handful of songs orbiting outside. The cause
+# is the graph: a song held by eight mutual threads is held by the crowd
+# it is in, and a crowd all holding each other cannot come apart.
+#
+# Thinning is the only one of three levers that helps. Measured over the
+# library, with the share of songs inside half the radius, the third
+# principal axis over the first, and how often a song's neighbours are
+# by the same artist:
+#
+#     k        core   volume   artist
+#     8         74%     0.68     11.0x
+#     6         67%     0.65     11.2x
+#     4         50%     0.83     10.6x
+#     3         36%     0.75      9.7x
+#
+# Three is past the end: the artist agreement finally drops, and 390
+# songs of 944 are left hanging on the single fallback thread below —
+# which is the halo this was meant to avoid, wearing another hat.
+#
+# Between four and eight that agreement wanders between 10.2x and 11.2x
+# with no trend, so those differences are the particular graph rather
+# than a law; what is monotone is the core and, near enough, the volume.
+# Four takes the core from three quarters to half at no cost the ruler
+# can see.
+#
+# The other two levers were tried and dropped. An attraction growing
+# with distance — Fruchterman-Reingold's spring — empties the core too,
+# and costs: 11.0x falls to 9.4x at eight neighbours. It spreads without
+# structuring. Weighting each edge by how near it is flattens the cloud
+# instead: the volume falls from 0.68 to 0.43.
+EDGES = 4
+
+# Fixed, and not a tolerance: a relaxation that stops when it stops
+# moving stops at a different place on a different machine, and the
+# whole point of this is that it does not.
+#
+# 150 because that is where it is best, measured over the 944 by how
+# often a song's neighbours on the map are by the same artist: 1.2x
+# chance before any relaxation at all, 4.1x at fifty rounds, 6.5x at a
+# hundred and fifty, and then back down — 6.4x at three hundred, 6.2x
+# at six. Left running, the repulsion slowly spreads out what the
+# attraction gathered. Two seconds over the whole library.
+ROUNDS = 150
+
+# What the two forces are worth against each other. Attraction alone
+# collapses the cloud to a point; repulsion alone scatters it evenly and
+# says nothing.
+#
+# The repulsion is divided by the number of songs, and that is not a
+# detail. Summed raw, each song is pushed by nine hundred others and
+# pulled by eight — so the push wins by two orders of magnitude and the
+# structure the graph holds is flattened out of the cloud. Divided, each
+# force is worth the same per neighbour.
+PULL = 0.3
+PUSH = 0.2
+
+# A repulsion of 1/d² rather than 1/d: it stops mattering at a distance,
+# which is what lets two groups come apart instead of being held at
+# arm's length by every song in the other one.
+#
+# Held by measurement rather than by a test, and said so plainly: the
+# effect is a statistic of a nine-hundred-point cloud, and a dozen songs
+# made up in a test do not reproduce it. Over the library it is worth
+# about half a point of the artist agreement; the numbers for the change
+# that matters far more — keeping only mutual edges — are on
+# `mutual_edges` below.
+
+# How far a point may travel in one round, in units of the cloud's own
+# scale. Without it two points that start on top of each other are flung
+# to infinity by their own repulsion on the first step.
+STEP = 0.1
+
+
+def _seeded(key: str) -> np.ndarray:
+    """A starting place that depends only on the song's name.
+
+    Deterministic, and spread: two songs whose keys differ by a
+    character must not start on top of each other, or the repulsion
+    between them is a division by very nearly zero.
+    """
+
+    digest = hashlib.blake2s(key.encode(), digest_size=12).digest()
+    three = np.frombuffer(digest, dtype="<u4").astype(np.float64)
+
+    return three / 0xFFFFFFFF - 0.5
+
+
+def _shell(count: int, radius: float, middle: np.ndarray) -> np.ndarray:
+    """`count` points spread over a sphere, by the Fibonacci rule.
+
+    Where the songs nobody has analysed go. Nothing can occlude the
+    outermost layer of a scene, so they stay countable from every angle
+    the camera can reach — and their place says the right thing: matter
+    not joined to anything, on the periphery of the structure.
+    """
+
+    if count == 0:
+        return np.zeros((0, 3))
+
+    golden = math.pi * (3.0 - math.sqrt(5.0))
+    at = np.arange(count, dtype=np.float64)
+
+    # Spread evenly in height, then turned by the golden angle: the
+    # arrangement that gives no two points the same place and no band
+    # the crowding that even spacing in latitude would.
+    y = 1.0 - (at / max(1.0, count - 1.0)) * 2.0 if count > 1 else np.zeros(1)
+    ring = np.sqrt(np.clip(1.0 - y * y, 0.0, None))
+    angle = golden * at
+
+    out = np.stack([np.cos(angle) * ring, y, np.sin(angle) * ring], axis=1)
+
+    return middle + out * radius
+
+
+def mutual_edges(table, known, at_of):
+    """The threads that hold the cloud together.
+
+    Only where both songs name the other — and that one rule is what
+    turns the picture from a sheet into a landscape. With every song's
+    eight kept whatever the other thinks, one song's opinion is enough
+    to tie two groups together, and with nine hundred songs each holding
+    eight such threads nothing can come apart: the cloud relaxes into an
+    even, slightly twisted slab.
+
+    Measured over the library, against the directed graph:
+      volume    third principal axis over the first, 0.16 to 0.68
+      clumping  spread of the distance to each song's eighth
+                neighbour, 0.20 to 0.84 — 0.15 is an even cloud
+      artist    how often a song's neighbours on the map are by the
+                same artist, 6.5x chance to 11.0x
+
+    The last is the one that matters: the picture gained structure *and*
+    the structure got truer. Forty dimensions give 14.2x, so three now
+    hold three quarters of it.
+
+    2 763 of 7 552 edges survive the rule, and it leaves 336 songs
+    naming others that never name back. Those keep their nearest one
+    anyway: a point with nothing pulling on it has only the repulsion
+    left, and the repulsion's whole job is to push it away. A song whose
+    liking is unreturned still belongs beside the song it likes, and not
+    in a halo round the outside where a song nobody has analysed goes.
+    With the thread no song is held by nothing at all. At four
+    neighbours 573 songs of 944 hang by a single edge, 313 of them the
+    fallback — which is what a thinned graph looks like, and why three
+    is past the end: there it is 390 on the fallback alone.
+
+    Args:
+        table: the neighbour table, as `Space.table` returns it.
+        known: the songs to place, in the order they will be placed.
+        at_of: each key's position in the table.
+
+    Returns:
+        Two arrays of row numbers into `known`, the same length.
+    """
+
+    place = {key: at for at, key in enumerate(known)}
+    names = {at_of[key]: key for key in known}
+
+    starts, ends = [], []
+
+    for at, key in enumerate(known):
+        mine = table["near"][at_of[key]]
+        held = 0
+
+        for other in mine:
+            name = names.get(other)
+            if name is None or at_of[key] not in table["near"][other]:
+                continue
+
+            starts.append(at)
+            ends.append(place[name])
+            held += 1
+
+        if not held:
+            # Nobody names it back. Its own nearest, then — one thread
+            # rather than none.
+            for other in mine:
+                name = names.get(other)
+                if name is not None:
+                    starts.append(at)
+                    ends.append(place[name])
+                    break
+
+    return np.array(starts, dtype=int), np.array(ends, dtype=int)
+
+
+def layout(space, keys, rounds: int = ROUNDS) -> dict:
+    """Place every song in the selection.
+
+    Args:
+        space: the distances, built over the same selection.
+        keys: every row, including songs the space does not know.
+        rounds: how many relaxation steps. Fixed rather than a
+            tolerance, so the same corpus gives the same cloud.
+
+    Returns:
+        {key: (x, y, z)} for every key given, as plain floats.
+    """
+
+    known = [key for key in keys if space.knows(key)]
+    unknown = [key for key in keys if not space.knows(key)]
+
+    if not known:
+        # Nothing has been analysed. The shell is the whole map, which
+        # is an honest picture of that.
+        places = _shell(len(unknown), 1.0, np.zeros(3))
+        return {key: tuple(float(v) for v in places[at])
+                for at, key in enumerate(unknown)}
+
+    table = space.table(count=EDGES)
+    at_of = {key: at for at, key in enumerate(table["keys"])}
+
+    here = np.array([_seeded(key) for key in known])
+    count = len(known)
+
+    # The edges — and only where both songs name the other.
+    #
+    # This one rule is what turns the picture from a sheet into a
+    # landscape. With every song's eight kept regardless, one song's
+    # opinion of another is enough to tie two groups together, and with
+    # nine hundred songs each holding eight such threads nothing can come
+    # apart: the cloud relaxes into an even, slightly twisted slab. Kept
+    # mutual, the threads that hold only one way let go.
+    #
+    # Measured over the library, against the directed graph:
+    #   volume    the third principal axis over the first, 0.16 to 0.79
+    #   clumping  spread of the distance to each song's eighth
+    #             neighbour, 0.20 to 0.71 — 0.15 is an even cloud
+    #   artist    how often a song's neighbours on the map are by the
+    #             same artist, 6.5x chance to 10.6x
+    #
+    # The last one is the one that matters: the picture got more
+    # structure *and* the structure got truer. In forty dimensions the
+    # vectors give 14.2x, so three now hold three quarters of it.
+    starts, ends = mutual_edges(table, known, at_of)
+
+    for round_at in range(rounds):
+        # Repulsion, every pair against every other.
+        #
+        # Written as two matrix products rather than as the (n, n, 3)
+        # array of differences it looks like. The sum over j of
+        # (x_i - x_j) / d² is x_i * Σ(1/d²) - Σ(x_j / d²), which is a
+        # column sum and one matmul. The direct form allocates 21 MB a
+        # round and took 25 seconds over 944 songs; this takes one.
+        square = (here ** 2).sum(axis=1)
+        gap = square[:, None] + square[None, :] - 2 * (here @ here.T)
+        np.fill_diagonal(gap, np.inf)
+        # 1/d², where gap is the squared distance — so d³ in terms of
+        # gap, which is gap times its own root. Written that way and not
+        # as `gap ** 1.5`: a fractional power is a transcendental call
+        # on every one of 890 000 elements, a hundred and fifty times
+        # over, and it took the whole layout from two seconds to more
+        # than ten minutes. A square root is an instruction.
+        gap = np.maximum(gap, 1e-9)
+        weight = 1.0 / (gap * np.sqrt(gap))
+
+        push = (here * weight.sum(axis=1)[:, None] - weight @ here) \
+            * (PUSH / count)
+
+        pull = np.zeros_like(here)
+        if starts.size:
+            along = here[ends] - here[starts]
+            np.add.at(pull, starts, along * PULL)
+
+        move = push + pull
+
+        # Clamped, because two points that start almost on top of each
+        # other repel each other to infinity on the first step — and
+        # cooled, because a step that never shrinks cannot settle.
+        #
+        # Cooling is right and it is not what made this work: measured
+        # with and without, over the whole library, it moves the result
+        # by nothing at all. Kept because a walk that never slows is not
+        # a layout, not because it rescued one.
+        allowed = STEP * (1.0 - round_at / rounds) ** 2
+        travel = np.sqrt((move ** 2).sum(axis=1))
+        scale = np.minimum(1.0, allowed / np.maximum(travel, 1e-9))
+        here = here + move * scale[:, None]
+
+    places = {key: tuple(float(v) for v in here[at])
+              for at, key in enumerate(known)}
+
+    if unknown:
+        middle = here.mean(axis=0)
+        # Outside everything, so nothing in the cloud can hide one.
+        radius = float(np.linalg.norm(here - middle, axis=1).max()) * 1.25 + 1.0
+        out = _shell(len(unknown), radius, middle)
+        for at, key in enumerate(unknown):
+            places[key] = tuple(float(v) for v in out[at])
+
+    return places

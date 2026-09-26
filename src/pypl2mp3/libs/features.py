@@ -1,0 +1,603 @@
+#!/usr/bin/env python3
+"""
+PYPL2MP3: YouTube playlist MP3 converter and player,
+with Shazam song identification and tagging capabilities.
+
+What a song sounds like, in forty numbers.
+
+The vector lives in the MP3 itself, in a private ID3 frame, for the
+reason the waveform does: this application renames files routinely —
+saving a song rewrites its filename — and a store keyed on the path
+would be orphaned by every correction. 160 bytes per song.
+
+Raw values only. Normalizing means knowing the spread of the whole
+library, which changes at every import; vectors normalized against an
+older library would be wrong *relative to each other*, which is the one
+kind of wrong nothing reports. So the frame says what is true of this
+song alone, and the collection's statistics are recomputed on demand.
+
+The version is part of the owner, so changing how a feature is computed
+makes every existing frame invisible to `read_features` rather than
+subtly wrong.
+
+Copyright 2024 © Thierry Thiers <webcoder31@gmail.com>
+License: CeCILL-C (http://www.cecill.info)
+Repository: https://github.com/webcoder31/pypl2mp3
+"""
+
+# Python core modules
+import math
+from pathlib import Path
+import struct
+import subprocess
+from typing import Sequence
+
+# Third-party packages
+from mutagen.id3 import PRIV
+import mutagen
+import mutagen.mp3
+import numpy as np
+
+
+# Four facets, and the slice each one occupies. Fixed for the lifetime
+# of this version number: a reader disagreeing with the writer about
+# where the rhythm starts would compare a tempo against a cepstral
+# coefficient and report a distance for it.
+TIMBRE = slice(0, 26)
+RHYTHM = slice(26, 29)
+COLOUR = slice(29, 37)
+DYNAMICS = slice(37, 40)
+
+FEATURE_COUNT = 40
+
+FEATURE_OWNER = "https://github.com/webcoder31/pypl2mp3#features-1"
+
+
+class FeatureError(Exception):
+    """Raised when a song's features cannot be computed."""
+
+
+def pack_features(values: Sequence[float]) -> bytes:
+    """Lay a vector out as bytes for the frame.
+
+    Args:
+        values: exactly FEATURE_COUNT finite numbers.
+
+    Returns:
+        FEATURE_COUNT * 4 bytes, little-endian float32.
+
+    Raises:
+        ValueError: wrong length, or a value that is not finite.
+    """
+
+    if len(values) != FEATURE_COUNT:
+        raise ValueError(
+            f"a vector is {FEATURE_COUNT} numbers, not {len(values)}"
+        )
+
+    for at, value in enumerate(values):
+        if not math.isfinite(value):
+            raise ValueError(f"feature {at} is {value}")
+
+    return struct.pack(f"<{FEATURE_COUNT}f", *values)
+
+
+def unpack_features(data: bytes) -> list[float]:
+    """The inverse of `pack_features`, for data of the right length."""
+
+    return list(struct.unpack(f"<{FEATURE_COUNT}f", data))
+
+
+def read_features(mp3: mutagen.mp3.MP3) -> list[float] | None:
+    """Return the vector stored in an open MP3, or None if it has none.
+
+    A frame of the wrong length is treated as absent: it is a truncated
+    write or a layout this version does not speak, and reading it would
+    mis-shape every distance this song takes part in.
+    """
+
+    for frame in mp3.tags.getall("PRIV") if mp3.tags else []:
+        if (frame.owner == FEATURE_OWNER
+                and len(frame.data) == FEATURE_COUNT * 4):
+            return unpack_features(bytes(frame.data))
+
+    return None
+
+
+def store_features(song_path: Path, values: Sequence[float]) -> None:
+    """Write a vector into an MP3's tags, replacing any earlier one.
+
+    Other applications' private frames are preserved — the waveform's
+    peaks among them. `delall` takes a frame type, not an owner, so the
+    survivors have to be put back by hand.
+    """
+
+    data = pack_features(values)
+
+    mp3 = mutagen.mp3.MP3(song_path)
+    if mp3.tags is None:
+        mp3.add_tags()
+
+    others = [f for f in mp3.tags.getall("PRIV") if f.owner != FEATURE_OWNER]
+    mp3.tags.delall("PRIV")
+    for frame in others:
+        mp3.tags.add(frame)
+
+    mp3.tags.add(PRIV(owner=FEATURE_OWNER, data=data))
+    mp3.save(v1=0, v2_version=3)
+
+
+# High enough that the timbre exists. The waveform settles for 8 kHz
+# because it only measures how loud each slice is; here the top of a
+# cymbal has to be on the other side of Nyquist from the bottom of a
+# bass line, which 11 kHz gives and 4 kHz does not.
+SAMPLE_RATE = 22050
+
+# A pathological file must not tie up a worker forever. Five minutes is
+# a file that will never finish; a real one takes half a second.
+EXTRACT_TIMEOUT = 300
+
+
+def extract_samples(song_path: Path) -> np.ndarray:
+    """Decode one file to mono samples at SAMPLE_RATE.
+
+    Args:
+        song_path: the audio file to decode.
+
+    Returns:
+        float32 in [-1, 1], one channel.
+
+    Raises:
+        FeatureError: if ffmpeg is missing, fails, or does not finish.
+    """
+
+    try:
+        completed = subprocess.run(
+            [
+                "ffmpeg",
+                "-v", "error",
+                # Without this, ffmpeg inherits the server's stdin and
+                # can block on a prompt nobody will ever answer.
+                "-nostdin",
+                "-i", str(song_path),
+                "-ac", "1",
+                "-ar", str(SAMPLE_RATE),
+                "-f", "s16le",
+                "-",
+            ],
+            capture_output=True,
+            check=True,
+            timeout=EXTRACT_TIMEOUT,
+        )
+    except FileNotFoundError as error:
+        raise FeatureError("ffmpeg is not installed") from error
+    except subprocess.TimeoutExpired as error:
+        raise FeatureError(f"{song_path.name}: decoding timed out") from error
+    except subprocess.CalledProcessError as error:
+        detail = error.stderr.decode("utf-8", "replace").strip()
+        raise FeatureError(f"{song_path.name}: {detail}") from error
+
+    raw = np.frombuffer(completed.stdout, dtype="<i2")
+    if raw.size == 0:
+        raise FeatureError(f"{song_path.name}: decoded to nothing")
+
+    # Copied out of the buffer rather than viewed into it: `frombuffer`
+    # gives a read-only array, and every window below is multiplied in
+    # place by its own window function.
+    return np.array(raw, dtype=np.float32) / 32768.0
+
+
+# 46 ms of signal every 12 ms. The window is long enough to resolve a
+# bass note and short enough that a drum hit is one frame rather than
+# smeared across three — the same compromise serves the timbre and the
+# onsets, which is why there is one spectrogram here and not two.
+FRAME_SIZE = 1024
+HOP = 256
+FRAMES_PER_SECOND = SAMPLE_RATE / HOP
+
+# How many frames are held at once. Everything downstream reduces each
+# block to a handful of numbers, so this bounds the cost of a long track
+# without changing any result: ten minutes at this hop is 51 000 frames
+# of 513 bins, which is 105 MB held for nothing.
+BLOCK = 4096
+
+MEL_BANDS = 26
+MEL_LOW = 40.0
+MEL_HIGH = 10000.0
+
+# Thirteen coefficients, and the first is deliberately not among them:
+# C0 is the frame's total energy, which is what the dynamics facet
+# measures. Keeping it would let the volume vote twice and call it
+# timbre.
+CEPSTRA = 13
+
+
+def _to_mel(hz):
+    return 2595.0 * np.log10(1.0 + np.asarray(hz) / 700.0)
+
+
+def _from_mel(mel):
+    return 700.0 * (10.0 ** (np.asarray(mel) / 2595.0) - 1.0)
+
+
+def _mel_filters() -> np.ndarray:
+    """Triangular filters, evenly spaced on the mel scale.
+
+    Returns:
+        (MEL_BANDS, FRAME_SIZE // 2 + 1) of weights.
+    """
+
+    bins = FRAME_SIZE // 2 + 1
+    edges = _from_mel(
+        np.linspace(_to_mel(MEL_LOW), _to_mel(MEL_HIGH), MEL_BANDS + 2)
+    )
+    points = np.floor((FRAME_SIZE + 1) * edges / SAMPLE_RATE).astype(int)
+    points = np.clip(points, 0, bins - 1)
+
+    filters = np.zeros((MEL_BANDS, bins), dtype=np.float32)
+    for band in range(MEL_BANDS):
+        left, centre, right = points[band:band + 3]
+        # Bands crowd together at the bottom of the scale, where two
+        # edges can land on the same bin. A filter one bin wide is still
+        # a filter; a filter zero bins wide is a division by zero.
+        centre = max(centre, left + 1)
+        right = max(right, centre + 1)
+        if right >= bins:
+            continue
+        filters[band, left:centre] = np.linspace(0, 1, centre - left,
+                                                 endpoint=False)
+        filters[band, centre:right] = np.linspace(1, 0, right - centre,
+                                                  endpoint=False)
+
+    return filters
+
+
+def _dct_basis() -> np.ndarray:
+    """DCT-II as a matrix, because numpy has no dct and scipy is not a
+    dependency of this project."""
+
+    k = np.arange(CEPSTRA + 1)[:, None]
+    n = np.arange(MEL_BANDS)[None, :]
+
+    return np.cos(np.pi * k * (2 * n + 1) / (2 * MEL_BANDS)).astype(np.float32)
+
+
+_MEL = _mel_filters()
+_DCT = _dct_basis()
+_WINDOW = np.hanning(FRAME_SIZE).astype(np.float32)
+
+
+def spectrogram(samples: np.ndarray):
+    """Magnitude spectra, in blocks.
+
+    Args:
+        samples: mono float32.
+
+    Yields:
+        Arrays of shape (n, FRAME_SIZE // 2 + 1), n at most BLOCK.
+        Nothing at all when the signal is shorter than one window.
+    """
+
+    if len(samples) < FRAME_SIZE:
+        return
+
+    count = 1 + (len(samples) - FRAME_SIZE) // HOP
+
+    for start in range(0, count, BLOCK):
+        stop = min(start + BLOCK, count)
+        frames = np.stack([
+            samples[at * HOP:at * HOP + FRAME_SIZE]
+            for at in range(start, stop)
+        ])
+
+        yield np.abs(np.fft.rfft(frames * _WINDOW, axis=1)).astype(np.float32)
+
+
+def _middle_and_spread(values: np.ndarray) -> np.ndarray:
+    """Median and interquartile range, down each column.
+
+    Robust on purpose: a silent intro or a fade-out pulls a mean, and
+    every song here has one or the other.
+    """
+
+    low, middle, high = np.percentile(values, [25, 50, 75], axis=0)
+
+    return np.concatenate([middle, high - low]).astype(np.float32)
+
+
+def timbre_of(samples: np.ndarray) -> np.ndarray:
+    """13 cepstral coefficients, as a median and a spread each.
+
+    Args:
+        samples: mono float32 at SAMPLE_RATE.
+
+    Returns:
+        26 values: 13 medians, then 13 interquartile ranges.
+    """
+
+    cepstra = []
+    for block in spectrogram(samples):
+        # Power into the filters, log out of them: hearing is closer to
+        # logarithmic than linear, and the log is also what turns a
+        # filter's gain into an additive offset the DCT can separate.
+        energies = (block ** 2) @ _MEL.T
+        cepstra.append(np.log(energies + 1e-10) @ _DCT.T)
+
+    if not cepstra:
+        return np.zeros(TIMBRE.stop - TIMBRE.start, dtype=np.float32)
+
+    # [:, 1:] drops C0 — see CEPSTRA.
+    return _middle_and_spread(np.concatenate(cepstra)[:, 1:])
+
+
+# Where the energy sits, how noisy it is, how spread out. Taken from the
+# spectrogram the timbre already computes: ffmpeg's aspectralstats would
+# give the same four in C, at the cost of a second decode and a text
+# format to parse.
+ROLLOFF = 0.85
+
+_FREQS = np.fft.rfftfreq(FRAME_SIZE, 1.0 / SAMPLE_RATE).astype(np.float32)
+
+
+def colour_of(samples: np.ndarray) -> np.ndarray:
+    """Four spectral descriptors, as a median and a spread each.
+
+    Args:
+        samples: mono float32 at SAMPLE_RATE.
+
+    Returns:
+        8 values: medians of centroid (Hz), rolloff (Hz), flatness and
+        entropy, then their four interquartile ranges.
+    """
+
+    rows = []
+
+    for block in spectrogram(samples):
+        total = block.sum(axis=1) + 1e-10
+
+        centroid = (block @ _FREQS) / total
+
+        # The frequency below which ROLLOFF of the energy lies. Found by
+        # walking the cumulative sum rather than by sorting: the spectrum
+        # is already in frequency order, which is the order that matters.
+        running = np.cumsum(block, axis=1)
+        reached = running >= (ROLLOFF * total)[:, None]
+        rolloff = _FREQS[np.argmax(reached, axis=1)]
+
+        # Geometric over arithmetic mean: near 1 for noise, near 0 for a
+        # tone. Computed through logs because the geometric mean of 513
+        # magnitudes underflows a float otherwise.
+        logs = np.log(block + 1e-10).mean(axis=1)
+        flatness = np.exp(logs) / (block.mean(axis=1) + 1e-10)
+
+        share = block / total[:, None]
+        entropy = -(share * np.log(share + 1e-10)).sum(axis=1)
+        entropy /= np.log(block.shape[1])
+
+        rows.append(np.stack([centroid, rolloff, flatness, entropy], axis=1))
+
+    if not rows:
+        return np.zeros(COLOUR.stop - COLOUR.start, dtype=np.float32)
+
+    return _middle_and_spread(np.concatenate(rows))
+
+
+# The range a tempo is looked for in. Outside it the autocorrelation
+# finds harmonics of the real pulse and reports them with confidence:
+# 240 is 120 counted twice, and nothing in the signal tells them apart.
+SLOWEST_BPM = 50.0
+FASTEST_BPM = 200.0
+
+
+def onset_envelope(samples: np.ndarray) -> np.ndarray:
+    """How much the spectrum changes from one frame to the next.
+
+    Only increases count: energy appearing is an attack, energy leaving
+    is a note ending, and a rhythm is made of the first kind.
+    """
+
+    flux = []
+    previous = None
+
+    for block in spectrogram(samples):
+        # The last frame of the previous block is carried over, so the
+        # difference across a block boundary is a real difference rather
+        # than a missing one every 4096 frames.
+        joined = block if previous is None else np.vstack([previous, block])
+        flux.append(np.diff(joined, axis=0).clip(min=0).sum(axis=1))
+        previous = block[-1:]
+
+    if not flux:
+        return np.zeros(0, dtype=np.float32)
+
+    envelope = np.concatenate(flux)
+
+    # Measured against its own local level, so a quiet passage still has
+    # onsets and a loud one does not drown the rest of the track.
+    window = int(FRAMES_PER_SECOND)
+    if window > 1 and len(envelope) > window:
+        smooth = np.convolve(envelope, np.ones(window) / window, mode="same")
+        envelope = (envelope - smooth).clip(min=0)
+
+    return envelope.astype(np.float32)
+
+
+def rhythm_of(samples: np.ndarray) -> np.ndarray:
+    """Tempo, pulse clarity, and how often something is struck.
+
+    Args:
+        samples: mono float32 at SAMPLE_RATE.
+
+    Returns:
+        3 values: BPM, a clarity in [0, 1], onsets per second.
+    """
+
+    nothing = np.zeros(RHYTHM.stop - RHYTHM.start, dtype=np.float32)
+
+    envelope = onset_envelope(samples)
+    if envelope.size < 4:
+        return nothing
+
+    centred = envelope - envelope.mean()
+
+    # Autocorrelation through the frequency domain: the direct form is
+    # quadratic and this envelope is twenty thousand points long.
+    size = 1 << int(np.ceil(np.log2(len(centred) * 2)))
+    spectrum = np.fft.rfft(centred, n=size)
+    acf = np.fft.irfft(spectrum * np.conj(spectrum), n=size)[:len(centred)]
+
+    if acf[0] <= 0:
+        return nothing
+
+    shortest = max(1, int(FRAMES_PER_SECOND * 60.0 / FASTEST_BPM))
+    longest = min(len(acf) - 1, int(FRAMES_PER_SECOND * 60.0 / SLOWEST_BPM))
+    if longest <= shortest:
+        return nothing
+
+    lag = shortest + int(np.argmax(acf[shortest:longest + 1]))
+
+    # A pulse at twice the period is just as periodic, so the
+    # autocorrelation peaks there too — and when the true period falls
+    # between two frames, as 150 BPM does at 34.45, the doubled peak is
+    # the sharper of the two and wins. The track then reports half its
+    # tempo, which is the one wrong answer that looks entirely
+    # plausible. Preferring the shortest lag that is nearly as strong is
+    # the standard answer: a genuinely slow track has nothing at half
+    # its period to find.
+    for divisor in (2, 3):
+        candidate = int(round(lag / divisor))
+        if candidate >= shortest and acf[candidate] >= 0.8 * acf[lag]:
+            lag = candidate
+            break
+
+    # And sub-frame resolution, by fitting a parabola through the peak
+    # and its neighbours: at 200 BPM one frame of lag is 8 BPM, which is
+    # coarser than the difference between two genres of dance music.
+    fine = float(lag)
+    if shortest < lag < longest:
+        before, peak, after = acf[lag - 1], acf[lag], acf[lag + 1]
+        curve = before - 2 * peak + after
+        if curve != 0:
+            fine += float(np.clip(0.5 * (before - after) / curve, -0.5, 0.5))
+
+    tempo = 60.0 * FRAMES_PER_SECOND / fine
+    clarity = float(np.clip(acf[lag] / acf[0], 0.0, 1.0))
+
+    # An onset is a local maximum standing above the track's own typical
+    # rise; counting every non-zero frame would count the shoulders of
+    # each attack as well as its peak.
+    threshold = envelope.mean() + envelope.std()
+    peaks = ((envelope[1:-1] > threshold)
+             & (envelope[1:-1] >= envelope[:-2])
+             & (envelope[1:-1] > envelope[2:]))
+    rate = float(peaks.sum()) / (len(envelope) / FRAMES_PER_SECOND)
+
+    return np.array([tempo, clarity, rate], dtype=np.float32)
+
+
+# How long a "short-term" loudness lasts. 400 ms is the window EBU R128
+# uses for the same purpose, and roughly the length of a syllable.
+SHORT_TERM = 0.4
+
+
+def dynamics_of(samples: np.ndarray) -> np.ndarray:
+    """Level, crest factor, and how much the level moves.
+
+    All three in decibels, so a doubling is the same distance wherever
+    it happens — which is what makes them comparable once standardized.
+
+    Args:
+        samples: mono float32 at SAMPLE_RATE.
+
+    Returns:
+        3 values: RMS level (dBFS), crest factor (dB), and the spread of
+        the short-term levels (dB).
+    """
+
+    if samples.size == 0:
+        return np.zeros(DYNAMICS.stop - DYNAMICS.start, dtype=np.float32)
+
+    rms = float(np.sqrt(np.mean(samples.astype(np.float64) ** 2)))
+    peak = float(np.abs(samples).max())
+
+    level = 20.0 * math.log10(rms + 1e-10)
+    crest = 20.0 * math.log10((peak + 1e-10) / (rms + 1e-10))
+
+    step = int(SAMPLE_RATE * SHORT_TERM)
+    usable = len(samples) // step * step
+
+    if usable >= step * 4:
+        blocks = samples[:usable].astype(np.float64).reshape(-1, step)
+        short = 10.0 * np.log10((blocks ** 2).mean(axis=1) + 1e-10)
+        # The bottom tenth is cut and the top twentieth kept: a fade-in
+        # would otherwise set the floor for the whole track, while a
+        # single loud bar is a real part of its range.
+        low, high = np.percentile(short, [10, 95])
+        spread = float(high - low)
+    else:
+        # Too short to have a range. Zero says "no variation observed",
+        # which is true, rather than a number invented from three blocks.
+        spread = 0.0
+
+    return np.array([level, crest, spread], dtype=np.float32)
+
+
+def features_of(samples: np.ndarray) -> list[float]:
+    """The whole vector for one decoded signal.
+
+    Args:
+        samples: mono float32 at SAMPLE_RATE.
+
+    Returns:
+        FEATURE_COUNT finite numbers, laid out as TIMBRE, RHYTHM,
+        COLOUR, DYNAMICS.
+    """
+
+    whole = np.zeros(FEATURE_COUNT, dtype=np.float32)
+    whole[TIMBRE] = timbre_of(samples)
+    whole[RHYTHM] = rhythm_of(samples)
+    whole[COLOUR] = colour_of(samples)
+    whole[DYNAMICS] = dynamics_of(samples)
+
+    # A silent or pathological file can produce a log of zero somewhere
+    # upstream. One NaN poisons every distance this song takes part in,
+    # and poisons them silently, because comparisons against NaN are
+    # false rather than wrong.
+    return [float(v) if math.isfinite(float(v)) else 0.0 for v in whole]
+
+
+def features_for(song_path: Path) -> list[float]:
+    """The vector of one song, computed once and kept in the file.
+
+    Args:
+        song_path: the MP3 to describe.
+
+    Returns:
+        FEATURE_COUNT numbers.
+
+    Raises:
+        FeatureError: if the file carries no vector and cannot be
+            decoded.
+    """
+
+    try:
+        stored = read_features(mutagen.mp3.MP3(song_path))
+    except (mutagen.MutagenError, OSError):
+        # A file whose tags cannot be read is not this function's
+        # verdict to give. Let the decoder be the judge.
+        stored = None
+
+    if stored is not None:
+        return stored
+
+    values = features_of(extract_samples(song_path))
+
+    try:
+        store_features(song_path, values)
+    except Exception:
+        # A read-only file, a full disk, a file being written by another
+        # process: none of that is a reason to refuse the vector we
+        # already hold. It gets recomputed next time.
+        pass
+
+    return values

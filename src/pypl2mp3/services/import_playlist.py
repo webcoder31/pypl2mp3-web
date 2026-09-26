@@ -18,6 +18,7 @@ from typing import Optional
 
 from pytubefix import Playlist, YouTube
 
+from pypl2mp3.libs.features import features_for
 from pypl2mp3.libs.repository import get_repository_playlist
 from pypl2mp3.libs.song import SongModel
 from pypl2mp3.libs.waveform import peaks_for
@@ -358,6 +359,7 @@ async def _import_one(
     )
 
     await asyncio.to_thread(_store_waveform, song.path)
+    await asyncio.to_thread(_store_features, song.path)
 
     return ImportedSong(
         youtube_id=youtube_id,
@@ -384,6 +386,20 @@ def _store_waveform(song_path: Path) -> None:
 
     try:
         peaks_for(song_path)
+    except Exception:
+        pass
+
+
+def _store_features(song_path: Path) -> None:
+    """Describe the song while it is fresh on disk.
+
+    Best effort in both directions, like the waveform above: a vector
+    that cannot be computed is not a failed import, and the bulk job
+    picks the song up later.
+    """
+
+    try:
+        features_for(song_path)
     except Exception:
         pass
 

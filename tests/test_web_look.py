@@ -1225,10 +1225,10 @@ async def test_the_toolbar_icons_are_drawn_not_typed(tmp_path):
         css = (await client.get("/static/console.css")).text
 
     bar = _block(body, '<div id="toolbar">')
-    # Three now, one per play order. Workbench moved up to the tab row,
+    # Four now, one per play order. Workbench moved up to the tab row,
     # where it acts on the same selection but is not a choice between two
-    # views; Play all and Shuffle became two of these three.
-    assert bar.count("<svg") == 3, "not every order has a drawn icon"
+    # views; Play all and Shuffle became two of these four.
+    assert bar.count("<svg") == 4, "not every order has a drawn icon"
 
     tabs = _block(body, '<div id="tabs">')
     assert tabs.count("<svg") == 1, "the one that moved lost its icon"
@@ -1236,7 +1236,7 @@ async def test_the_toolbar_icons_are_drawn_not_typed(tmp_path):
     # A tablist holds tabs and nothing else, so the role sits on the pair
     # rather than on the row that carries them and the button.
     strip = _block(body, '<div class="tab-strip" role="tablist">')
-    assert strip.count('role="tab"') == 2, strip
+    assert strip.count('role="tab"') == 3, strip
     assert "data-queue-action" not in strip, (
         "a button that is not a tab is inside the tablist"
     )
@@ -1266,6 +1266,7 @@ async def test_the_switch_says_which_order_is_playing(tmp_path):
     async with _client(create_app(tmp_path)) as client:
         body = (await client.get("/")).text
         sorted_body = (await client.get("/?order=name")).text
+        radio_body = (await client.get("/?order=radio")).text
         random_body = (await client.get("/?order=shuffle")).text
 
     def lit(page):
@@ -1275,12 +1276,13 @@ async def test_the_switch_says_which_order_is_playing(tmp_path):
             r'aria-pressed="([^"]+)"', group, re.DOTALL
         )
         assert [order for order, _ in buttons] == [
-            "youtube", "name", "shuffle"
+            "youtube", "name", "radio", "shuffle"
         ], buttons
         return [order for order, pressed in buttons if pressed == "true"]
 
     assert lit(body) == ["youtube"], "a fresh page is in the playlist order"
     assert lit(sorted_body) == ["name"], "an order in the address is ignored"
+    assert lit(radio_body) == ["radio"], "the radio does not light on a reload"
 
     # A random order was made in the browser out of the rows that were
     # there; a page fetched afresh is not in it, whatever the address
@@ -3257,3 +3259,24 @@ async def test_the_panel_s_own_margins_outrank_its_paragraph_rule(tmp_path):
             f".{band} sets its margin without an id, so #inspector p wins "
             f"and the margin does nothing"
         )
+
+
+def test_no_custom_property_is_declared_twice_in_one_theme():
+    """A second declaration of the same name does not warn: the later
+    one simply wins, and the earlier is dead.
+
+    That happened. A green-grey for the neighbours' names was added as
+    `--accent-dim`, which already existed and meant something else — a
+    translucent accent whose contrast had been measured against the
+    player's background for the transport glyphs. The new value never
+    applied, and nothing said so.
+    """
+
+    css = Path("src/pypl2mp3/web/static/console.css").read_text()
+
+    # Each theme is one block of declarations; counting per name across
+    # the file would flag every legitimate light/dark pair.
+    for block in re.findall(r"\{([^{}]*)\}", css):
+        names = re.findall(r"(--[a-z0-9-]+)\s*:", block)
+        twice = {name for name in names if names.count(name) > 1}
+        assert not twice, f"declared twice in one block: {sorted(twice)}"

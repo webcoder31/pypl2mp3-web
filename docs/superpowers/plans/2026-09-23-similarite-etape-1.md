@@ -2067,14 +2067,18 @@ Expected: FAIL — the script does not exist
 ```python
 """Does the feature vector know anything about music?
 
-86% of this library carries a genre, put there by Shazam. That is a
-ruler nobody had to build: for each song, how many of its nearest
-neighbours share its genre?
+The ruler is the artist. For each song, how many of its five nearest
+neighbours are by the same one? Two songs drawn at random are by the
+same artist 0.7% of the time — the sum of the squared proportions — so
+a vector that knows nothing scores that, and the shipped one scores
+11.6 times it.
 
-The number to beat is not zero. Two songs drawn at random already share
-a genre some of the time — the sum of the squared proportions, 12.1% on
-this library — so a vector that knows nothing scores that, and a vector
-worth keeping scores several times it.
+The genre was the first ruler and it was the wrong one. It is still
+reported, because it colours the map and a rise would be good news, but
+the same vectors score 1.4x on genre and 11.6x on artist, measured on
+the same 352 songs. "Alternative" and "Pop" are commercial categories,
+not acoustic ones: two Pop songs from 1985 and 2020 share a label and
+nothing else.
 
 Read-only. It writes nothing, analyses nothing, and skips any song that
 has no vector yet: run the bulk analysis first.
@@ -2293,23 +2297,24 @@ print(f'{have} / {len(songs)}')
 - [ ] **Step 5: Record the verdict and stop**
 
 ```bash
-cairn note PYPL2MP3-2 "agreement X% against a chance of 12.1% (Nx). Per facet: …" --kind finding
+cairn note PYPL2MP3-2 "artist agreement X% against a chance of 0.7% (Nx); genre Y%. Per facet: …" --kind finding
 cairn checkpoint PYPL2MP3-2 --summary "…"
 ```
 
-**This is the gate the stage exists for.** Report the number and do not
-start stage 2 without it being read:
+**This gate was already walked, at the task-3 checkpoint and again
+after task 6, on a 352-song sample.** What it found:
 
-- **≥ 36%** — the hand-made features hold. PYPL2MP3-3 and PYPL2MP3-4 are
-  unblocked as planned.
-- **between chance and 36%** — they know something and not enough.
-  Before reaching for ONNX, try the two cheap things and measure each:
-  re-weight from what `by_facet` shows, and add the tonality the spec
-  left out. Both stay behind `#features-1` only if nothing in the vector
-  changes; adding the tonality makes it `#features-2`.
-- **≈ 12%** — they know nothing. Stop, and open the ONNX question as its
-  own spike task: nothing built on top would have to change, which is
-  the whole reason this stage came first.
+- artist agreement **11.6x** chance — the features find acoustic likeness
+- genre agreement **1.4x** chance — and no weighting moves it; a control
+  of random vectors scores exactly chance, so the measurement is sound
+- therefore the genre label, not the vector, was the weak thing
+
+So the stage continues rather than reaching for ONNX. What remains here
+is to confirm the same numbers on all 944 rather than on a sample:
+
+- **≥ 5x on artist** — as expected. PYPL2MP3-3 and PYPL2MP3-4 proceed.
+- **below 5x** — something differs between the sample and the whole
+  library. Find out what before building on it.
 
 - [ ] **Step 6: Close the stage**
 

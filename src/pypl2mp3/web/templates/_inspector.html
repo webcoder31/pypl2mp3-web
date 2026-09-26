@@ -114,9 +114,28 @@
          {%- if song.video_gone %} class="gone"
          title="This video was gone the last time it was asked for"
          {%- endif %}>video{% if song.video_gone %} ⚠{% endif %}</a>
+
+      {# Which of the two shares the cell below. At the far end of the
+         row that already holds this song's actions, because it is one
+         of them — and not on a row of its own, which would cost the
+         height the whole change is about.
+
+         Neighbours first and by default: listening is continuous,
+         correcting is occasional, and the fields were holding a place
+         all the time that they earn only now and then. #}
+      <span class="inspector-faces">
+        <button type="button" data-shows="neighbours"
+                aria-pressed="true">Neighbours</button>
+        <button type="button" data-shows="edit"
+                aria-pressed="false">Edit</button>
+      </span>
     </p>
 
-    <form hx-post="/songs/{{ song.key }}/fix"
+    {# The filters ride on the action rather than in the body: this form
+       has an `artist` field and so does the filter form, and posting
+       both under one name would write the artist you were filtering by
+       onto the song. #}
+    <form hx-post="/songs/{{ song.key }}/fix{{ filters }}"
           hx-target="#inspector"
           hx-swap="innerHTML">
       {# The block and the fields share one cell. Asking Shazam used to
@@ -131,6 +150,11 @@
          the order says nothing about where they appear. #}
       <div class="inspector-slot">
         <div id="shazam" class="job"></div>
+
+        {# The third occupant of the cell. Its buttons are type="button"
+           like every other one in here, so sitting inside the form
+           costs it nothing. #}
+        {% include "_neighbours.html" %}
 
         {# Labels beside the fields, not above them: three stacked pairs
            cost twice the height for a form that already competes with
@@ -151,8 +175,23 @@
            available invites the click that rewrites a file with exactly
            what it already held — which costs a rename, a timestamp, and
            the cover's cached address. The page enables it on the first
-           edit, and on taking Shazam's answer. #}
-        <button type="submit" disabled>Save MP3</button>
+           edit, and on taking Shazam's answer.
+
+           And it is not shown at all while the neighbours are up: there
+           is nothing to save from that face, and a disabled button is
+           an offer withdrawn rather than an offer not made. A word
+           stands in its place — in the same cell, so the row is as wide
+           as the wider of the two and the filename beside it does not
+           move when the face changes. #}
+        <span class="inspector-save">
+          <button type="submit" disabled>Save MP3</button>
+          {# The same arrow the player's preview uses, pointing at what
+             it names — and sitting in the space between, rather than
+             tight against the word, so it reads as pointing across the
+             gap instead of trailing the label. #}
+          <span class="save-label">MP3 file<span class="save-arrow"
+            >→</span></span>
+        </span>
         {% if saved %}<span class="job-new">Saved.</span>{% endif %}
         {# Beside the button that rewrites it: saving renames the file,
            so this is the line that is about to change. #}

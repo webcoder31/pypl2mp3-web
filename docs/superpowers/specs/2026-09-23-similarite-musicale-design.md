@@ -17,18 +17,27 @@ en 3D.
 
 La question qui décide de tout — « des traits calculés à la main
 suffisent-ils, ou faut-il un modèle appris ? » — n'a pas à être tranchée
-par une opinion. 820 des 944 morceaux (86 %) portent déjà un genre, posé
-par Shazam. Ça donne une règle graduée : pour un morceau, combien de ses
-cinq plus proches voisins partagent son genre ?
+par une opinion. La bibliothèque porte déjà de quoi juger : pour un
+morceau, combien de ses cinq plus proches voisins sont **du même
+artiste** ?
 
-Deux morceaux tirés au hasard partagent un genre avec une probabilité de
-**12,1 %** — la somme des carrés des proportions sur les 49 genres
-présents, pas le poids de la classe majoritaire. Un vecteur qui vaut
-quelque chose doit donc atteindre **36 %** au moins, trois fois le
-hasard. En dessous, il a échoué.
+Deux morceaux tirés au hasard le sont avec une probabilité de **0,7 %**
+— la somme des carrés des proportions. C'est une règle exigeante, et
+c'est la bonne : deux morceaux du même artiste se ressemblent
+effectivement, par la voix, la production, l'instrumentation. C'est
+exactement ce que « ça sonne pareil » veut dire.
 
-Et cette règle est gratuite : elle n'est pas un test qu'on écrit, c'est
-une étiquette qui est déjà là.
+**Le genre a d'abord servi de règle, et il ne valait rien.** 86 % des
+morceaux en portent un, posé par Shazam, ce qui en faisait le candidat
+évident. Mesuré : le vecteur livré atteint 1,4 fois le hasard sur le
+genre, et **11,6 fois le hasard sur l'artiste** — sur le même corpus,
+avec les mêmes vecteurs, le même jour. Les traits ne sont donc pas
+faibles ; c'est l'étiquette qui l'est. « Alternative » et « Pop » sont
+des catégories commerciales, pas acoustiques : deux morceaux Pop de 1985
+et 2020 partagent un libellé et rien d'autre.
+
+Le genre reste rapporté, parce qu'un chiffre qui monte serait une bonne
+nouvelle et qu'il colore la carte. Il ne décide plus rien.
 
 ## Ce que ça licencie
 
@@ -58,7 +67,7 @@ Mesurées, pas supposées, parce qu'elles ont fermé une porte :
 | **numpy 1.26.4 déjà installé** (transitif de moviepy) | le calcul des traits ne coûte rien à installer |
 | pas de scipy | tout ce qui suit s'écrit en numpy seul |
 | **ffmpeg 8.0.1** | décode ; ses filtres d'analyse se sont révélés inutiles, la STFT du timbre donnant déjà la couleur |
-| GPU Intel Iris Pro, 1,5 Go | 944 points en WebGL : sans effort |
+| GPU Intel Iris Pro, 1,5 Go — **mais processus GPU désactivé dans Chrome** | WebGL indisponible ; la carte se dessine sur un canvas 2D |
 | décodage mono 22 kHz : **0,41 s** par morceau | le coût sera dans le calcul, pas dans le décodage |
 
 ---
@@ -161,9 +170,20 @@ même raison.
 
 ### Les poids
 
-Départ : **timbre 0,45 · couleur 0,25 · rythme 0,20 · dynamique 0,10.**
+**Timbre 0,60 · couleur 0,15 · rythme 0,15 · dynamique 0,10.**
+
 Le timbre domine parce que c'est ce que « ça sonne pareil » veut dire en
-premier.
+premier, et parce que c'est là qu'est le signal : mesuré sur les 944,
+le timbre seul retrouve un morceau du même artiste **14,3 fois mieux que
+le hasard**, contre 5,7 pour le rythme, 5,6 pour la couleur et 3,8 pour
+la dynamique.
+
+Et retenu délibérément en deçà de ce que la mesure réclamerait. **La
+règle de l'artiste flatte structurellement le timbre** — même artiste,
+même voix, presque par définition — donc la suivre jusqu'au bout
+donnerait un curseur « timbre » et trois qui ne font rien. Les trois
+autres gardent un poids que la mesure ne demande pas, parce qu'une radio
+qui ne suit que le timbre est une radio à un seul tempo.
 
 **Le test du genre vérifie ces poids, il ne les choisit pas.** Optimiser
 aveuglément l'accord avec l'étiquette Shazam donnerait un devineur
@@ -192,8 +212,10 @@ fermée.
 ### Le coût, et ce qu'il élimine
 
 944 × 40. La matrice complète des distances, c'est 890 000 calculs —
-**une dizaine de millisecondes** en numpy, recalculée à chaque changement
-de sélection sans que personne le remarque.
+**120 ms** en numpy, mesuré à la vraie taille : quatre matrices de
+distances et un tri de 445 000 paires. Puis 0,1 ms pour demander un
+voisinage. Recalculé à chaque changement de sélection sans que personne
+le remarque.
 
 Donc : **pas d'index approximatif, pas de faiss, pas de base
 vectorielle.** Un service qui lit les frames, une matrice, et c'est tout.
@@ -286,7 +308,8 @@ UMAP** séparent superbement, mais c'est scikit-learn ou numba en plus, et
 aucun des deux n'est déterministe sans qu'on s'y emploie.
 
 Retenu : **la solution de cairn** (`src/lib/graph-3d.ts`). Un graphe des
-**k = 8** plus proches voisins — assez pour que les amas se tiennent,
+**k = 4** plus proches voisins **et réciproques** — assez pour que les
+amas se tiennent,
 assez peu pour qu'ils ne fusionnent pas ; la valeur est un réglage, pas
 une constante de la nature, et la carte dira si elle est bonne —, relâché
 dans l'espace par une relaxation à
@@ -327,13 +350,33 @@ périphérie de la structure.
 ### Le rendu
 
 Un onglet **Carte** à côté de Playlist et Imports. Le serveur calcule les
-coordonnées, le navigateur dessine avec **three.js**.
+coordonnées, le navigateur dessine sur un **canvas 2D**, sans aucune
+bibliothèque.
 
-C'est la première bibliothèque front-end après htmx, et elle coûte :
-`htmx.min.js` pèse 50 Ko dans `/static/`, three.js en pèse ~600, douze
-fois plus. Pas de build, pas de npm — un fichier déposé à côté, comme
-htmx l'est déjà. 944 points forment un seul objet `Points`, pas 944
-objets.
+Ce n'est pas le choix de départ. La spec prévoyait **three.js** — 600 Ko
+à côté des 50 Ko d'htmx, sans build ni npm, un fichier déposé comme htmx
+l'est déjà — et le tableau des contraintes annonçait « 944 points en
+WebGL : sans effort ». Le GPU était là, le pilote non : le Chrome de
+cette machine refuse d'ouvrir un processus GPU (`GPU access is disabled
+due to frequent crashes`), donc la version WebGL n'a **jamais** été vue
+tourner. Celle en 2D a révélé deux défauts dans ses dix premières
+minutes.
+
+Un nuage de points demande très peu à un moteur de rendu : une rotation,
+une projection, un tri en profondeur et un disque ombré par point. Les
+944 points coûtent **1,7 ms par image**, mesurés dans le navigateur, et
+la boucle d'animation ne tourne que pendant un mouvement — une carte
+qu'on ne touche pas est une image fixe et ne coûte rien, ce qui compte
+quand chaque pixel est tramé par le processeur.
+
+Les points sont des sphères : une seule est ombrée par couleur dans un
+canvas hors écran, puis estampée. Ombrer chaque point où il atterrit
+construirait neuf cents dégradés par image ; celui-ci en construit
+treize pour la vie du dessin.
+
+Le zoom est un ressort (dépassement de 11 %, stabilisé en 19 images) et
+la rotation garde son élan à la relâche pendant environ une seconde. Qui
+a demandé à son système de ne pas animer ne reçoit que la cible.
 
 Survoler nomme le morceau ; cliquer le joue, la carte devenant une entrée
 dans la file comme une ligne de la liste ; le morceau en cours est
@@ -353,11 +396,22 @@ traits** — et elle ne peut pas être un test unitaire, parce qu'elle
 dépend de 4,2 Go qui ne sont pas dans le dépôt.
 
 Donc un script, là où ce dépôt en met déjà sept :
-`scripts/measure_similarity.py` sort le taux d'accord de genre entre un
-morceau et ses cinq voisins, globalement et par facette, pour une
-pondération donnée. Référence : **12,1 %** au hasard, **36 %** pour que
-le vecteur vaille quelque chose. C'est cet instrument qui tranchera le
-passage éventuel à l'empreinte apprise, pas une opinion.
+`scripts/measure_similarity.py` sort le taux d'accord **d'artiste**
+entre un morceau et ses cinq voisins, globalement et par facette, pour
+une pondération donnée — et le taux d'accord de genre à côté, pour
+information.
+
+Références mesurées sur 352 morceaux : hasard **0,7 %** pour l'artiste,
+**12,3 %** pour le genre. Le vecteur livré atteint **11,6×** sur
+l'artiste et 1,4× sur le genre. Un témoin de vecteurs aléatoires donne
+exactement le hasard sur les deux, ce qui dit que la mesure elle-même
+est saine.
+
+Le plancher est **5× sur l'artiste** : nettement au-dessus du hasard,
+nettement en dessous de ce qui est atteint, donc un garde-fou contre une
+régression plutôt qu'une cible à viser. En dessous, quelque chose s'est
+cassé — ou l'empreinte apprise devient l'option, et c'est cet instrument
+qui le dira.
 
 ### Ce que les tests tiennent
 
@@ -439,13 +493,37 @@ La parade, si ça devient gênant à l'usage, est d'ancrer la relaxation sur
 les positions précédentes. Pas dans le socle, parce qu'on ne sait pas
 encore si le problème se posera.
 
-## Le seuil de 36 % est un pari
+## Ce que la carte a donné, une fois construite
 
-Trois fois le hasard est un seuil raisonnable, pas un seuil démontré.
-Il se peut que 30 % donnent déjà une radio agréable, ou que 45 % restent
-décevants — le genre Shazam est lui-même bruité (« Alternative » couvre
-161 morceaux qui n'ont pas grand-chose en commun). Le nombre sert à
-décider, il ne remplace pas l'écoute.
+Elle montre des îlots répartis dans tout le volume de la sphère. Il a
+fallu deux corrections que la conception n'avait pas vues, et toutes
+deux portaient sur le **graphe**, pas sur la relaxation.
+
+**Les arêtes doivent être réciproques.** Gardées dans un seul sens, un
+morceau en entraîne un autre sans réciproque et, avec neuf cents
+morceaux tenant chacun huit fils, plus rien ne peut se défaire : le
+nuage se relâche en une dalle régulière et légèrement vrillée. Mutuel,
+l'accord d'artiste passe de 6,5× à 11,0×.
+
+**Et il en faut quatre, pas huit.** À huit, les trois quarts de la
+bibliothèque s'entassent dans la moitié intérieure du rayon — une
+sphère à cœur plein. À quatre, la moitié, et le volume passe de 0,68 à
+0,83 sans que le juge bouge (10,6×).
+
+Deux autres leviers ont été essayés et écartés par la mesure : une
+attraction croissant avec la distance vide le cœur mais fait tomber
+l'accord d'artiste à 9,4× — elle étale sans structurer ; pondérer les
+arêtes par la proximité aplatit le nuage.
+
+**Sur le genre, la prédiction tient : 1,2× sur la carte.** Les amas sont
+des familles acoustiques — une voix, une production, une époque de
+studio — et non les étiquettes que Shazam donne. La couleur reste un
+contrôle visuel, pas une promesse.
+
+Et aucun nombre ne remplace l'écoute. 15,5× sur l'artiste dans les
+quarante dimensions, 10,6× sur la carte, veut dire que les voisins
+sonnent comme le morceau ; il reste à savoir si on a envie de les
+entendre l'un après l'autre.
 
 ## Le coût de la première passe
 

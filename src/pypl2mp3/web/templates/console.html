@@ -60,6 +60,10 @@
            after a save would have quietly changed what plays next. #}
         <input type="hidden" name="order" id="order-field"
                value="{{ order }}">
+        {# Where the walk begins. Only the radio reads it, and only the
+           page ever writes it: it is the song playing when the icon was
+           pressed. #}
+        <input type="hidden" name="start" id="start-field" value="">
         <input type="search" name="q" value="{{ query }}"
                placeholder="Filter by artist or title">
         <label>
@@ -242,6 +246,8 @@
           <button type="button" role="tab" data-tab="imports"
                   aria-selected="false">Imports<span id="imports-badge"></span>
           </button>
+          <button type="button" role="tab" data-tab="map"
+                  aria-selected="false">Map</button>
         </div>
         {# Not a tab, and drawn as what it is: it does not switch the
            pane under this row, it replaces the whole frame with one
@@ -315,6 +321,21 @@
             </svg>
           </button>
 
+          {# The radio: a mast, and what comes off it. #}
+          <button type="button" data-play-order="radio"
+                  aria-pressed="{{ 'true' if order == 'radio' else 'false' }}"
+                  title="Play from each song to the one it sounds like"
+                  aria-label="Radio">
+            <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"
+                 fill="none" stroke="currentColor" stroke-width="1.4"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="8" cy="9.5" r="1.6" fill="currentColor"
+                      stroke="none"/>
+              <path d="M5.2 6.7a4 4 0 0 0 0 5.6M10.8 6.7a4 4 0 0 1 0 5.6"/>
+              <path d="M3 4.5a7.2 7.2 0 0 0 0 10M13 4.5a7.2 7.2 0 0 1 0 10"/>
+            </svg>
+          </button>
+
           <button type="button" data-play-order="shuffle"
                   aria-pressed="false"
                   title="Play in a random order"
@@ -338,6 +359,24 @@
             hx-get="/fragments/list"
             hx-trigger="songsChanged from:body"
             hx-include="#filters">{% include "_list.html" %}</main>
+
+      {# The third pane. A cloud of the whole selection, one point per
+         song, placed by what the songs sound like and coloured by the
+         genre Shazam gave them — two independent sources, so the
+         picture checks itself: colours that clump mean the vector
+         caught something, colours peppered at random mean it did not.
+
+         Drawn on a plain 2D canvas. It was three.js first, vendored at
+         760 KB against htmx's 50, and it turned out that the machine
+         this is written on cannot boot a GPU process at all — so that
+         version was never once watched running, and the one that
+         replaced it showed up two defects in its first ten minutes. #}
+      <section id="map">
+        <div id="map-frame"><canvas id="map-canvas"></canvas></div>
+        <p id="map-note">Opening the map…</p>
+        <div id="map-legend"></div>
+        <p id="map-hover" aria-live="polite"></p>
+      </section>
 
       {# The other pane. It polls while a check or an import is running
          and stops on its own the moment neither is — same rule as every
@@ -366,5 +405,6 @@
 
 
     <script src="/static/console.js"></script>
+    <script type="module" src="/static/map.js"></script>
   </body>
 </html>
