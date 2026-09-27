@@ -42,8 +42,42 @@ function palette() {
   return { lit: out, dim: style.getPropertyValue("--map-dim").trim() || "#555" };
 }
 
+// What the cloud is drawn on. The canvas itself is transparent and so
+// is its frame, so the colour comes from whichever ancestor first
+// declares one — asking the body instead would give the page's colour
+// and not the panel's, and on the light theme those differ.
+function behind() {
+  let at = canvas.parentElement;
+
+  while (at) {
+    const found = getComputedStyle(at).backgroundColor;
+    if (found && found !== "transparent" && !found.endsWith(", 0)")) {
+      return found;
+    }
+    at = at.parentElement;
+  }
+
+  return getComputedStyle(document.body).backgroundColor || "#fff";
+}
+
+// A rectangle with its corners taken off, traced onto a context. Left
+// as a path rather than filled, because every mark is this same outline
+// filled three or four times over.
+function card(ink, x, y, wide, tall, round) {
+  const r = Math.min(round, wide / 2, tall / 2);
+
+  ink.beginPath();
+  ink.moveTo(x + r, y);
+  ink.arcTo(x + wide, y, x + wide, y + tall, r);
+  ink.arcTo(x + wide, y + tall, x, y + tall, r);
+  ink.arcTo(x, y + tall, x, y, r);
+  ink.arcTo(x, y, x + wide, y, r);
+  ink.closePath();
+}
+
 let drawn = null;
 let points = [];
+let genres = [];
 let asked = null;
 
 // What the listing is showing, as a query string: the map is of the
@@ -79,6 +113,7 @@ async function draw() {
 
   asked = wanted;
   points = said.points;
+  genres = said.genres;
 
   if (drawn) drawn.dispose();
 
@@ -95,68 +130,361 @@ function build(said) {
 
   // One sphere per colour, shaded once into an offscreen canvas and
   // then stamped. Shading each point where it lands would build nine
-  // hundred gradients a frame; this builds thirteen for the life of
+  // hundred gradients a frame; this builds them once for the life of
   // the drawing, and a scaled drawImage is a blit.
-  const SPRITE = 64;
-  const balls = new Map();
+  //
+  // And one per colour per depth. Distance is said the way a map says
+  // it: the far side of the cloud fades towards the colour of the page
+  // behind it, the near side keeps its own. That is a mix, not a
+  // transparency — the discs stay opaque and nothing shows through
+  // anything, which is what made nine hundred translucent ones a haze
+  // the first time.
+  //
+  // Eight steps rather than a value per point, because a value per
+  // point is a gradient per point per frame. At this size the steps do
+  // not read as bands: the points are small, scattered, and no two
+  // neighbours in the picture are neighbours in depth.
+  const STEPS = 8;
+  const HAZE = 0.5;
 
-  function ball(tint) {
+  // The mark: a card, in the proportion a bank card has — 85.60 by
+  // 53.98 millimetres, so a shade over 1.58 — with its corners just
+  // off square. A ninth of its height, which at the largest a song is
+  // ever drawn comes to two pixels: enough to soften a corner, not
+  // enough to make a lozenge of it.
+  const CARD = 1.586;
+  const ROUND = 0.11;
+
+  // A card of the same area as the square it replaces, so swapping the
+  // shape did not quietly change how heavy the cloud is.
+  const WIDER = Math.sqrt(CARD);
+
+  const SPRITE_H = 44;
+  const SPRITE_W = Math.round(SPRITE_H * CARD);
+
+  // How much of the box the size is measured in the mark fills. Full
+  // width it would be a third heavier than the disc it replaces — 4r²
+  // against πr² — and the cloud would thicken for no reason anyone
+  // asked for.
+  const FILL = 0.8;
+
+  // The slope of light across each card, from its top-left corner to
+  // its bottom-right.
+  //
+  // Two marks of one colour that overlap read as one odd shape, and
+  // nothing says which is in front. A rule between them was tried
+  // twice: in the page's colour it cut a white gash through every
+  // crowd, and in a darker shade of the mark it drew a border round
+  // things that are not bordered anywhere else on this page.
+  //
+  // A slope needs nothing drawn at all. Where a near card lands on a
+  // far one its lit corner meets the other's shaded end, and the join
+  // shows by itself. It is slight on purpose — a seventh of a tone up
+  // and a sixth down — so that a card alone still reads as one flat
+  // colour, which is what the legend promises.
+  const SLOPE_UP = 0.14;
+  const SLOPE_DOWN = 0.17;
+
+  // How deep the frame's edge is feathered, as a share of its shorter
+  // side.
+  //
+  // A cloud that is turning and breathing keeps pushing songs past the
+  // edge of the frame, and a card that meets it is simply cut in half:
+  // a straight line through a thing that has no straight lines in it.
+  // Faded out over the last stretch instead, a card leaves the picture
+  // rather than being severed by it.
+  //
+  // Laid over the whole cloud once, not worked out card by card: it is
+  // the same colour as the page, so on open ground it does nothing and
+  // nothing has to be made translucent to get it.
+  const FEATHER = 0.14;
+
+  let blocks = new Map();
+  let inks = new Map();
+  let paper_colour = behind();
+
+  // Any CSS colour as three numbers. Painting it and reading the pixel
+  // back is the only way to do this that is not a parser for every
+  // notation the page might reasonably use.
+  function rgbOf(colour) {
+    const nib = document.createElement("canvas").getContext(
+      "2d", { willReadFrequently: true }
+    );
+    nib.fillStyle = colour;
+    nib.fillRect(0, 0, 1, 1);
+
+    const got = nib.getImageData(0, 0, 1, 1).data;
+    return [got[0], got[1], got[2]];
+  }
+
+  // Which way to push, decided by the page rather than by a flag: the
+  // theme is a fact about the colour behind the letters.
+  function inkFor(tint) {
+    const page = rgbOf(paper_colour);
+    const bright =
+      0.2126 * page[0] + 0.7152 * page[1] + 0.0722 * page[2] > 128;
+
+    const push = bright
+      ? function (v) { return Math.round(v * DARKEN); }
+      : function (v) { return Math.round(v + (255 - v) * LIGHTEN); };
+
+    return "rgb(" + rgbOf(tint).map(push).join(", ") + ")";
+  }
+  let veil = null;
+  let veilDeep = 0;
+
+  // The name of the song, set on the canvas in the font the page uses
+  // for its own small print. Read when the frame is measured or the
+  // theme changes, rather than every frame.
+  let lettering = "12px sans-serif";
+  let grain = 1;
+
+  // A name is written in its card's own colour, pushed away from the
+  // page far enough to be read: darkened on the light theme, lightened
+  // on the dark one.
+  //
+  // Measured across the thirteen colours, worst case, against the page
+  // behind them. Untouched they come to 1.75 to one on white, which is
+  // no contrast at all. Darkened to 55% they reach 5.28; lightened by
+  // a quarter on the dark theme, 6.26. Both clear the 4.5 that small
+  // text is held to, and the hue survives — a darkened teal is still
+  // teal, which is the whole reason for taking the card's colour.
+  const DARKEN = 0.55;
+  const LIGHTEN = 0.25;
+
+  // While the cloud is turning on its own, it names a few of the songs
+  // nearest the eye, in turn.
+  //
+  // A map nobody is touching is otherwise nine hundred anonymous marks,
+  // and the one thing a reader wants to know of it — what is this? —
+  // needs a hand on the mouse to ask. Three at a time is the most that
+  // can be read before they change; more is a crowd, and one is a
+  // slideshow.
+  //
+  // One name a second, each staying three, so three are up at any
+  // moment and each is a second older than the last. A set of three
+  // arriving and leaving together reads as a slideshow; staggered, the
+  // map is simply naming things as it turns.
+  //
+  // DAWN is how long one takes to arrive and to leave, which is why the
+  // one going and the one coming overlap instead of blinking. In
+  // frames, off the same clock the drift runs on, so they stop when it
+  // stops rather than sitting on a still picture.
+  //
+  // Not RISE, which this drawing already uses for how far the breath
+  // reaches outward.
+  const EVERY = 60;
+  const LIFE = 180;
+  const DAWN = 24;
+  const NAMES = 3;
+
+  // How wide a card must be drawn, in CSS pixels, before it is worth
+  // naming.
+  //
+  // Not a zoom level, though that is what it amounts to: the cause is
+  // the size of the thing the name is pointing at. Measured through
+  // the module, the widest card in the cloud comes to 1.2 pixels at
+  // the far end of the wheel, 3.0 at four radii, 7.5 at the distance
+  // the map opens on, and 36 from inside. Under about five it is a
+  // speck, and a name floating over a field of specks belongs to none
+  // of them.
+  //
+  // Eight. Sampled over a whole breath at the framing the map opens
+  // on, the widest card runs between 5.7 and 36.3 pixels — the breath
+  // dives right inside the cloud, so it is never truly small — and a
+  // threshold of eight leaves names being chosen 77% of that cycle
+  // against 100% at five. The map therefore goes quiet at the far end
+  // of each breath and speaks again coming in, which is also when
+  // there is something to point at.
+  //
+  // It gates the choosing only: a name already up lives out its three
+  // seconds rather than blinking off the moment the wheel turns.
+  const NAMEABLE = 8;
+
+  // The gap between a card's ring and the first letter of its name, in
+  // CSS pixels.
+  const BESIDE = 5;
+
+  // Two names on one line overlap; two on different lines do not. Both
+  // have to be close for a candidate to be refused, and how close is
+  // `longest` — a name may be exactly as wide as the gap two names are
+  // required to keep, and no wider. A limit and a spacing that did not
+  // agree would let two "separated" names overlap anyway.
+  const APART_Y = 28;
+
+  // The longest a name may be drawn, in the canvas's own pixels.
+  //
+  // Measured on the library, in the face this draws in: the median name
+  // is 188 pixels wide, three quarters are under 263, and the longest —
+  // "Franco Micalizzi & Gianfranco Plenzio - Trinity: titoli (feat.
+  // Annibale & I Cantori Moderni di Alessandroni) [Remastered 2022]" —
+  // runs to 698, two thirds of the frame. Centred on its card it
+  // reached clean across the cloud.
+  //
+  // A quarter of the frame rather than a number, so it follows the
+  // window instead of being right at one size only. At the width this
+  // was written for that is 250 pixels, which shortens about three
+  // names in ten and leaves three of them filling three quarters of
+  // the frame at worst.
+  let longest = 250;
+
+  // How long before a song may be named again, in frames. A minute.
+  //
+  // The walk always starts from the front of the cloud, and the front
+  // of a cloud turning this slowly is much the same from one second to
+  // the next — so the same few songs were named over and over. With a
+  // memory, a song that has just been named is passed over and the
+  // walk goes a little deeper to find the next, which is both more
+  // varied and more honest about how much is out there.
+  const AGAIN = 3600;
+
+  let spoke = -1;
+  let named = [];
+  const told = new Map();
+
+  // Any CSS colour as three numbers. Painting it and reading the pixel
+  // back is the only way to do this that is not a parser for every
+  // notation the page might reasonably use.
+  function rgbOf(colour) {
+    const nib = document.createElement("canvas").getContext(
+      "2d", { willReadFrequently: true }
+    );
+    nib.fillStyle = colour;
+    nib.fillRect(0, 0, 1, 1);
+
+    const got = nib.getImageData(0, 0, 1, 1).data;
+    return [got[0], got[1], got[2]];
+  }
+
+  // Four bands, one a side, each going from the page's colour at the
+  // frame to nothing a little way in. Built when the frame changes
+  // size or the theme changes, and not every frame.
+  function weave() {
+    const wide = canvas.width;
+    const tall = canvas.height;
+    if (!wide || !tall) return;
+
+    const [r, g, b] = rgbOf(paper_colour);
+    const solid = "rgba(" + r + ", " + g + ", " + b + ", 1)";
+    const clear = "rgba(" + r + ", " + g + ", " + b + ", 0)";
+
+    veilDeep = Math.min(wide, tall) * FEATHER;
+    longest = Math.max(120 * grain, wide / 4);
+
+    // The cut depends on the width, so nothing keeps its old one.
+    named.forEach(function (one) { one.text = null; });
+
+    const small = getComputedStyle(note);
+    lettering = Math.round(parseFloat(small.fontSize) * grain)
+      + "px " + small.fontFamily;
+
+    const band = function (x1, y1, x2, y2) {
+      const run = paper.createLinearGradient(x1, y1, x2, y2);
+      run.addColorStop(0, solid);
+      run.addColorStop(1, clear);
+      return run;
+    };
+
+    veil = {
+      top: band(0, 0, 0, veilDeep),
+      bottom: band(0, tall, 0, tall - veilDeep),
+      left: band(0, 0, veilDeep, 0),
+      right: band(wide, 0, wide - veilDeep, 0),
+      wide: wide,
+      tall: tall,
+    };
+  }
+
+  // How far gone a point at this spot already is, nought to one: the
+  // pointer should not find a song the veil has taken.
+  function veiled(px, py) {
+    if (!veil || veilDeep <= 0) return 0;
+
+    return Math.max(
+      0,
+      1 - px / veilDeep,
+      1 - (veil.wide - px) / veilDeep,
+      1 - py / veilDeep,
+      1 - (veil.tall - py) / veilDeep
+    );
+  }
+
+  // A card, facing the reader, in one flat colour.
+  //
+  // It has been a shaded sphere and a shaded cube on the way here, and
+  // both were wrong for the same reason: the page they sit on is flat.
+  // Hairlines, type, one accent, no relief anywhere — and then nine
+  // hundred lit solids. The sphere read as a balloon and the cube,
+  // though it belonged to the right family of shapes, still modelled a
+  // volume the rest of the interface does not have.
+  //
+  // The map already carries all the depth it needs, and carries it the
+  // way a map does: things further off are smaller, and paler. Nothing
+  // has to be modelled on top of that.
+  //
+  // What the cube cost is worth keeping in mind if anyone brings it
+  // back. Every cube shares one silhouette, since they are all turned
+  // the same way, so it was still one sprite stamped — but the
+  // silhouette had to be re-cut whenever the view turned, and doing
+  // all thirteen colours in one frame cost 12.6ms against a median of
+  // 2.6. A card never turns, so it is cut once and kept.
+  function block(tint, fade) {
     const pad = document.createElement("canvas");
-    pad.width = SPRITE;
-    pad.height = SPRITE;
+    pad.width = SPRITE_W;
+    pad.height = SPRITE_H;
 
     const ink = pad.getContext("2d");
-    const middle = SPRITE / 2;
 
+    // Half a pixel in, so the rounded corners have somewhere to soften.
+    const trace = function () {
+      card(ink, 0.5, 0.5, SPRITE_W - 1, SPRITE_H - 1, SPRITE_H * ROUND);
+    };
+
+    trace();
     ink.fillStyle = tint;
-    ink.beginPath();
-    ink.arc(middle, middle, middle - 0.5, 0, Math.PI * 2);
     ink.fill();
 
-    // Lit inside the disc already drawn, so the colour stays the
-    // genre's own and only the light on it is added — which is what
-    // keeps the legend true. A rim that falls away to give the edge a
-    // turn, and a highlight up and to the left, where a reader expects
-    // the light to be coming from.
-    //
-    // Both are kept off the middle of the sphere on purpose. The first
-    // pass darkened half the disc and spread a white film over nine
-    // tenths of it, and the cloud came out dull: beside its own pip in
-    // the legend every sphere was a paler thing.
-    //
-    // The shade is cast from where the light is, not from the centre. A
-    // gradient concentric with the disc darkens the whole edge equally,
-    // which on the light theme's white reads as a black outline drawn
-    // round every point rather than as a sphere turning away. Centred
-    // on the highlight instead, and reaching half again past the far
-    // edge, it leaves the lit side clean and only the side facing away
-    // is in shadow — which is what a sphere does.
-    ink.globalCompositeOperation = "source-atop";
-
-    const shade = ink.createRadialGradient(
-      middle * 0.66, middle * 0.6, middle * 0.2,
-      middle * 0.66, middle * 0.6, middle * 1.55
-    );
-    shade.addColorStop(0, "rgba(0, 0, 0, 0)");
-    shade.addColorStop(0.45, "rgba(0, 0, 0, 0)");
-    shade.addColorStop(0.8, "rgba(0, 0, 0, 0.1)");
-    shade.addColorStop(1, "rgba(0, 0, 0, 0.32)");
-    ink.fillStyle = shade;
-    ink.fillRect(0, 0, SPRITE, SPRITE);
-
-    const lit = ink.createRadialGradient(
-      middle * 0.66, middle * 0.6, 0,
-      middle * 0.66, middle * 0.6, middle * 0.52
-    );
-    lit.addColorStop(0, "rgba(255, 255, 255, 0.78)");
-    lit.addColorStop(0.5, "rgba(255, 255, 255, 0.1)");
-    lit.addColorStop(1, "rgba(255, 255, 255, 0)");
+    // Two passes rather than one gradient from white to black: a single
+    // one interpolates through a grey with alpha in the middle, which
+    // would put a smudge across the centre of every card.
+    const lit = ink.createLinearGradient(0, 0, SPRITE_W, SPRITE_H);
+    lit.addColorStop(0, "rgba(255, 255, 255, " + SLOPE_UP + ")");
+    lit.addColorStop(0.55, "rgba(255, 255, 255, 0)");
+    trace();
     ink.fillStyle = lit;
-    ink.fillRect(0, 0, SPRITE, SPRITE);
+    ink.fill();
+
+    const dim = ink.createLinearGradient(0, 0, SPRITE_W, SPRITE_H);
+    dim.addColorStop(0.45, "rgba(0, 0, 0, 0)");
+    dim.addColorStop(1, "rgba(0, 0, 0, " + SLOPE_DOWN + ")");
+    trace();
+    ink.fillStyle = dim;
+    ink.fill();
+
+    if (fade > 0) {
+      trace();
+      ink.globalAlpha = fade;
+      ink.fillStyle = paper_colour;
+      ink.fill();
+    }
 
     return pad;
   }
 
+  // Every colour at every depth. Thirteen colours and eight steps is a
+  // hundred and four little canvases, built once and kept for the life
+  // of the drawing.
+  function blocksFor(tint) {
+    const set = [];
+    for (let step = 0; step < STEPS; step++) {
+      set.push(block(tint, (step / (STEPS - 1)) * HAZE));
+    }
+
+    return set;
+  }
+
+  // The cloud's own centre, so the eye turns about the middle of it
+  // and not about wherever the relaxation happened to leave the origin.
   const middle = [0, 0, 0];
   said.points.forEach(function (one) {
     middle[0] += one.at[0];
@@ -168,6 +496,9 @@ function build(said) {
   middle[1] /= count;
   middle[2] /= count;
 
+  let yaw = 0.4;
+  let pitch = 0.2;
+
   let reach = 1;
   const cloud = said.points.map(function (one, at) {
     const x = one.at[0] - middle[0];
@@ -177,20 +508,22 @@ function build(said) {
     reach = Math.max(reach, Math.sqrt(x * x + y * y + z * z));
 
     const tint = one.shade >= 0 ? colours.lit[one.shade] : colours.dim;
-    if (!balls.has(tint)) balls.set(tint, ball(tint));
+    if (!blocks.has(tint)) {
+      blocks.set(tint, blocksFor(tint));
+      inks.set(tint, inkFor(tint));
+    }
 
     return {
       at: at,
       x: x, y: y, z: z,
       tint: tint,
-      ball: balls.get(tint),
+      tintAt: one.shade,
     };
   });
 
-  // Where the eye is: far enough that the whole cloud fits the frame,
-  // and turned by whatever the pointer has dragged.
-  let yaw = 0.4;
-  let pitch = 0.2;
+  // How far the eye stands off: far enough that the whole cloud fits
+  // the frame.
+  //
   // A sphere of radius `reach` fills a 55-degree frame from
   // reach / sin(27.5°) = 2.17 away; a little further leaves a margin.
   // At 3.2, which is what the first camera here used, the cloud sat in
@@ -206,7 +539,7 @@ function build(said) {
 
   // Scratch space for the drawing, so a redraw allocates nothing.
   const flat = cloud.map(function () {
-    return { x: 0, y: 0, depth: 0, size: 0, tint: "", ball: null, at: 0 };
+    return { x: 0, y: 0, depth: 0, size: 0, tint: "", at: 0 };
   });
 
   function turn() {
@@ -230,7 +563,6 @@ function build(said) {
       seen.x = x;
       seen.y = y;
       seen.tint = one.tint;
-      seen.ball = one.ball;
       seen.at = one.at;
     }
   }
@@ -247,11 +579,69 @@ function build(said) {
     const middleY = tall / 2;
     paper.clearRect(0, 0, wide, tall);
 
+    // Where the name goes, once everything else is down: drawn inside
+    // the loop it would be covered by whichever cards come after.
+    let naming = null;
+
     // Far to near, so the near ones cover what is behind them — which
     // is the whole of what a depth buffer was doing.
     const order = flat.slice().sort(function (a, b) {
       return b.depth - a.depth;
     });
+
+    // The near and far walls of the cloud as the eye stands now, so the
+    // haze is read off the cloud and not off an absolute distance: the
+    // breath moves the eye by a factor of five and a fixed scale would
+    // wash the whole thing out at the far end of it.
+    const nearest = Math.max(0.1, away - reach);
+    const depth = Math.max(0.0001, (away + reach) - nearest);
+
+    // Whose names are up, while nobody is pointing. `order` runs far to
+    // near, so the nearest are at its end and the walk is backwards —
+    // it reads a handful and stops, not nine hundred.
+    if (!resting) {
+      spoke = -1;
+      named = [];
+    } else {
+      named = named.filter(function (one) {
+        return clock - one.born < LIFE;
+      });
+
+      const turn = Math.floor(clock / EVERY);
+      if (turn !== spoke) {
+        spoke = turn;
+
+        for (let i = order.length - 1; i >= 0 && named.length < NAMES; i--) {
+          const seen = order[i];
+          if (seen.depth <= 0.1) continue;
+
+          const when = told.get(seen.at);
+          if (when !== undefined && clock - when < AGAIN) continue;
+
+          const scale = lens / seen.depth;
+          const big = Math.min(
+            18, Math.max(0.6, reach * POINT * lens / seen.depth)
+          );
+          if (2 * big * FILL * WIDER < NAMEABLE * grain) continue;
+
+          const px = middleX + seen.x * scale;
+          const py = middleY - seen.y * scale;
+          if (veiled(px, py) > 0.4) continue;
+
+          // Against where the others are now, not where they were when
+          // they were chosen: the cloud has turned since.
+          const clear = named.every(function (other) {
+            return Math.abs(other.x - px) > longest
+              || Math.abs(other.y - py) > APART_Y * grain;
+          });
+          if (!clear) continue;
+
+          named.push({ at: seen.at, x: px, y: py, born: clock });
+          told.set(seen.at, clock);
+          break;
+        }
+      }
+    }
 
     for (let i = 0; i < order.length; i++) {
       const seen = order[i];
@@ -267,17 +657,163 @@ function build(said) {
         18, Math.max(0.6, reach * POINT * lens / seen.depth)
       );
 
-      paper.drawImage(seen.ball, x - size, y - size, size * 2, size * 2);
+      const far = (seen.depth - nearest) / depth;
+      const step = Math.max(0, Math.min(
+        STEPS - 1, Math.floor(far * STEPS)
+      ));
+
+      const wide = size * FILL * WIDER;
+      const tall = size * FILL / WIDER;
+
+      paper.drawImage(
+        blocks.get(seen.tint)[step], x - wide, y - tall, wide * 2, tall * 2
+      );
 
       if (seen.at === over) {
+        // The same outline, stood off a few pixels: a circle would say
+        // the pointer had found something round.
+        const out = 3.5;
+
+        card(
+          paper, x - wide - out, y - tall - out,
+          (wide + out) * 2, (tall + out) * 2, (tall + out) * 2 * ROUND
+        );
         paper.lineWidth = 1.5;
         paper.strokeStyle = seen.tint;
-        paper.beginPath();
-        paper.arc(x, y, size + 3.5, 0, Math.PI * 2);
         paper.stroke();
+
+        naming = {
+          x: x + wide + out + BESIDE * grain,
+          y: y,
+          ink: inks.get(seen.tint),
+        };
       }
     }
 
+    if (veil) {
+      paper.fillStyle = veil.top;
+      paper.fillRect(0, 0, wide, veilDeep);
+      paper.fillStyle = veil.bottom;
+      paper.fillRect(0, tall - veilDeep, wide, veilDeep);
+      paper.fillStyle = veil.left;
+      paper.fillRect(0, 0, veilDeep, tall);
+      paper.fillStyle = veil.right;
+      paper.fillRect(wide - veilDeep, 0, veilDeep, tall);
+    }
+
+    // Over the veil rather than under it: a name is the interface
+    // answering a question, not part of the cloud, and a half-faded
+    // answer is no answer.
+    paper.font = lettering;
+    // Beside the card rather than over it, and level with its middle:
+    // the name reads as a caption attached to the thing, the way a
+    // place name sits beside its dot on a map.
+    paper.textAlign = "left";
+    paper.textBaseline = "middle";
+    paper.lineJoin = "round";
+
+    // Laid over a crowd of cards, a line of text is unreadable on its
+    // own. The page's colour behind it, drawn as a fat stroke under the
+    // letters, is what a map does with a place name over a forest.
+    // As much of a name as fits, and an ellipsis for the rest. Cut at
+    // a space when one is near the end, so the break lands between
+    // words rather than in the middle of one.
+    function fits(name) {
+      if (paper.measureText(name).width <= longest) return name;
+
+      let lo = 0;
+      let hi = name.length;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (paper.measureText(name.slice(0, mid) + "…").width <= longest) {
+          lo = mid;
+        } else {
+          hi = mid - 1;
+        }
+      }
+
+      let cut = name.slice(0, lo);
+      const space = cut.lastIndexOf(" ");
+      if (space > 0 && space > lo - 12) cut = cut.slice(0, space);
+
+      return cut.replace(/[ \-–—:,]+$/, "") + "…";
+    }
+
+    function say(name, atX, atY, alpha, ink) {
+      // Set here and not once above, because the ring a named card
+      // wears borrows the same property between two calls of this.
+      paper.lineWidth = 4 * grain;
+
+      // Centred on its card, and left there. Holding it inside the
+      // frame was tried: it keeps every name whole, but it slides the
+      // name off the card it belongs to, and a name that points at the
+      // wrong card is worse than one the edge has taken. A name that
+      // reaches the border is cut, and fades under the veil on its way
+      // out, which is what the border is for.
+      paper.globalAlpha = alpha;
+      paper.strokeStyle = paper_colour;
+      paper.strokeText(name, atX, atY);
+      paper.fillStyle = ink;
+      paper.fillText(name, atX, atY);
+      paper.globalAlpha = 1;
+    }
+
+    if (naming) {
+      say(fits(said.points[over].label), naming.x, naming.y, 1, naming.ink);
+    } else {
+      named.forEach(function (one) {
+        const seen = flat[one.at];
+        if (seen.depth <= 0.1) return;
+
+        // Re-read each frame: the cloud turns while the name is up, and
+        // a name that stayed where the card was is a label for nothing.
+        // Kept on the entry too, so the next one chosen is placed
+        // against where this one has got to.
+        const scale = lens / seen.depth;
+        const big = Math.min(
+          18, Math.max(0.6, reach * POINT * lens / seen.depth)
+        );
+        one.x = middleX + seen.x * scale;
+        one.y = middleY - seen.y * scale;
+
+        // Cut once and kept: the width does not change between frames,
+        // and weave() clears these when it does.
+        if (!one.text) one.text = fits(said.points[one.at].label);
+
+        // In and out rather than on and off, each on its own age.
+        const age = clock - one.born;
+        const alpha = Math.min(
+          1, age / DAWN, Math.max(0, (LIFE - age) / DAWN)
+        );
+
+        // Ringed while it is named, in its own colour and fading with
+        // the name: at this size a card is a few pixels, and a name
+        // hanging over a field of them says nothing about which. The
+        // same mark the pointer makes, because it means the same
+        // thing — this one.
+        const wide = big * FILL * WIDER;
+        const tall = big * FILL / WIDER;
+        const out = 3.5;
+
+        paper.globalAlpha = alpha;
+        card(
+          paper, one.x - wide - out, one.y - tall - out,
+          (wide + out) * 2, (tall + out) * 2, (tall + out) * 2 * ROUND
+        );
+        paper.lineWidth = 1.5;
+        paper.strokeStyle = seen.tint;
+        paper.stroke();
+        paper.globalAlpha = 1;
+
+        say(
+          one.text,
+          one.x + wide + out + BESIDE * grain,
+          one.y,
+          alpha,
+          inks.get(seen.tint)
+        );
+      });
+    }
   }
 
   function redraw() {
@@ -337,10 +873,22 @@ function build(said) {
   // and whatever has gone behind the eye is culled. A full breath takes
   // 80 seconds, 40 in and 40 out.
   //
-  // It is a factor, not a distance: the breath rides on wherever the
-  // wheel was last left, so it means the same thing far out and close
-  // in. `home` is what it is a factor of, taken from the eye's own
-  // place each time the drift starts, so resuming never jumps.
+  // It is a factor, not a distance, and `home` is what it is a factor
+  // of. Taken from the eye's own place each time the drift starts, so
+  // resuming never jumps — and then drawn back, over a few seconds,
+  // to the distance that frames the whole cloud.
+  //
+  // Riding for ever on wherever the wheel was left was the first
+  // version and it was wrong: zoom in once, leave, and the breath
+  // stayed shrunk around that spot. The far end of it never came back
+  // out far enough to show the cloud again. A wheel is a look at
+  // something, not a new home.
+  //
+  // HOMING is what is left of the distance from home each frame: at
+  // 0.006 the eye is most of the way back in three seconds and all the
+  // way in about a dozen, which is slow enough that nobody sees it
+  // being pulled.
+  const HOMING = 0.006;
   const TURN = 0.0012;
   const TIP = 0.00028;
   const SWING = 1.0;
@@ -349,7 +897,10 @@ function build(said) {
   const WIND = 0.0013;
 
   let clock = 0;
-  let home = away;
+  // Where the breath belongs: the top of it is the distance that frames
+  // the whole cloud, which is where the eye starts.
+  const settled = away / Math.exp(RISE);
+  let home = settled;
   let tilting = 1;
 
   // It is a frame a tick for as long as it runs — under 3 ms of
@@ -374,12 +925,22 @@ function build(said) {
     // moved it since, and a factor needs something to be a factor of.
     if (resting && !was) home = away / breath();
 
-    if (resting) keepEasing();
+    if (resting) {
+      keepEasing();
+    } else if (was) {
+      // Nothing is going to ask for another frame now, and the last one
+      // drawn still carries the names the drift had put up. They would
+      // sit there, frozen, for as long as the pointer stayed on the
+      // map.
+      paint();
+    }
   }
 
   function drift() {
     clock += 1;
     yaw += TURN;
+
+    home += (settled - home) * HOMING;
 
     // Reversed rather than clamped: a drag can leave the tilt outside
     // this range, and clamping would snap it back the moment the
@@ -477,8 +1038,12 @@ function build(said) {
       if (seen.depth <= 0.1) continue;
 
       const scale = lens / seen.depth;
-      const dx = middleX + seen.x * scale - spot.x;
-      const dy = middleY - seen.y * scale - spot.y;
+      const px = middleX + seen.x * scale;
+      const py = middleY - seen.y * scale;
+      if (veiled(px, py) > 0.75) continue;
+
+      const dx = px - spot.x;
+      const dy = py - spot.y;
       const gap = dx * dx + dy * dy;
 
       // The nearest to the pointer, and among equals the nearest to the
@@ -506,7 +1071,7 @@ function build(said) {
     // the first movement says so instead.
     if (!pointerOn) {
       pointerOn = true;
-      resting = false;
+      settle();
     }
 
     if (dragging) {
@@ -614,14 +1179,37 @@ function build(said) {
   canvas.addEventListener("pointerleave", depart);
   canvas.addEventListener("wheel", roll, { passive: false });
 
+  // The sprites carry the page's colour inside them, so a theme change
+  // has to rebuild them: otherwise the far side of the cloud goes on
+  // fading towards a white that is no longer there.
+  function retint() {
+    paper_colour = behind();
+    weave();
+
+    const colours = palette();
+    blocks = new Map();
+    inks = new Map();
+    cloud.forEach(function (one) {
+      one.tint = one.tintAt >= 0 ? colours.lit[one.tintAt] : colours.dim;
+      if (!blocks.has(one.tint)) {
+        blocks.set(one.tint, blocksFor(one.tint));
+        inks.set(one.tint, inkFor(one.tint));
+      }
+    });
+
+    redraw();
+  }
+
   function resize() {
     const wide = frame.clientWidth;
     const tall = frame.clientHeight;
     if (!wide || !tall) return;
 
     const ratio = Math.min(window.devicePixelRatio, 2);
+    grain = ratio;
     canvas.width = Math.round(wide * ratio);
     canvas.height = Math.round(tall * ratio);
+    weave();
     redraw();
   }
 
@@ -630,6 +1218,7 @@ function build(said) {
 
   return {
     resize: resize,
+    retint: retint,
 
     // The tab the map is on. Off it, nobody is looking and the drift
     // would be a frame a tick spent on a section nobody can see.
@@ -684,3 +1273,10 @@ new MutationObserver(function () {
 window.addEventListener("resize", function () {
   if (drawn) drawn.resize();
 });
+
+new MutationObserver(function () {
+  if (drawn) {
+    drawn.retint();
+    showLegend(genres);
+  }
+}).observe(document.documentElement, { attributeFilter: ["data-theme"] });

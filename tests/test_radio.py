@@ -577,16 +577,24 @@ def test_the_map_is_drawn_on_a_plain_2d_canvas():
     # Far to near, which is the whole of what a depth buffer did.
     assert "b.depth - a.depth" in flat, "the points are not depth-sorted"
 
-    # Every gradient on a sphere starts where the light is. One centred
-    # on the disc instead darkens its whole edge equally, which on the
-    # light theme's white reads as a black outline drawn round every
-    # point rather than as a sphere turning away — reported from a
-    # browser, and the reason the shade moved off centre.
-    lamps = re.findall(
-        r"createRadialGradient\(\s*([^,]+),\s*([^,]+),", flat
+    # The mark is a card facing the reader: a rectangle in the
+    # proportion a bank card has, corners just off square, one flat
+    # colour. It was a shaded sphere and then a shaded cube on the way
+    # here, and both were wrong for the same reason — the page they sit
+    # on is flat, and the map already carries its own depth.
+    assert "const CARD = 1.586;" in source
+    assert "const ROUND = 0.11;" in source
+    assert "function card(ink, x, y, wide, tall, round)" in source, (
+        "the outline is not a shape the drawing can reuse"
     )
-    assert lamps, "nothing on the sphere is shaded"
-    assert len({(x.strip(), y.strip()) for x, y in lamps}) == 1, lamps
+    assert flat.count("createRadialGradient") == 0, (
+        "something is being modelled as a solid again"
+    )
+
+    # Area kept, so changing the shape did not quietly change how heavy
+    # the cloud is: half the width times root of the ratio, half the
+    # height divided by it.
+    assert "const WIDER = Math.sqrt(CARD);" in source
 
 
 def test_the_map_calls_nothing_it_does_not_own():
@@ -615,8 +623,10 @@ def test_the_map_calls_nothing_it_does_not_own():
     # `if (`, `for (` and the rest read as calls to this and are not.
     grammar = {"if", "for", "while", "switch", "catch", "return",
                "typeof", "function"}
-    # The three the browser itself provides.
-    browser = {"fetch", "getComputedStyle", "requestAnimationFrame"}
+    # The ones the browser itself provides. Each was added on purpose,
+    # which is the point of the list.
+    browser = {"fetch", "getComputedStyle", "requestAnimationFrame",
+               "parseFloat"}
 
     assert called - held - grammar - browser == set(), (
         "the map calls a name it does not define and the browser does not"
@@ -729,6 +739,314 @@ def test_the_cloud_turns_by_itself_and_stops_under_the_hand():
 
     # Off the tab, nobody is looking.
     assert "else if (drawn) drawn.showing(false);" in source
+
+
+def test_distance_is_said_with_air_rather_than_with_gloss():
+    """A map says how far away a thing is by making it smaller and
+    paler, not by modelling a solid. Each colour is cut once per depth
+    step, mixed towards the colour of the page behind the cloud — a
+    mix, not a transparency, so the cards stay opaque and nothing shows
+    through anything.
+
+    The steps are read off the cloud's own near and far walls as the
+    eye stands at that moment. The breath moves the eye by a factor of
+    five, and a fixed scale would wash the whole picture out at the far
+    end of it.
+    """
+
+    source = Path("src/pypl2mp3/web/static/map.js").read_text()
+
+    assert "const STEPS = 8;" in source and "const HAZE = 0.5;" in source
+
+    # Cut into the sprite, not laid over each card as it lands: a value
+    # per point is a gradient per point per frame.
+    cut = source[source.index("function block(tint, fade)"):]
+    cut = cut[:cut.index("\n  }")]
+    assert "ink.globalAlpha = fade;" in cut
+    assert "ink.fillStyle = paper_colour;" in cut, cut
+
+    # Off the eye's own distance, not an absolute one.
+    assert "const nearest = Math.max(0.1, away - reach);" in source
+    assert "const depth = Math.max(0.0001, (away + reach) - nearest);" in source
+
+    # The sprites carry the page's colour inside them, so a theme change
+    # has to rebuild them or the far side goes on fading towards a white
+    # that is no longer there.
+    assert "function retint()" in source
+    assert 'attributeFilter: ["data-theme"]' in source
+
+
+def test_two_cards_of_one_colour_say_which_is_in_front():
+    """Drawn far to near, two cards of the same colour that overlap read
+    as one odd shape. A slope of light across each one settles it: the
+    near card's lit corner meets the far one's shaded end and the join
+    shows by itself.
+
+    A rule between them was tried twice and thrown away twice — in the
+    page's colour it cut a white gash through every crowd, and in a
+    darker shade of the card it drew a border round things that are not
+    bordered anywhere else on this page. A slope draws nothing.
+    """
+
+    source = Path("src/pypl2mp3/web/static/map.js").read_text()
+
+    assert "const SLOPE_UP = 0.14;" in source
+    assert "const SLOPE_DOWN = 0.17;" in source
+
+    # Two passes. One gradient from white to black interpolates through
+    # a grey with alpha in the middle, which puts a smudge across the
+    # centre of every card.
+    cut = source[source.index("function block(tint, fade)"):]
+    cut = cut[:cut.index("\n  }")]
+    assert cut.count("createLinearGradient") == 2, cut
+
+    # And nothing is drawn under the card any more.
+    for gone in ("CASING", "DARKER", "edgesFor"):
+        assert gone not in source, f"the rule is back as {gone}"
+
+
+def test_the_cloud_leaves_the_frame_instead_of_being_cut_by_it():
+    """A cloud that turns and breathes keeps pushing songs past the edge
+    of the frame, and a card that meets it is simply cut in half — a
+    straight line through a thing that has none. Four bands of the
+    page's own colour, one a side, fade the last stretch instead.
+
+    Laid over the whole cloud once rather than worked out card by card,
+    and in the page's colour, so on open ground it does nothing and
+    nothing has to be made translucent to get it.
+
+    Measured in a browser: on the three outermost columns of the frame,
+    0.4% of pixels differ from the page's colour, against 83.7% in a
+    band across the middle.
+    """
+
+    source = Path("src/pypl2mp3/web/static/map.js").read_text()
+
+    assert "const FEATHER = 0.14;" in source
+    assert "function weave()" in source
+    for side in ("top", "bottom", "left", "right"):
+        assert side + ": band(" in source, f"the {side} edge is not feathered"
+
+    # And the pointer does not find a song the veil has taken: clicking
+    # apparently empty ground would otherwise start something invisible.
+    assert "if (veiled(px, py) > 0.75) continue;" in source
+
+
+def test_the_name_of_a_song_is_drawn_on_the_map_and_not_under_it():
+    """The readout used to be a line of text below the frame, which
+    reserved a line of the page whether or not anything was under the
+    pointer. The name is drawn on the canvas now, beside the card it
+    belongs to and level with its middle — a caption attached to the
+    thing, the way a place name sits beside its dot.
+
+    `#map-hover` stays as the spoken version of the same thing. A canvas
+    says nothing to a screen reader, so taking the element out would
+    have left the map with no accessible readout at all; it is hidden
+    rather than removed.
+    """
+
+    source = Path("src/pypl2mp3/web/static/map.js").read_text()
+    css = Path("src/pypl2mp3/web/static/console.css").read_text()
+    page = Path("src/pypl2mp3/web/templates/console.html").read_text()
+
+    assert 'paper.textAlign = "left";' in source
+    assert 'paper.textBaseline = "middle";' in source
+    assert "const BESIDE = 5;" in source
+
+    # A line of text in a card's colour over a crowd of cards is
+    # unreadable on its own. The page's colour behind it, as a fat
+    # stroke under the letters, is what a map does with a place name
+    # over a forest.
+    assert "paper.strokeStyle = paper_colour;" in source
+    assert "paper.strokeText(name, atX, atY);" in source
+
+    assert '<p id="map-hover" aria-live="polite">' in page, (
+        "the map has no accessible readout left"
+    )
+    hidden = re.search(r"\n#map-hover \{([^}]*)\}", css)
+    assert hidden and "clip-path: inset(50%)" in hidden.group(1), hidden
+    assert "min-height" not in hidden.group(1), (
+        "it is still holding a line of the page open"
+    )
+
+
+def test_the_map_names_a_few_songs_while_it_turns():
+    """A map nobody is touching is nine hundred anonymous marks, and the
+    one thing a reader wants of it — what is this? — needs a hand on the
+    mouse to ask. One name a second, each staying three, so three are up
+    at any moment and each is a second older than the last. A set of
+    three arriving and leaving together read as a slideshow.
+
+    Each card wears the same ring the pointer makes while its name is
+    up: at this size a card is a few pixels, and a name hanging over a
+    field of them says nothing about which.
+    """
+
+    source = Path("src/pypl2mp3/web/static/map.js").read_text()
+
+    assert "const EVERY = 60;" in source
+    assert "const LIFE = 180;" in source
+    assert "const NAMES = 3;" in source
+
+    walk = source[source.index("if (!resting) {"):]
+    walk = walk[:walk.index("\n    for (let i = 0; i < order.length")]
+
+    # Each on its own age, so the one going and the one coming overlap
+    # instead of blinking.
+    assert "named.push({ at: seen.at, x: px, y: py, born: clock });" in walk
+    assert "return clock - one.born < LIFE;" in walk
+
+    assert "paper.strokeStyle = seen.tint;" in source, "named cards wear no ring"
+
+
+def test_a_song_is_not_named_twice_within_the_minute():
+    """The walk starts from the front of the cloud, and the front of a
+    cloud turning this slowly is much the same from one second to the
+    next — so the same few songs were named over and over.
+
+    With a memory the walk goes a little deeper to find the next one.
+    Measured in a browser over 110 seconds: 118 names, 105 distinct, and
+    the closest a song came to being named twice was 77 apart, against a
+    floor of 60.
+    """
+
+    source = Path("src/pypl2mp3/web/static/map.js").read_text()
+
+    assert "const AGAIN = 3600;" in source
+    assert "const when = told.get(seen.at);" in source
+    assert "if (when !== undefined && clock - when < AGAIN) continue;" in source
+    assert "told.set(seen.at, clock);" in source
+
+
+def test_a_song_is_only_named_when_its_card_is_big_enough_to_point_at():
+    """Not a zoom level, though that is what it amounts to: what stops a
+    name being attachable is that the thing it points at is a speck.
+
+    Measured through the module, the widest card in the cloud comes to
+    1.2 pixels at the far end of the wheel, 3.0 at four radii, 7.5 at
+    the distance the map opens on, and 36 from inside. Sampled over a
+    whole breath at the opening framing it runs 5.7 to 36.3, and a
+    threshold of eight leaves names being chosen 77% of that cycle
+    against 100% at five — measured on screen afterwards, names are up
+    90% of the time, because one already chosen lives out its three
+    seconds.
+
+    It gates the choosing only, so a name already up does not blink off
+    the moment the wheel turns.
+    """
+
+    source = Path("src/pypl2mp3/web/static/map.js").read_text()
+
+    assert "const NAMEABLE = 8;" in source
+    assert "if (2 * big * FILL * WIDER < NAMEABLE * grain) continue;" in source
+
+    # In the choosing, not in the drawing. Anchored on a line only the
+    # drawing has: `named.forEach(` also opens the one-liner in weave()
+    # that clears the cut names, and slicing from there took seven
+    # thousand characters of unrelated code with it — this assertion
+    # passed with the gate moved straight into the drawing.
+    drawing = source[source.index("const seen = flat[one.at];"):]
+    drawing = drawing[:drawing.index("\n      });")]
+    assert "NAMEABLE" not in drawing, drawing
+
+
+def test_a_name_is_cut_to_the_width_two_names_must_keep_apart():
+    """Measured on the library, in the face the map draws in: the median
+    name is 188 pixels wide, three quarters are under 263, and the
+    longest — Franco Micalizzi's "Trinity: titoli (feat. …) [Remastered
+    2022]" — runs to 698, two thirds of the frame.
+
+    A quarter of the frame, so the limit follows the window rather than
+    being right at one size. At the width this was written for that is
+    250 pixels and it shortens about three names in ten.
+
+    It is the same number as the gap two names must keep to be allowed
+    on one line, and deliberately so: a limit and a spacing that did not
+    agree would let two "separated" names overlap anyway.
+    """
+
+    source = Path("src/pypl2mp3/web/static/map.js").read_text()
+
+    assert "longest = Math.max(120 * grain, wide / 4);" in source
+    assert "return Math.abs(other.x - px) > longest" in source, (
+        "the spacing is a number of its own again"
+    )
+
+    cut = source[source.index("function fits(name)"):]
+    cut = cut[:cut.index("\n    }")]
+    assert "paper.measureText(name).width <= longest" in cut
+    assert 'return cut.replace(' in cut and '"…"' in cut, cut
+
+
+def test_a_name_is_written_in_its_card_s_colour_pushed_off_the_page():
+    """The ring says which card; the name says what it is. Both in the
+    card's own colour, so they read as one object.
+
+    Pushed far enough from the page to be read, and which way is decided
+    by the page rather than by a flag — the theme is a fact about the
+    colour behind the letters. Measured across the thirteen colours,
+    worst case: untouched they come to 1.75:1 on white, which is no
+    contrast at all; darkened to 55% they reach 5.28, and lightened by a
+    quarter on the dark theme, 6.26. Both clear the 4.5 that small text
+    is held to.
+    """
+
+    source = Path("src/pypl2mp3/web/static/map.js").read_text()
+
+    assert "const DARKEN = 0.55;" in source
+    assert "const LIGHTEN = 0.25;" in source
+
+    ink = source[source.index("function inkFor(tint)"):]
+    ink = ink[:ink.index("\n  }")]
+    assert "rgbOf(paper_colour)" in ink, (
+        "the direction is taken from something other than the page"
+    )
+    assert "0.2126 * page[0]" in ink, ink
+
+
+def test_the_breath_comes_home_after_the_wheel_has_moved_it():
+    """The breath is a factor, and `home` is what it is a factor of.
+    Riding for ever on wherever the wheel was left was the first version
+    and it was wrong: zoom in once, leave, and the breath stayed shrunk
+    around that spot, its far end never coming back out far enough to
+    show the cloud again. A wheel is a look at something, not a new
+    home.
+
+    Taken from the eye's own place when the drift restarts, so nothing
+    jumps, and then drawn back. Measured through the module: after
+    zooming right in, the anchor resumes at 0.975 radii and reads 1.568
+    three seconds later, 1.939 at six, and 2.124 at sixteen — against a
+    resting 2.129.
+    """
+
+    source = Path("src/pypl2mp3/web/static/map.js").read_text()
+
+    assert "const HOMING = 0.006;" in source
+    assert "const settled = away / Math.exp(RISE);" in source, (
+        "the breath has no natural distance to come back to"
+    )
+    assert "home += (settled - home) * HOMING;" in source
+
+    # And still no jump on the way in.
+    assert "if (resting && !was) home = away / breath();" in source
+
+
+def test_the_drift_repaints_once_when_it_stops():
+    """Nothing asks for another frame once the drift is off, so the last
+    one drawn stays on screen — names and all. Putting the pointer on
+    the map without aiming at anything left three names frozen there for
+    as long as it stayed.
+
+    Measured in a browser: 643 pixels of lettering while drifting, 0 the
+    moment the pointer arrives, 0 two seconds later, 860 once it leaves.
+    """
+
+    source = Path("src/pypl2mp3/web/static/map.js").read_text()
+
+    settle = source[source.index("function settle() {"):]
+    settle = settle[:settle.index("\n  }")]
+    assert "} else if (was) {" in settle, settle
+    assert "paint();" in settle, settle
 
 
 def test_a_drag_across_the_map_does_not_play_what_it_stops_over():

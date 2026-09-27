@@ -764,13 +764,20 @@ body[data-tab="map"] #list { display: none; }
 #map-canvas { display: block; width: 100%; height: 100%; cursor: grab; }
 #map-canvas:active { cursor: grabbing; }
 #map-note { margin: 0; color: var(--text-3); font-size: var(--fs-sm); }
-/* One line, always there: a readout that appears and disappears moves
-   the cloud above it every time the pointer crosses a song. */
+/* The name of the song under the pointer is drawn on the canvas now,
+   over the card it belongs to and in that card's colour. This stays as
+   the spoken version of the same thing: a live region a screen reader
+   announces, and nothing a screen shows. Taking it out altogether
+   would have left the map with no accessible readout at all. */
 #map-hover {
-  margin: 0;
-  min-height: 1.2em;
-  color: var(--text);
-  font-size: var(--fs-sm);
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 #map-legend {
   display: flex;
