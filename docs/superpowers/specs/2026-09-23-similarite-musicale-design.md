@@ -360,27 +360,144 @@ WebGL : sans effort ». Le GPU était là, le pilote non : le Chrome de
 cette machine refuse d'ouvrir un processus GPU (`GPU access is disabled
 due to frequent crashes`), donc la version WebGL n'a **jamais** été vue
 tourner. Celle en 2D a révélé deux défauts dans ses dix premières
-minutes.
+minutes, et three.js a fini par être supprimé plutôt que gardé en
+parallèle : garder les deux, c'était garder un moteur que personne ne
+pouvait vérifier.
 
 Un nuage de points demande très peu à un moteur de rendu : une rotation,
-une projection, un tri en profondeur et un disque ombré par point. Les
-944 points coûtent **1,7 ms par image**, mesurés dans le navigateur, et
-la boucle d'animation ne tourne que pendant un mouvement — une carte
-qu'on ne touche pas est une image fixe et ne coûte rien, ce qui compte
-quand chaque pixel est tramé par le processeur.
+une projection, un tri en profondeur et une fiche estampée. Chaque image
+coûte **2,4 ms** pour 944 morceaux, mesurées dans le navigateur, sur un
+budget de 16,7.
 
-Les points sont des sphères : une seule est ombrée par couleur dans un
-canvas hors écran, puis estampée. Ombrer chaque point où il atterrit
-construirait neuf cents dégradés par image ; celui-ci en construit
-treize pour la vie du dessin.
+#### La forme du point
 
-Le zoom est un ressort (dépassement de 11 %, stabilisé en 19 images) et
-la rotation garde son élan à la relâche pendant environ une seconde. Qui
-a demandé à son système de ne pas animer ne reçoit que la cible.
+Elle a changé trois fois, et les deux premières étaient fausses pour la
+même raison. *Dans ce qui suit, « la carte » reste l'onglet et « une
+fiche » est la marque qui représente un morceau* — sans quoi la section
+parle de deux choses avec un seul mot.
+
+| forme | ce qui n'allait pas |
+|---|---|
+| sphère ombrée | lue comme un ballon d'anniversaire : le spéculaire blanc est le signal « plastique verni » |
+| cube ombré | la bonne famille de formes, mais il modélise un volume que l'interface n'a nulle part |
+| **fiche plate** | — |
+
+La page est résolument plate : des filets d'un pixel, de la typographie,
+un seul accent, aucun relief. Neuf cents solides éclairés au milieu de ça
+n'étaient pas un détail de goût mais une faute de registre. **Et la carte
+porte déjà toute la profondeur dont elle a besoin** — le lointain est
+plus petit et plus pâle — donc il n'y a rien à modéliser par-dessus.
+
+La forme retenue est une **fiche**, à la proportion d'une carte bancaire
+(85,60 × 53,98 mm, soit 1,586), coins juste décrochés du droit, une seule
+couleur plate, et **la même aire que le disque qu'elle remplace** pour
+que changer la forme n'épaississe pas le nuage en douce.
+
+Le cube mérite d'être retenu si quelqu'un veut le ramener. Tous les cubes
+vivent dans le même monde, tournés du même angle, donc ils présentent la
+**même silhouette** : c'était encore un sprite estampé, pas une
+projection par point. Mais la silhouette devait être recoupée dès que la
+vue tournait, et recouper les treize couleurs dans une image coûtait
+**12,6 ms** contre une médiane de 2,6. Une fiche, elle, ne tourne jamais.
+
+#### La profondeur se dit avec de l'air
+
+Comme sur une carte, pas comme sur un rendu : plus petit et plus pâle.
+Chaque couleur est découpée une fois par palier de profondeur, mélangée
+vers la couleur de la page derrière le nuage.
+
+C'est un **mélange opaque, pas une transparence**. La distinction n'est
+pas théorique : neuf cents disques translucides superposés avaient donné
+un voile où l'œil voulait des points, et des couleurs mélangées qui
+n'étaient le genre de personne.
+
+Les bornes du fondu sont les parois proche et lointaine du nuage **telles
+que l'œil est placé à cet instant**, et non une distance absolue : la
+respiration déplace l'œil d'un facteur cinq, et une échelle fixe
+délaverait tout au bout de sa course.
+
+Quand deux fiches de même couleur se recouvrent, rien ne dit laquelle est
+devant. Un trait entre elles a été essayé deux fois et jeté deux fois —
+à la couleur de la page il taillait une entaille blanche dans chaque
+foule, et dans un ton plus sombre de la fiche il dessinait un bord autour
+de choses qui n'en ont nulle part ailleurs sur cette page. Ce qui marche
+ne dessine rien : **une pente de lumière** en diagonale dans chaque
+fiche. Le coin éclairé de la fiche de devant rencontre l'extrémité
+ombrée de celle de derrière, et la jointure se montre d'elle-même.
+
+Enfin le nuage **quitte** le cadre au lieu d'être tranché par lui :
+quatre bandes de la couleur de la page, une par côté, estompent la
+dernière portion. Mesuré : sur les trois colonnes extérieures, **0,4 %**
+des pixels diffèrent de la couleur de page, contre 83,7 % dans une bande
+au centre.
+
+#### Le mouvement
+
+Tout est amorti, et tout s'arrête quand plus rien ne bouge.
+
+- **Le zoom est un ressort** : 11 % de dépassement, stabilisé à la 19ᵉ
+  image, constantes choisies en simulant quatre-vingt-dix images avant
+  d'écrire la ligne.
+- **Un glissement relâché garde son élan** environ une seconde.
+- **Laissée seule, la carte tourne et respire** : une révolution en 87 s
+  à vitesse constante, l'axe dérivant lui aussi à vitesse constante
+  (0,96°/s, un radian de chaque côté), et l'œil allant du cadrage
+  d'ensemble jusqu'au cinquième de cette distance — c'est-à-dire
+  **dedans** — en 81 s.
+
+La respiration est un **facteur**, et son ancre est ramenée vers la
+distance qui cadre le nuage entier. La première version la laissait
+chevaucher ce que la molette avait laissé : un zoom, et elle restait
+rétrécie autour de ce point pour toujours. *Un coup de molette est un
+coup d'œil sur quelque chose, pas un nouveau domicile.*
+
+La boucle d'animation ne tourne que pendant un mouvement — **60 images
+par seconde au repos, zéro dès que le pointeur se pose sur la carte,
+zéro sur un autre onglet**. Qui a demandé à son système de ne pas animer
+ne reçoit que la cible, sans aucune animation.
+
+#### Ce que la carte dit d'elle-même
 
 Survoler nomme le morceau ; cliquer le joue, la carte devenant une entrée
-dans la file comme une ligne de la liste ; le morceau en cours est
-allumé.
+dans la file comme une ligne de la liste.
+
+Le nom est dessiné **sur le canvas**, à droite de sa fiche et aligné sur
+son milieu — une légende attachée à la chose, comme un nom de lieu
+posé à côté de son point. Il est écrit dans **la couleur de sa fiche**,
+poussée assez loin de la page pour être lue : assombrie à 55 % sur le
+thème clair, éclaircie d'un quart sur le sombre. Mesuré sur la pire des treize
+couleurs : **1,75:1 brut**, contre **5,28:1** et **6,26:1** après
+poussée — au-dessus du 4,5:1 auquel un petit texte est tenu. Le sens de
+la poussée se déduit de la luminance de la page, pas d'un drapeau de
+thème : c'est un fait sur ce qui est derrière les lettres.
+
+Et **laissée seule, la carte se nomme elle-même**. Un nom par seconde,
+chacun restant trois, chacun s'effaçant sur son propre âge pour que celui
+qui part et celui qui arrive se chevauchent. Trois règles le tiennent :
+
+- **Seulement une fiche d'au moins huit pixels de large.** Ce n'est pas
+  un niveau de zoom, bien que ça y revienne : ce qui empêche de rattacher
+  un nom, c'est que la chose désignée est un grain de poussière. Mesuré,
+  la plus large fiche fait 1,2 px au bout de la molette et 7,5 px au
+  cadrage d'ouverture.
+- **Jamais deux fois le même morceau dans la minute.** L'avant d'un nuage
+  qui tourne aussi lentement est le même d'une seconde à l'autre ; sans
+  mémoire, les mêmes quelques morceaux revenaient en boucle. Mesuré sur
+  110 s : 118 noms, 105 distincts, le rapprochement le plus serré à 77
+  d'écart pour un plancher de 60.
+- **Un nom est coupé au quart de la largeur du cadre**, qui est aussi
+  l'écart que deux noms doivent garder pour partager une ligne. Une
+  limite et un écartement qui ne s'accordent pas laisseraient deux noms
+  « séparés » se chevaucher. Sur la bibliothèque, le nom médian fait
+  188 px et le plus long 698, soit les deux tiers du cadre.
+
+La fiche nommée porte **le même anneau que fait le pointeur** : à cette
+taille une fiche fait quelques pixels, et un nom planant au-dessus d'un
+champ de pixels ne dit pas lequel.
+
+`#map-hover` subsiste, masqué. Un canvas ne dit rien à un lecteur
+d'écran ; retirer l'élément aurait laissé la carte sans aucune
+restitution accessible.
 
 **En option, pas dans le socle :** tracer le parcours radio comme un fil à
 travers le nuage. Presque gratuit une fois le graphe dessiné.
