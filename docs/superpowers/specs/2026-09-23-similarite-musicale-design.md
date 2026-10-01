@@ -21,7 +21,7 @@ par une opinion. La bibliothèque porte déjà de quoi juger : pour un
 morceau, combien de ses cinq plus proches voisins sont **du même
 artiste** ?
 
-Deux morceaux tirés au hasard le sont avec une probabilité de **0,7 %**
+Deux morceaux tirés au hasard le sont avec une probabilité de **0,6 %**
 — la somme des carrés des proportions. C'est une règle exigeante, et
 c'est la bonne : deux morceaux du même artiste se ressemblent
 effectivement, par la voix, la production, l'instrumentation. C'est
@@ -29,9 +29,9 @@ exactement ce que « ça sonne pareil » veut dire.
 
 **Le genre a d'abord servi de règle, et il ne valait rien.** 86 % des
 morceaux en portent un, posé par Shazam, ce qui en faisait le candidat
-évident. Mesuré : le vecteur livré atteint 1,4 fois le hasard sur le
-genre, et **11,6 fois le hasard sur l'artiste** — sur le même corpus,
-avec les mêmes vecteurs, le même jour. Les traits ne sont donc pas
+évident. Mesuré sur les 944 : le vecteur livré atteint 1,4 fois le
+hasard sur le genre, et **16,5 fois le hasard sur l'artiste** — sur le
+même corpus, avec les mêmes vecteurs, le même jour. Les traits ne sont donc pas
 faibles ; c'est l'étiquette qui l'est. « Alternative » et « Pop » sont
 des catégories commerciales, pas acoustiques : deux morceaux Pop de 1985
 et 2020 partagent un libellé et rien d'autre.
@@ -68,7 +68,7 @@ Mesurées, pas supposées, parce qu'elles ont fermé une porte :
 | pas de scipy | tout ce qui suit s'écrit en numpy seul |
 | **ffmpeg 8.0.1** | décode ; ses filtres d'analyse se sont révélés inutiles, la STFT du timbre donnant déjà la couleur |
 | GPU Intel Iris Pro, 1,5 Go — **mais processus GPU désactivé dans Chrome** | WebGL indisponible ; la carte se dessine sur un canvas 2D |
-| décodage mono 22 kHz : **0,41 s** par morceau | le coût sera dans le calcul, pas dans le décodage |
+| décodage mono 22 kHz : **0,53 s** par morceau | le coût sera dans le calcul, pas dans le décodage |
 
 ---
 
@@ -107,8 +107,15 @@ La dynamique se dérive du PCM plutôt que d'une loudness EBU R128 : la
 LUFS est une mesure perceptive pour la normalisation de diffusion, et
 tout le vecteur est standardisé de toute façon.
 
-Coût : ~0,9 s par morceau dont 0,41 s de décodage, soit **~15 min pour
-944 en séquentiel, ~4 min sur 4 cœurs**, une seule fois.
+Coût mesuré sur vingt morceaux tirés au hasard : **2,44 s par morceau**,
+dont 0,53 s de décodage et 1,91 s de calcul — soit **38 min pour 944 en
+séquentiel**, et **une vingtaine de minutes** sur le pool de quatre fils
+(1,89× mesuré de bout en bout).
+
+La première rédaction annonçait 0,9 s par morceau et 4 min sur 4 cœurs.
+Elle se trompait deux fois : sur le calcul, presque trois fois plus cher
+que prévu, et sur le parallélisme, qui rend 1,89× et non 4× — ffmpeg et
+numpy se disputent les mêmes quatre cœurs.
 
 ### Où ça vit
 
@@ -247,31 +254,53 @@ qu'aucun code décide quoi que ce soit au changement de morceau.
 Dans l'inspecteur, sous les faits du morceau :
 
 ```
-VOISINS
- Big Wide World          ●●●●○   timbre        ▸ SUIVANT
- Gyöngyhajú Lány         ●●●○○   couleur       Play next
- We'll Let You Know      ●●●○○   rythme        Play next
- Hunter and the Hunted   ●●○○○   timbre        Play next
- Si jamais               ●●○○○   dynamique     Play next
+Voisins                                                    Voisins  Edit
+ Big Wide World          ●●●●○   timbre            [    Next     ]
+ Gyöngyhajú Lány         ●●●○○   couleur           [  Play next  ]
+ We'll Let You Know      ●●●○○   rythme            [  Play next  ]
+ Hunter and the Hunted   ●●○○○   timbre            [  Play next  ]
+ Si jamais               ●●○○○   dynamique         [  Play next  ]
 ```
+
+Le panneau partage sa case avec le bloc qui corrige le titre et
+l'artiste, et avec celui où Shazam répond : trois faces, une seule
+hauteur, et c'est celle-ci par défaut — on écoute en continu et on
+corrige de temps en temps.
 
 Cinq voisins, **les cinq plus proches au total** — pas un par facette.
 Pris parmi les morceaux encore à venir dans la liste : proposer ce qui
 vient d'être joué n'aurait pas de sens.
 
-Les points disent la proximité **en percentile**, pas en pourcentage
-inventé : le rang de cette distance parmi *toutes les distances entre
-paires de la sélection en cours*. « Plus proche que 96 % des paires »
-est une phrase vraie et stable ; « 96 % de similarité » n'aurait aucun
-référent. Cinq points, donc cinq paliers : ≥99, ≥97, ≥93, ≥85, en
-dessous.
+Les points disent la proximité par un **rang**, pas par un pourcentage
+inventé : « plus proche que 96 % des paires » est une phrase vraie et
+stable ; « 96 % de similarité » n'aurait aucun référent.
+
+Contre quoi ce rang se lit a dû changer. Un percentile de *toutes les
+paires* avec des paliers fixes ne marche pas aux deux bouts : sur 944
+morceaux, le plus proche voisin de n'importe qui est dans la fraction de
+percentile du haut, et sur un filtre qui en tient onze, aucun n'atteint
+le 85ᵉ. Une échelle qui dit « cinq » pour tout le monde, ou « un » pour
+tout le monde, ne dit rien.
+
+Les cinq points se lisent donc contre **ce que les morceaux d'ici
+atteignent habituellement** : la distance de chaque morceau à son propre
+plus proche. Cinq quintiles de cette distribution — cinq points veut
+dire « plus proche que la plupart des morceaux n'approchent jamais quoi
+que ce soit », un point veut dire « ces deux-là ne sont voisins que
+faute de mieux ». L'échelle se recalibre sur la sélection, ce qui est la
+seule façon de servir 944 morceaux et onze avec la même règle.
+
+Le percentile sur toutes les paires subsiste, dans l'étiquette que lit
+un lecteur d'écran — c'est une phrase, pas une graduation.
 
 Le mot à côté est la facette où l'écart est le plus faible — une
 explication, pas le critère de sélection.
 
-Le premier porte **SUIVANT** au lieu d'un bouton, parce qu'il est déjà la
+Le premier porte **Next** au lieu d'un bouton, parce qu'il est déjà la
 ligne d'après : lui proposer « Play next » serait proposer de ne rien
-faire.
+faire. C'est une marque pleine de la taille des boutons d'à côté — pas
+un bouton désactivé, car rien n'est retenu là, il n'y a qu'un fait — et
+c'est la seule ligne sur laquelle un clic n'agit pas.
 
 Les quatre autres réutilisent **le `Play next` existant** — même bouton,
 même insertion, même animation de changement de rang. Cliquer fait passer
@@ -281,12 +310,14 @@ sur les morceaux situés après le curseur. « Après le curseur » et non
 compte comme passé, définition que la file utilise déjà.
 
 Hors mode radio le panneau reste affiché et reste utile : il n'y a
-simplement plus de **SUIVANT**, et les cinq boutons redeviennent cinq
+simplement plus de **Next**, et les cinq boutons redeviennent cinq
 `Play next` ordinaires.
 
 ### Les bords
 
-Un morceau sans vecteur n'a pas de voisins ; le panneau le dit. Dans le
+Un morceau sans vecteur n'a pas de voisins ; **le panneau le dit, et
+lui seul** — la liste ne le marque pas, parce qu'un morceau sans vecteur
+reste jouable et que la ligne ne parle que de ce qui s'écoute. Dans le
 parcours, ces morceaux **vont en fin de liste**, exactement où vont les
 orphelins de playlist et pour la même raison : ils n'ont pas de place
 dans l'ordre que les autres suivent.
@@ -309,13 +340,13 @@ aucun des deux n'est déterministe sans qu'on s'y emploie.
 
 Retenu : **la solution de cairn** (`src/lib/graph-3d.ts`). Un graphe des
 **k = 4** plus proches voisins **et réciproques** — assez pour que les
-amas se tiennent,
-assez peu pour qu'ils ne fusionnent pas ; la valeur est un réglage, pas
-une constante de la nature, et la carte dira si elle est bonne —, relâché
-dans l'espace par une relaxation à
-**nombre d'itérations fixe** — attraction le long des arêtes, répulsion
-entre tous les points. 890 000 paires par itération, vectorisé en numpy :
-**une à trois secondes** pour tout le nuage.
+amas se tiennent, assez peu pour qu'ils ne fusionnent pas ; la valeur
+était un réglage et non une constante de la nature, et la carte a dit
+qu'elle était bonne, le balayage plus bas le raconte —, relâché dans
+l'espace par une relaxation à **nombre d'itérations fixe** (150) —
+attraction le long des arêtes, répulsion entre tous les points. 890 000
+paires par itération, vectorisé en numpy : **2,1 s** pour les 944,
+mesuré.
 
 Aucune dépendance nouvelle, et — ce à quoi cairn tient explicitement —
 *même corpus en entrée, même nuage en sortie, sur chaque machine*. La
@@ -518,11 +549,19 @@ entre un morceau et ses cinq voisins, globalement et par facette, pour
 une pondération donnée — et le taux d'accord de genre à côté, pour
 information.
 
-Références mesurées sur 352 morceaux : hasard **0,7 %** pour l'artiste,
-**12,3 %** pour le genre. Le vecteur livré atteint **11,6×** sur
-l'artiste et 1,4× sur le genre. Un témoin de vecteurs aléatoires donne
-exactement le hasard sur les deux, ce qui dit que la mesure elle-même
-est saine.
+Références mesurées sur les 944 : hasard **0,6 %** pour l'artiste,
+**12,1 %** pour le genre. Le vecteur livré atteint **16,5×** sur
+l'artiste et **1,4×** sur le genre. Un témoin de vecteurs aléatoires
+donne exactement le hasard sur les deux, ce qui dit que la mesure
+elle-même est saine.
+
+L'instrument décide de ce qu'il mesure, et il faut le relire avant de
+comparer deux chiffres : l'artiste vient du **nom de fichier** et non de
+la balise, un morceau seul à porter son étiquette n'est pas noté
+puisqu'il ne peut pas réussir, et chaque morceau pèse pour la part de
+ses cinq voisins qui s'accordent — pas pour un total mis en commun. Une
+mesure refaite sans ces trois règles sortait 8,3× là où celle-ci
+en donne 13,4.
 
 Le plancher est **5× sur l'artiste** : nettement au-dessus du hasard,
 nettement en dessous de ce qui est atteint, donc un garde-fou contre une
@@ -565,8 +604,8 @@ des coordonnées identiques, au bit près.
 | `services/similarity.py` | normaliser, distances par facette, voisins, chaîne gloutonne | numpy, `libs/features` |
 | `services/song_map.py` | graphe k-NN → relaxation 3D déterministe | numpy, `services/similarity` |
 | `scripts/measure_similarity.py` | l'instrument de jugement | `services/similarity` |
-| routes web | `/fragments/neighbours/{key}`, `/fragments/map`, points en JSON | les trois ci-dessus |
-| `static/map.js` + `static/three.module.js` | le rendu | — |
+| routes web | `/fragments/inspector/{key}` rend les voisins avec le reste de l'inspecteur ; `/map/points` sort le nuage en JSON ; `/features/analyse` lance la passe | les trois ci-dessus |
+| `static/map.js` | le rendu, seul : pas de bibliothèque | — |
 | `console.js` | le 4e ordre, le panneau, le clic sur un point | `similarity` via les routes |
 
 Chaque unité répond seule aux trois questions : ce qu'elle fait, comment
@@ -580,7 +619,7 @@ radio existe ; `services/similarity.py` ignore qu'il y a une carte.
 - **La tonalité** — coûteuse, gain indéfendable a priori. Reviendra si la
   mesure le réclame.
 - **faiss, base vectorielle, index approximatif** — 890 000 distances en
-  10 ms ; il n'y a pas de problème à résoudre.
+  120 ms ; il n'y a pas de problème à résoudre.
 - **t-SNE, UMAP** — une dépendance et un non-déterminisme, pour un
   résultat que la relaxation donne déjà.
 - **PyTorch** — aucune roue pour cette machine. Si l'empreinte apprise
@@ -616,6 +655,10 @@ Elle montre des îlots répartis dans tout le volume de la sphère. Il a
 fallu deux corrections que la conception n'avait pas vues, et toutes
 deux portaient sur le **graphe**, pas sur la relaxation.
 
+*Les chiffres de cette section sont ceux du balayage, à sa date : ce
+sont des comparaisons entre réglages, pas l'état livré. Pour celui-ci,
+voir le dernier paragraphe.*
+
 **Les arêtes doivent être réciproques.** Gardées dans un seul sens, un
 morceau en entraîne un autre sans réciproque et, avec neuf cents
 morceaux tenant chacun huit fils, plus rien ne peut se défaire : le
@@ -632,20 +675,24 @@ attraction croissant avec la distance vide le cœur mais fait tomber
 l'accord d'artiste à 9,4× — elle étale sans structurer ; pondérer les
 arêtes par la proximité aplatit le nuage.
 
-**Sur le genre, la prédiction tient : 1,2× sur la carte.** Les amas sont
+**Sur le genre, la prédiction tient : 1,3× sur la carte**, contre 1,4×
+en quarante dimensions. Les amas sont
 des familles acoustiques — une voix, une production, une époque de
 studio — et non les étiquettes que Shazam donne. La couleur reste un
 contrôle visuel, pas une promesse.
 
-Et aucun nombre ne remplace l'écoute. 15,5× sur l'artiste dans les
-quarante dimensions, 10,6× sur la carte, veut dire que les voisins
-sonnent comme le morceau ; il reste à savoir si on a envie de les
-entendre l'un après l'autre.
+Et aucun nombre ne remplace l'écoute. **16,5× sur l'artiste dans les
+quarante dimensions, 13,4× sur la carte** — la projection en garde donc
+les quatre cinquièmes — veut dire que les voisins sonnent comme le
+morceau ; il reste à savoir si on a envie de les entendre l'un après
+l'autre.
 
 ## Le coût de la première passe
 
-~7 minutes sur 4 cœurs pour 944 morceaux, pendant lesquelles 944 fichiers
-MP3 sont réécrits pour recevoir leur frame. C'est le même risque que les
+Une vingtaine de minutes sur le pool de quatre fils pour 944 morceaux —
+38 minutes si le job tournait encore sur un seul, ce qu'il a fait
+jusqu'à ce qu'on le mesure — pendant lesquelles 944 fichiers MP3 sont
+réécrits pour recevoir leur frame. C'est le même risque que les
 peaks font déjà courir, à la même échelle, mais c'est un risque : une
 coupure au mauvais moment laisse un fichier en cours d'écriture.
 `waveform.py` s'en remet à mutagen ; on fera pareil, sans prétendre que

@@ -2,13 +2,13 @@
 
 The ruler is the artist. For each song, how many of its five nearest
 neighbours are by the same one? Two songs drawn at random are by the
-same artist 0.7% of the time on this library — the sum of the squared
+same artist 0.6% of the time on this library — the sum of the squared
 proportions — so a vector that knows nothing scores that.
 
 The genre was the first ruler and it was the wrong one. It is still
 reported, because it colours the map and a rise would be good news, but
-the same vectors score 1.4x on genre and 11.6x on artist, measured on
-the same 352 songs. "Alternative" and "Pop" are commercial categories,
+the same vectors score 1.4x on genre and 16.5x on artist, measured over
+all 944. "Alternative" and "Pop" are commercial categories,
 not acoustic ones: two Pop songs from 1985 and 2020 share a label and
 nothing else.
 
