@@ -1215,6 +1215,36 @@ async def test_the_cover_is_a_fixed_square(tmp_path):
     )
 
 
+
+async def test_the_actions_row_keeps_its_bottom_margin_to_itself(tmp_path):
+    """`#inspector p` gives every paragraph half a rem top and bottom,
+    and the actions row is the form's last child — so its bottom margin
+    has no sibling to push against. With no bottom padding, border or
+    overflow on the form, it collapses straight through and lands under
+    the detail column instead.
+
+    That put eight pixels of air below the column that no rule on the
+    form or on the column could account for, because they belonged to a
+    grandchild. Measured in a browser: the column stood at 287.5px
+    against the cover's 280 with the margin escaping, and 279.5 with it
+    set to zero.
+
+    The column has to land on the cover, so this is part of the margin
+    budget the rules above it describe, and it is the cheapest line in
+    it: a margin on the last row of a form buys nothing at all.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    rule = re.search(r"\n#inspector \.inspector-actions \{([^}]*)\}", css)
+    assert rule, "the actions row has no rule of its own any more"
+    assert "margin-bottom: 0" in rule.group(1), rule.group(1)
+
+    # And the paragraph margin it is cancelling is still there to cancel.
+    assert re.search(r"\n#inspector p \{[^}]*margin: 0\.5rem 0[^}]*\}", css)
+
+
 async def test_the_toolbar_icons_are_drawn_not_typed(tmp_path):
     """⤨ and ⚒ exist in Unicode but not in every system font, and where
     they do they render at whatever size that font decided — which was
