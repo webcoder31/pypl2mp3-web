@@ -760,9 +760,16 @@ def test_the_cloud_turns_by_itself_and_stops_under_the_hand():
     wider and no longer symmetrical.
 
     It is a frame a tick while it runs, so it runs only where somebody
-    could be looking and is not already touching: measured in a browser,
-    60 frames a second at rest, 0 with the pointer on the map, 0 on
-    another tab, 60 again on coming back.
+    could be looking and is not already touching. But the stop is a
+    slowing, not a cut: a cloud that freezes mid-turn reads as a fault
+    rather than as deference. Everything the drift does is scaled by
+    one number, the clock included, so the turn, the tilt, the breath
+    and the colour all slow together rather than one of them stopping
+    first.
+
+    Measured in a browser: 60 frames a second at rest, 91 frames over
+    1.54 seconds of winding down when the pointer arrives, then 0 — and
+    0 on another tab, 60 again the moment it leaves.
     """
 
     source = Path("src/pypl2mp3/web/static/map.js").read_text()
@@ -771,12 +778,22 @@ def test_the_cloud_turns_by_itself_and_stops_under_the_hand():
         "the drift does not stop for the pointer, the tab, or somebody "
         "who asked for no animation"
     )
-    assert "let moved = resting;\n    if (resting) drift();" in source, (
-        "the drift is not what keeps the loop alive at rest"
+    assert "const asked = resting ? 1 : 0;" in source, (
+        "the drift is on or off rather than winding"
+    )
+    assert "drifting += (asked - drifting) * EASE;" in source
+    assert "if (drifting > 0) {\n      drift();" in source, (
+        "the drift does not keep the loop alive while it winds down"
     )
 
-    assert "yaw += TURN;" in source, "the turn is not at a constant rate"
-    assert "pitch += TIP * tilting;" in source, (
+    # Scaled by that one number, the clock included — or the turn would
+    # slow while the breath and the colour, both read off the clock,
+    # carried on at full speed.
+    assert "clock += drifting;" in source
+    assert "yaw += TURN * drifting;" in source, (
+        "the turn is not at a constant rate, or does not wind down"
+    )
+    assert "pitch += TIP * tilting * drifting;" in source, (
         "the axis is fixed, or drifts at a rate that varies"
     )
     assert re.search(
@@ -961,7 +978,7 @@ def test_the_map_names_a_few_songs_while_it_turns():
     assert "const LIFE = 180;" in source
     assert "const NAMES = 3;" in source
 
-    walk = source[source.index("if (!resting) {"):]
+    walk = source[source.index("if (drifting <= 0) {"):]
     walk = walk[:walk.index("\n    for (let i = 0; i < order.length")]
 
     # Each on its own age, so the one going and the one coming overlap
@@ -970,6 +987,11 @@ def test_the_map_names_a_few_songs_while_it_turns():
     assert "return clock - one.born < LIFE;" in walk
 
     assert "paper.strokeStyle = seen.tint;" in source, "named cards wear no ring"
+
+    # And the names go out with the drift rather than blinking off the
+    # moment the pointer arrives: cleared when it is spent, and drawn
+    # at its strength until then.
+    assert "const alpha = drifting * Math.min(" in source
 
 
 def test_a_song_is_not_named_twice_within_the_minute():
@@ -1098,7 +1120,10 @@ def test_the_breath_comes_home_after_the_wheel_has_moved_it():
     assert "const settled = away / Math.exp(RISE);" in source, (
         "the breath has no natural distance to come back to"
     )
-    assert "home += (settled - home) * HOMING;" in source
+    assert "home += (settled - home) * HOMING * drifting;" in source, (
+        "the anchor is pulled home at full speed while the drift winds "
+        "down, which is one motion carrying on alone"
+    )
 
     # And still no jump on the way in.
     assert "if (resting && !was) home = away / breath();" in source

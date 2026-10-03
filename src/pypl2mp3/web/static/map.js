@@ -747,10 +747,13 @@ function build(said) {
     // Whose names are up, while nobody is pointing. `order` runs far to
     // near, so the nearest are at its end and the walk is backwards —
     // it reads a handful and stops, not nine hundred.
-    if (!resting) {
+    // Cleared when the drift is spent, not when the pointer arrives:
+    // the names fade out with everything else rather than blinking
+    // off. New ones are only chosen while the drift is wanted.
+    if (drifting <= 0) {
       spoke = -1;
       named = [];
-    } else {
+    } else if (resting) {
       named = named.filter(function (one) {
         return clock - one.born < LIFE;
       });
@@ -930,7 +933,7 @@ function build(said) {
 
         // In and out rather than on and off, each on its own age.
         const age = clock - one.born;
-        const alpha = Math.min(
+        const alpha = drifting * Math.min(
           1, age / DAWN, Math.max(0, (LIFE - age) / DAWN)
         );
 
@@ -1084,6 +1087,21 @@ function build(said) {
   let onScreen = true;
   let pointerOn = false;
 
+  // How much of the drift is running, nought to one.
+  //
+  // The pointer arriving used to stop it dead. A cloud that freezes
+  // mid-turn reads as a fault rather than as deference — the thing was
+  // moving, a hand came near, and it broke. It winds down instead, and
+  // winds back up when the hand leaves.
+  //
+  // Everything the drift does is scaled by this, the clock included —
+  // so the turn, the tilt, the breath and the colour all slow together
+  // rather than one of them stopping first. EASE is what is left of
+  // the distance to the target each frame: at 0.06 it is half gone in
+  // a fifth of a second and spent in a second and a half.
+  const EASE = 0.06;
+  let drifting = 0;
+
   // Where the eye is in the breath, as a factor of `home`.
   function breath() {
     const wave = 0.5 - 0.5 * Math.cos(clock * WIND);
@@ -1099,7 +1117,7 @@ function build(said) {
     // moved it since, and a factor needs something to be a factor of.
     if (resting && !was) home = away / breath();
 
-    if (resting) {
+    if (resting || drifting > 0) {
       keepEasing();
     } else if (was) {
       // Nothing is going to ask for another frame now, and the last one
@@ -1111,16 +1129,16 @@ function build(said) {
   }
 
   function drift() {
-    clock += 1;
-    yaw += TURN;
+    clock += drifting;
+    yaw += TURN * drifting;
 
-    home += (settled - home) * HOMING;
+    home += (settled - home) * HOMING * drifting;
 
     // Reversed rather than clamped: a drag can leave the tilt outside
     // this range, and clamping would snap it back the moment the
     // pointer left. Turning it round instead costs one frame's worth
     // of travel and brings it home on its own.
-    pitch += TIP * tilting;
+    pitch += TIP * tilting * drifting;
     if (tilting > 0 ? pitch >= SWING : pitch <= -SWING) tilting = -tilting;
 
     away = Math.max(reach * 0.25, Math.min(reach * 12, home * breath()));
@@ -1147,8 +1165,24 @@ function build(said) {
     easing = false;
     if (gone) return;
 
-    let moved = resting;
-    if (resting) drift();
+    // Towards one while the drift is wanted and towards nought while
+    // it is not, and the drift runs for as long as anything is left of
+    // it — which is what makes the stop a slowing rather than a cut.
+    const asked = resting ? 1 : 0;
+    let moved = false;
+
+    if (Math.abs(drifting - asked) > 0.004) {
+      drifting += (asked - drifting) * EASE;
+      moved = true;
+    } else if (drifting !== asked) {
+      drifting = asked;
+      moved = true;
+    }
+
+    if (drifting > 0) {
+      drift();
+      moved = true;
+    }
 
     // The spin the pointer handed over, running down. Not while the
     // pointer is still on it: a drag is one to one with the hand, and
