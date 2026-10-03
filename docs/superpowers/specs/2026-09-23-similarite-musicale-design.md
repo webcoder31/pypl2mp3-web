@@ -470,11 +470,14 @@ Tout est amorti, et tout s'arrête quand plus rien ne bouge.
   image, constantes choisies en simulant quatre-vingt-dix images avant
   d'écrire la ligne.
 - **Un glissement relâché garde son élan** environ une seconde.
-- **Laissée seule, la carte tourne et respire** : une révolution en 87 s
+- **Laissée seule, la carte tourne et respire** : une révolution en 44 s
   à vitesse constante, l'axe dérivant lui aussi à vitesse constante
   (0,96°/s, un radian de chaque côté), et l'œil allant du cadrage
   d'ensemble jusqu'au cinquième de cette distance — c'est-à-dire
-  **dedans** — en 81 s.
+  **dedans** — en 62 s. Et la couleur de la nappe tourne, en 17 s :
+  un rapport de section dorée avec la respiration, donc les deux ne
+  reviennent jamais en phase et une teinte rencontre un moment de la
+  respiration dans une combinaison inédite.
 
 La respiration est un **facteur**, et son ancre est ramenée vers la
 distance qui cadre le nuage entier. La première version la laissait

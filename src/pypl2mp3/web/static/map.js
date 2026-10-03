@@ -215,7 +215,19 @@ function build(said) {
   // The falloff matters as much as the strength: half the light still
   // standing at half the radius makes a pool, where the first version
   // kept a third and made a point of light with nothing around it.
-  const POOL_IS = 0.17;
+  // How much colour the middle carries, and how much is left half way
+  // out. Two numbers rather than one and a fraction of it, so the
+  // middle can be made brighter without the rest of the pool coming up
+  // with it: 0.09 half way out is what 0.17 and a 0.55 fraction gave
+  // before, so only the core has moved.
+  //
+  // And the middle's saturation is lifted a quarter, capped at full.
+  // On the light theme the accent is already at 87 and barely moves;
+  // on the dark one it sits at 55, where raising the alpha alone would
+  // have made the middle paler rather than more vivid.
+  const POOL_IS = 0.23;
+  const POOL_MID = 0.09;
+  const POOL_LIFT = 1.25;
 
   // Its reach is not a number of its own: it is the cloud's own size on
   // screen. The cloud is a ball of radius `reach`, so at a distance of
@@ -256,6 +268,7 @@ function build(said) {
   const POOL_GONE = 0.3;
   const POOL_FULL = 1.0;
 
+
   let blocks = new Map();
   let inks = new Map();
   let paper_colour = behind();
@@ -272,6 +285,34 @@ function build(said) {
 
     const got = nib.getImageData(0, 0, 1, 1).data;
     return [got[0], got[1], got[2]];
+  }
+
+  // The same colour as hue, saturation and lightness. Hue is the one
+  // of the three the pool moves, and moving it in RGB means moving all
+  // three together and hoping — this is the space the question is
+  // asked in.
+  function hslOf(colour) {
+    const [r, g, b] = rgbOf(colour).map(function (v) { return v / 255; });
+
+    const high = Math.max(r, g, b);
+    const low = Math.min(r, g, b);
+    const light = (high + low) / 2;
+    const span = high - low;
+
+    if (span === 0) return { hue: 0, sat: 0, light: light * 100 };
+
+    const sat = span / (1 - Math.abs(2 * light - 1));
+    let hue;
+
+    if (high === r) hue = ((g - b) / span) % 6;
+    else if (high === g) hue = (b - r) / span + 2;
+    else hue = (r - g) / span + 4;
+
+    return {
+      hue: (hue * 60 + 360) % 360,
+      sat: sat * 100,
+      light: light * 100,
+    };
   }
 
   // Which way to push, decided by the page rather than by a flag: the
@@ -445,18 +486,14 @@ function build(said) {
 
     // The accent, read from the stylesheet like everything else, so it
     // turns with the theme.
-    const accent = rgbOf(
+    // Kept as hue, saturation and lightness rather than as three
+    // numbers, because the hue is the part that moves: the pool keeps
+    // the page's accent for its depth and its paleness, and borrows
+    // only its angle on the wheel from the clock.
+    pool = hslOf(
       getComputedStyle(document.documentElement)
         .getPropertyValue("--accent").trim() || "#0a8f7c"
     );
-    const pooled = function (alpha) {
-      return "rgba(" + accent.join(", ") + ", " + alpha + ")";
-    };
-
-    // The three stops, kept; the gradient itself is cut in paint(),
-    // because its reach follows the eye. One gradient a frame is
-    // nothing — it was one per point that had to be avoided.
-    pool = [pooled(POOL_IS), pooled(POOL_IS * 0.55), pooled(0)];
 
     veil = {
       top: band(0, 0, 0, veilDeep),
@@ -671,9 +708,18 @@ function build(said) {
         wide / 2, tall / 2, 0,
         wide / 2, tall / 2, spread
       );
-      wash.addColorStop(0, pool[0]);
-      wash.addColorStop(0.5, pool[1]);
-      wash.addColorStop(1, pool[2]);
+      // Round the wheel from wherever the accent sits.
+      const hue = (pool.hue + 360 * (clock / HUE_TURN)) % 360;
+      const poured = function (alpha, sat) {
+        return "hsla(" + hue.toFixed(1) + ", " + sat.toFixed(1)
+          + "%, " + pool.light.toFixed(1) + "%, " + alpha + ")";
+      };
+
+      const core = Math.min(100, pool.sat * POOL_LIFT);
+
+      wash.addColorStop(0, poured(POOL_IS, core));
+      wash.addColorStop(0.5, poured(POOL_MID, pool.sat));
+      wash.addColorStop(1, poured(0, pool.sat));
 
       paper.globalAlpha = pooling;
       paper.fillStyle = wash;
@@ -952,7 +998,7 @@ function build(said) {
   // A still projection of a sphere is ambiguous — which islands are in
   // front is exactly what a single frame cannot say — and a turn
   // resolves it without anyone having to take hold of the thing. One
-  // revolution in 87 seconds, at a rate that does not vary: a speed
+  // revolution in 44 seconds, at a rate that does not vary: a speed
   // that wandered was meant to read as less mechanical and read as a
   // wobble instead.
   //
@@ -973,7 +1019,7 @@ function build(said) {
   // the whole cloud; at the bottom it is at about a fifth of that,
   // which is halfway to the middle — the islands pass to either side
   // and whatever has gone behind the eye is culled. A full breath takes
-  // 80 seconds, 40 in and 40 out.
+  // 62 seconds, 31 in and 31 out.
   //
   // It is a factor, not a distance, and `home` is what it is a factor
   // of. Taken from the eye's own place each time the drift starts, so
@@ -991,12 +1037,38 @@ function build(said) {
   // way in about a dozen, which is slow enough that nobody sees it
   // being pulled.
   const HOMING = 0.006;
-  const TURN = 0.0012;
+  const TURN = 0.0024;
   const TIP = 0.00028;
   const SWING = 1.0;
   const DIVE = 1.5;
   const RISE = 0.12;
-  const WIND = 0.0013;
+  const WIND = 0.0017;
+
+  // How long the pool's colour takes to go round the wheel, in frames.
+  // Down here and not with the pool's other constants, because it is
+  // read off WIND and a `const` used above its declaration is a dead
+  // zone — the drawing threw before it drew anything, and no test could
+  // see it: they read this file, they do not run it.
+  //
+  // Deliberately out of step with the breath. The golden section is the
+  // ratio that comes back into step least often of any, so a colour and
+  // a point in the breath keep meeting in a combination they have not
+  // been in before — which is the whole reason for turning the colour
+  // at all. A whole number of breaths would have paired the same green
+  // with the same depth every minute for ever.
+  //
+  // A sixth of it, so the wheel turns in 17 seconds against the
+  // breath's 62. Dividing costs nothing: a rational fraction of an
+  // irrational number is irrational, so the two still never come back
+  // into step. Six and not a power of two because the two are tied —
+  // the colour's period is read off the breath's, so speeding the
+  // breath speeds the colour too, and six is what leaves the colour at
+  // half of what it was.
+  //
+  // Saturation and lightness stay the accent's. Only the angle moves,
+  // so every colour it passes through is the page's own colour in
+  // another key rather than a hue out of nowhere.
+  const HUE_TURN = (2 * Math.PI / WIND) * (1.618 / 6);
 
   let clock = 0;
   // Where the breath belongs: the top of it is the distance that frames

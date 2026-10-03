@@ -743,7 +743,7 @@ def test_the_map_settles_rather_than_stopping_dead():
 def test_the_cloud_turns_by_itself_and_stops_under_the_hand():
     """A still projection of a sphere does not say which islands are in
     front. A turn does, without anyone having to take hold of it — one
-    revolution in 87 seconds, at a rate that does not vary. A rate that
+    revolution in 44 seconds, at a rate that does not vary. A rate that
     wandered was meant to read as less mechanical and read as a wobble.
 
     The axis drifts as well, and at its own constant rate: a radian
@@ -753,7 +753,7 @@ def test_the_cloud_turns_by_itself_and_stops_under_the_hand():
     would snap it back the moment the pointer left.
 
     The breath goes right inside the cloud: from the 2.4 radii that
-    frame it down to 0.47, halfway to the middle, and back, over 81
+    frame it down to 0.47, halfway to the middle, and back, over 62
     seconds. Probed through the module at the first, much smaller
     setting, the eye swung 1.71 to 2.44 radii — the 1.425 the arithmetic
     predicts, bounded, no drift — which is the same mechanism, only
@@ -1135,7 +1135,19 @@ def test_the_cloud_sits_in_a_pool_of_the_page_s_own_colour():
 
     source = Path("src/pypl2mp3/web/static/map.js").read_text()
 
-    assert "const POOL_IS = 0.17;" in source
+    # Two numbers for the strength, not one and a fraction of it: the
+    # middle is brighter than the rest and has to be able to move on its
+    # own. And its saturation is lifted, because on the dark theme the
+    # accent sits at 55 and raising the alpha alone would have made the
+    # middle paler rather than more vivid. Measured over the page:
+    # rgb(213, 236, 233) before and rgb(196, 232, 227) after on white,
+    # rgb(23, 49, 47) and rgb(22, 64, 58) on the dark theme.
+    assert "const POOL_IS = 0.23;" in source
+    assert "const POOL_MID = 0.09;" in source
+    assert "const POOL_LIFT = 1.25;" in source
+    assert "Math.min(100, pool.sat * POOL_LIFT)" in source, (
+        "the lift can push saturation past full"
+    )
 
     # Laid down straight after the canvas is cleared, before a single
     # card. Drawn after them it would be a veil over the cloud.
@@ -1203,6 +1215,78 @@ def test_the_pool_fades_from_the_cloud_s_surface_inwards():
     # The strength is an alpha on the one fill, not baked into the
     # gradient: the gradient is cut fresh each frame for its reach.
     assert "paper.globalAlpha = pooling;" in source
+
+
+def test_the_pool_turns_colour_out_of_step_with_the_breath():
+    """A single colour for ever is one combination. Turning it gives as
+    many as there are moments, and turning it out of step with the
+    breath keeps the pairs fresh: a whole number of breaths would have
+    put the same green against the same depth every minute for ever.
+
+    The golden section is the ratio that comes back into step least
+    often of any, so that is the ratio — a sixth of it, for 17 seconds
+    against the breath's 62. A rational fraction of an irrational number
+    is irrational, so the two still never come back into step.
+
+    A sixth and not a power of two because the two are tied: the
+    colour's period is read off the breath's, so speeding the breath
+    speeds the colour with it.
+
+    Only the angle moves. Saturation and lightness stay the accent's,
+    so every colour it passes through is the page's own colour in
+    another key rather than a hue out of nowhere. Measured in a
+    browser, reading the wash off the canvas: sixteen degrees every six
+    seconds at 130, thirty-three at 65, sixty-six at 33, and sixty-five
+    every three at 17 — each a doubling, and round through zero
+    cleanly.
+    """
+
+    source = Path("src/pypl2mp3/web/static/map.js").read_text()
+
+    assert "const HUE_TURN = (2 * Math.PI / WIND) * (1.618 / 6);" in source, (
+        "the colour no longer turns, or no longer does it off the breath"
+    )
+    assert "const hue = (pool.hue + 360 * (clock / HUE_TURN)) % 360;" in source
+
+    # Hue, saturation and lightness kept apart, because only one of the
+    # three moves. In RGB that means moving all three and hoping.
+    assert "function hslOf(colour)" in source
+    assert "hsla(" in source, "the pool is written in a space with no hue"
+
+
+def test_a_constant_is_not_read_before_it_is_declared():
+    """`const HUE_TURN = (2 * Math.PI / WIND) * 1.618` was written next
+    to the pool's other constants, and WIND is declared four hundred
+    lines below with the drift's. A `const` read above its declaration
+    is a dead zone, not a hoist: the drawing threw on the first frame
+    and the map never appeared.
+
+    Nothing in this file's tests could have seen it. They read the
+    source; they do not run it. So this reads it the one way that
+    catches the class: inside `build()`, which is where these constants
+    live, no constant's value may name one declared later.
+    """
+
+    source = Path("src/pypl2mp3/web/static/map.js").read_text()
+
+    body = source[source.index("function build(said) {"):]
+    body = body[:body.index("\nfunction showLegend(")]
+
+    declared = [
+        (m.start(), m.group(1))
+        for m in re.finditer(r"\n  (?:const|let) ([A-Z_][A-Z0-9_]*) =", body)
+    ]
+    where = {name: at for at, name in declared}
+
+    for at, name in declared:
+        line = body[at:body.index(";", at)]
+        for other, born in where.items():
+            if other == name or born < at:
+                continue
+            assert other not in line, (
+                f"{name} is worked out from {other}, which is declared "
+                f"{born - at} characters later — a dead zone, not a hoist"
+            )
 
 
 def test_a_drag_across_the_map_does_not_play_what_it_stops_over():
