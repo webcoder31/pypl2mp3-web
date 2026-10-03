@@ -638,7 +638,24 @@ function build(said) {
   // reach / sin(27.5°) = 2.17 away; a little further leaves a margin.
   // At 3.2, which is what the first camera here used, the cloud sat in
   // the middle third of the frame and the rest was empty.
-  let away = reach * 2.4;
+  // The breath, as the three distances that define it, in cloud radii.
+  //
+  // Read off the wheel's own scale, which is logarithmic because the
+  // wheel multiplies the distance by 1.1 a notch rather than adding to
+  // it: 0% is its far stop at 12 radii and 100% its near one at 0.25,
+  // and the whole range is forty-one notches. On that scale the breath
+  // runs from 30% to 65% and the map opens at 45%.
+  //
+  // So it opens part-way in and breathes both outward and inward from
+  // there, rather than opening at one of its own extremes as it did
+  // before. Where exactly it opens in the cycle is arithmetic rather
+  // than a choice: away(w) is BREATH_OUT * exp(-S*w), so the phase is
+  // ln(OUT/OPENS) / S — here a shade under halfway into the dive.
+  const BREATH_OUT = 3.757;
+  const BREATH_IN = 0.969;
+  const OPENS_AT = 2.102;
+
+  let away = reach * OPENS_AT;
 
   // How big a song is, as a fraction of the cloud's own radius. Opaque
   // and small: nine hundred translucent discs over each other made a
@@ -1043,8 +1060,11 @@ function build(said) {
   const TURN = 0.0024;
   const TIP = 0.00028;
   const SWING = 1.0;
-  const DIVE = 1.5;
+  // The swing, derived from the two ends rather than set: their ratio
+  // is the whole of it, and RISE is only how much of that sits outward
+  // of the anchor.
   const RISE = 0.12;
+  const DIVE = Math.log(BREATH_OUT / BREATH_IN) - RISE;
   const WIND = 0.0017;
 
   // How long the pool's colour takes to go round the wheel, in frames.
@@ -1073,10 +1093,15 @@ function build(said) {
   // another key rather than a hue out of nowhere.
   const HUE_TURN = (2 * Math.PI / WIND) * (1.618 / 6);
 
-  let clock = 0;
+  // Where in the cycle the map opens. The wave is 0.5 - 0.5cos, which
+  // puts the far end at phase nought, so opening part-way in means
+  // starting part-way round.
+  const OPENS_WAVE = Math.log(BREATH_OUT / OPENS_AT) / (DIVE + RISE);
+
+  let clock = Math.acos(1 - 2 * OPENS_WAVE) / WIND;
   // Where the breath belongs: the top of it is the distance that frames
   // the whole cloud, which is where the eye starts.
-  const settled = away / Math.exp(RISE);
+  const settled = reach * BREATH_OUT / Math.exp(RISE);
   let home = settled;
   let tilting = 1;
 

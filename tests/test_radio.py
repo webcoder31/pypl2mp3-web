@@ -752,12 +752,16 @@ def test_the_cloud_turns_by_itself_and_stops_under_the_hand():
     because a drag can leave the tilt outside the range and clamping
     would snap it back the moment the pointer left.
 
-    The breath goes right inside the cloud: from the 2.4 radii that
-    frame it down to 0.47, halfway to the middle, and back, over 62
-    seconds. Probed through the module at the first, much smaller
-    setting, the eye swung 1.71 to 2.44 radii — the 1.425 the arithmetic
-    predicts, bounded, no drift — which is the same mechanism, only
-    wider and no longer symmetrical.
+    The breath is given as the three distances it is made of rather
+    than as a factor, because the three are what anyone reading it
+    wants: where it opens, and the two ends it swings between. On the
+    wheel's own scale — logarithmic, since the wheel multiplies by 1.1
+    a notch — it runs from 30% to 65% and opens at 45%, so it opens
+    part-way in and breathes both ways from there rather than at one
+    of its own extremes.
+
+    Where in the cycle it opens is arithmetic, not a choice: away(w) is
+    BREATH_OUT * exp(-S*w), so the phase is ln(OUT / OPENS) / S.
 
     It is a frame a tick while it runs, so it runs only where somebody
     could be looking and is not already touching. But the stop is a
@@ -807,8 +811,15 @@ def test_the_cloud_turns_by_itself_and_stops_under_the_hand():
     walk_for_clamp = walk_for_clamp[:walk_for_clamp.index("\n  }")]
     assert "Math.max(-1.45" not in walk_for_clamp, walk_for_clamp
     assert "pitch = Math.max" not in walk_for_clamp, walk_for_clamp
-    assert "const DIVE = 1.5;" in source and "const RISE = 0.12;" in source, (
-        "the breath no longer reaches inside the sphere"
+    assert "const BREATH_OUT = 3.757;" in source
+    assert "const BREATH_IN = 0.969;" in source
+    assert "const OPENS_AT = 2.102;" in source
+    assert "const DIVE = Math.log(BREATH_OUT / BREATH_IN) - RISE;" in source, (
+        "the swing is set rather than derived from the two ends, so the "
+        "ends and the swing can disagree"
+    )
+    assert "let clock = Math.acos(1 - 2 * OPENS_WAVE) / WIND;" in source, (
+        "the cycle starts at its far end, so the map opens on an extreme"
     )
 
     walk = source[source.index("function drift() {"):]
@@ -1117,7 +1128,7 @@ def test_the_breath_comes_home_after_the_wheel_has_moved_it():
     source = Path("src/pypl2mp3/web/static/map.js").read_text()
 
     assert "const HOMING = 0.006;" in source
-    assert "const settled = away / Math.exp(RISE);" in source, (
+    assert "const settled = reach * BREATH_OUT / Math.exp(RISE);" in source, (
         "the breath has no natural distance to come back to"
     )
     assert "home += (settled - home) * HOMING * drifting;" in source, (
