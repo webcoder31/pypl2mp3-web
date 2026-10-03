@@ -587,8 +587,19 @@ def test_the_map_is_drawn_on_a_plain_2d_canvas():
     assert "function card(ink, x, y, wide, tall, round)" in source, (
         "the outline is not a shape the drawing can reuse"
     )
-    assert flat.count("createRadialGradient") == 0, (
-        "something is being modelled as a solid again"
+    # Nothing round is built where the mark is cut. The one radial
+    # gradient in the drawing is the pool of accent the cloud sits in,
+    # which is laid under everything and shades no object — scoping
+    # this to block() rather than banning the call outright, because a
+    # ban on the call fired on that background wash and would have been
+    # loosened instead of sharpened.
+    cut = source[source.index("function block(tint, fade)"):]
+    cut = cut[:cut.index("\n  }")]
+    assert "createRadialGradient" not in cut, (
+        "the mark is being modelled as a solid again"
+    )
+    assert flat.count("createRadialGradient") == 1, (
+        "a second radial gradient has appeared in the drawing"
     )
 
     # Area kept, so changing the shape did not quietly change how heavy
@@ -1047,6 +1058,89 @@ def test_the_drift_repaints_once_when_it_stops():
     settle = settle[:settle.index("\n  }")]
     assert "} else if (was) {" in settle, settle
     assert "paint();" in settle, settle
+
+
+def test_the_cloud_sits_in_a_pool_of_the_page_s_own_colour():
+    """The page has one colour of its own and spends it on the thing in
+    hand. A soft wash of it under the cloud says the map belongs to the
+    same page, and gives the eye a centre to read the turning against —
+    a cloud on bare white has no horizon.
+
+    Under the cards and never over them, so it cannot dull a colour the
+    legend promises. The accent comes from the stylesheet, so it turns
+    with the theme like everything else here.
+    """
+
+    source = Path("src/pypl2mp3/web/static/map.js").read_text()
+
+    assert "const POOL_IS = 0.17;" in source
+
+    # Laid down straight after the canvas is cleared, before a single
+    # card. Drawn after them it would be a veil over the cloud.
+    opening = source[source.index("paper.clearRect(0, 0, wide, tall);"):]
+    opening = opening[:opening.index("for (let i = 0; i < order.length")]
+    assert "paper.fillStyle = wash;" in opening, opening
+
+    assert '.getPropertyValue("--accent")' in source, (
+        "the pool has a colour of its own instead of the page's"
+    )
+
+
+def test_the_pool_is_as_big_as_the_cloud_it_sits_behind():
+    """Its reach is not a number anyone chose: the cloud is a ball of
+    radius `reach`, so at a distance of `away` it projects to
+    `reach * lens / away`, and the pool is that. Two earlier versions
+    set it by hand — one fixed, one on a ramp — and neither could
+    follow a cloud that breathes.
+
+    Checked against what is actually drawn, by measuring the furthest
+    card on the canvas: 34px against 31 at twelve radii, 72 against 68
+    at 5.6, and 154 against 155 at 2.6 — within a tenth, and exact
+    where the map opens. Nearer than about two radii the real cloud
+    bursts the frame while the formula goes on describing the ball,
+    which is the useful thing to be behind.
+    """
+
+    source = Path("src/pypl2mp3/web/static/map.js").read_text()
+
+    assert "reach * lens / Math.max(away, 1e-6)" in source, (
+        "the pool's reach is a number of its own again"
+    )
+    # Clamped, because coming inside sends the projection to infinity.
+    assert "const POOL_LEAST = 0.1;" in source
+    assert "const POOL_MOST = 1.2;" in source
+
+
+def test_the_pool_fades_from_the_cloud_s_surface_inwards():
+    """A pool marks the middle of a thing you are looking at. Once you
+    are well inside there is no middle left to mark — the cards pass to
+    either side, and a wash pinned to the centre of the frame would be
+    saying something about the frame.
+
+    Neither bound is chosen either. Full down to 1.0, which is the
+    cloud's own surface, so the fade begins exactly where the eye goes
+    inside; spent by 0.3, just short of the 0.25 the wheel stops at.
+
+    It began at 0.8 and 1.6, which started dimming while the eye was
+    still well outside and left the pool wholly dark for 38% of the
+    breath. At 0.3 and 1.0 it is at full strength for 53% of the cycle
+    and never goes out: at the deepest of the dive it still stands at a
+    quarter.
+    """
+
+    source = Path("src/pypl2mp3/web/static/map.js").read_text()
+
+    assert "const POOL_GONE = 0.3;" in source
+    assert "const POOL_FULL = 1.0;" in source
+    assert re.search(
+        r"const pooling = Math\.max\(0, Math\.min\(\n\s*"
+        r"1, \(away / reach - POOL_GONE\) / \(POOL_FULL - POOL_GONE\)",
+        source
+    ), "the fade is no longer read off the eye's distance in radii"
+
+    # The strength is an alpha on the one fill, not baked into the
+    # gradient: the gradient is cut fresh each frame for its reach.
+    assert "paper.globalAlpha = pooling;" in source
 
 
 def test_a_drag_across_the_map_does_not_play_what_it_stops_over():

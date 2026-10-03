@@ -199,6 +199,63 @@ function build(said) {
   // nothing has to be made translucent to get it.
   const FEATHER = 0.14;
 
+  // The pool of accent the cloud sits in, and how strong it is at its
+  // middle.
+  //
+  // The page has exactly one colour of its own and uses it for the
+  // thing in hand — the playing row, the transport, the accent line.
+  // A soft green under the middle of the cloud says the map belongs to
+  // the same page, and gives the eye a centre to read the turning
+  // against: a cloud on bare white has no horizon.
+  //
+  // It sits under the cards and not over them, so it can never dull a
+  // colour the legend promises. On white, 0.17 of the accent reads as
+  // rgb(213, 236, 233); on the dark theme, rgb(23, 49, 47).
+  //
+  // The falloff matters as much as the strength: half the light still
+  // standing at half the radius makes a pool, where the first version
+  // kept a third and made a point of light with nothing around it.
+  const POOL_IS = 0.17;
+
+  // Its reach is not a number of its own: it is the cloud's own size on
+  // screen. The cloud is a ball of radius `reach`, so at a distance of
+  // `away` it projects to `reach * lens / away` — the pool is that,
+  // and grows and shrinks with the thing it sits behind rather than
+  // with a ramp somebody chose. Two earlier versions set it by hand
+  // and neither could follow a cloud that breathes.
+  //
+  // Checked against the cloud it is meant to follow, by measuring the
+  // furthest card actually drawn: within a tenth of it from twelve
+  // radii down to about two, and exact at 2.6. Nearer than that the
+  // real cloud bursts the frame — a card beside the eye projects
+  // thousands of pixels out — while the formula keeps describing the
+  // ball, which is the useful thing to be behind. By then the pool is
+  // on its way out anyway: full at 1.0, which is the surface, and
+  // three quarters of the way down by 0.47.
+  //
+  // Clamped at both ends: coming inside, `away` goes small and the
+  // projection runs away, and there is no cloud left to be behind.
+  const POOL_LEAST = 0.1;
+  const POOL_MOST = 1.2;
+
+  // And it fades as the eye comes in, between these two distances in
+  // radii.
+  //
+  // Neither is a number anyone picked. The pool is full down to 1.0,
+  // which is the cloud's own surface — the fade begins exactly where
+  // the eye goes inside — and is spent by 0.3, just short of the
+  // 0.25 the wheel stops at. A pool marks the middle of a thing you
+  // are looking at; once you are well inside, the cards pass to either
+  // side and there is no middle left to mark.
+  //
+  // It started at 0.8 and 1.6, which began dimming while the eye was
+  // still well outside and left the pool wholly dark for 38% of the
+  // breath. At 0.3 and 1.0 it is at full strength for 53% of the cycle
+  // and never goes out: at the deepest of the dive it still stands at
+  // a quarter.
+  const POOL_GONE = 0.3;
+  const POOL_FULL = 1.0;
+
   let blocks = new Map();
   let inks = new Map();
   let paper_colour = behind();
@@ -232,6 +289,7 @@ function build(said) {
   }
   let veil = null;
   let veilDeep = 0;
+  let pool = null;
 
   // The name of the song, set on the canvas in the font the page uses
   // for its own small print. Read when the frame is measured or the
@@ -384,6 +442,21 @@ function build(said) {
       run.addColorStop(1, clear);
       return run;
     };
+
+    // The accent, read from the stylesheet like everything else, so it
+    // turns with the theme.
+    const accent = rgbOf(
+      getComputedStyle(document.documentElement)
+        .getPropertyValue("--accent").trim() || "#0a8f7c"
+    );
+    const pooled = function (alpha) {
+      return "rgba(" + accent.join(", ") + ", " + alpha + ")";
+    };
+
+    // The three stops, kept; the gradient itself is cut in paint(),
+    // because its reach follows the eye. One gradient a frame is
+    // nothing — it was one per point that had to be avoided.
+    pool = [pooled(POOL_IS), pooled(POOL_IS * 0.55), pooled(0)];
 
     veil = {
       top: band(0, 0, 0, veilDeep),
@@ -578,6 +651,35 @@ function build(said) {
     const middleX = wide / 2;
     const middleY = tall / 2;
     paper.clearRect(0, 0, wide, tall);
+
+    // Under everything: the cloud sits in it, nothing sits in front of
+    // a card because of it.
+    const pooling = Math.max(0, Math.min(
+      1, (away / reach - POOL_GONE) / (POOL_FULL - POOL_GONE)
+    ));
+
+    if (pool && pooling > 0.01) {
+      // The cloud's own silhouette, projected: the pool is as big as
+      // the thing it sits behind.
+      const span = Math.min(wide, tall);
+      const spread = Math.max(
+        span * POOL_LEAST,
+        Math.min(span * POOL_MOST, reach * lens / Math.max(away, 1e-6))
+      );
+
+      const wash = paper.createRadialGradient(
+        wide / 2, tall / 2, 0,
+        wide / 2, tall / 2, spread
+      );
+      wash.addColorStop(0, pool[0]);
+      wash.addColorStop(0.5, pool[1]);
+      wash.addColorStop(1, pool[2]);
+
+      paper.globalAlpha = pooling;
+      paper.fillStyle = wash;
+      paper.fillRect(0, 0, wide, tall);
+      paper.globalAlpha = 1;
+    }
 
     // Where the name goes, once everything else is down: drawn inside
     // the loop it would be covered by whichever cards come after.
