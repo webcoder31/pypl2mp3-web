@@ -2367,30 +2367,78 @@
     dirty = false;
 
     const panel = document.getElementById("inspector");
-    if (panel) panel.classList.remove("holding-edits");
+    if (!panel) return;
+
+    panel.classList.remove("holding-edits");
+    panel.classList.remove("editing");
   }
 
-  function markDirty() {
-    dirty = true;
+  // What the file holds, as the server rendered it: an input's
+  // defaultValue is its `value` attribute. So the clean state travels
+  // with the panel and nothing is kept on the side — a copy would go
+  // stale the moment htmx swapped the panel for another song.
+  function editedFields() {
+    const form = document.querySelector("#inspector form");
+    if (!form) return [];
 
-    // And show what has changed. This is the one place both ways of
-    // changing a field arrive — typing, and taking Shazam's answer — so
-    // it is the one place that has to reveal the fields when the panel
-    // is showing the neighbours instead. A form filled behind a face
-    // nobody is looking at is a trap.
-    showPanelFace("edit");
+    return [...form.querySelectorAll("input")].filter(function (field) {
+      return field.value !== field.defaultValue;
+    });
+  }
+
+  // Read each time, never latched. It used to be a flag that only went
+  // one way: typing a character and deleting it again left the panel
+  // claiming it held unsaved work — Save enabled, the player no longer
+  // followed — until the panel was replaced. Comparing against what
+  // the file holds costs three string comparisons and is simply true.
+  function rereadEdits() {
+    const changed = editedFields().length > 0;
+    const panel = document.getElementById("inspector");
+
+    // Showing what has changed, and only on the way in. This is the one
+    // place both ways of changing a field arrive — typing, and taking
+    // Shazam's answer — so it is the one place that has to reveal the
+    // fields when the panel is showing the neighbours instead: a form
+    // filled behind a face nobody is looking at is a trap. On the way
+    // out it leaves the face alone, because snatching it back the
+    // moment the last character is deleted is its own kind of trap.
+    if (changed && !dirty) showPanelFace("edit");
+
+    dirty = changed;
+
+    if (panel) {
+      panel.classList.toggle("editing", changed);
+      // Nothing differs, so nothing is being held: the panel may follow
+      // the player again.
+      if (!changed) panel.classList.remove("holding-edits");
+    }
 
     const save = document.querySelector(
       "#inspector form button[type='submit']"
     );
 
-    if (save) save.disabled = false;
+    if (save) save.disabled = !changed;
   }
+
+  // Cancel. The values the server rendered are still in the markup, so
+  // putting them back fetches nothing and cannot be out of date.
+  document.addEventListener("click", function (event) {
+    if (!event.target.closest("[data-undo-edits]")) return;
+
+    const form = document.querySelector("#inspector form");
+    if (!form) return;
+
+    form.querySelectorAll("input").forEach(function (field) {
+      field.value = field.defaultValue;
+    });
+
+    rereadEdits();
+  });
 
   // Anything typed in the inspector is unsaved work; stop following the
   // player until it is saved or the panel is replaced.
   document.addEventListener("input", function (event) {
-    if (event.target.closest("#inspector")) markDirty();
+    if (event.target.closest("#inspector")) rereadEdits();
   });
 
   // Both ways out of the Shazam block give the fields back. Dismissing
@@ -2426,7 +2474,7 @@
     form.artist.value = use.dataset.shazamArtist;
     form.title.value = use.dataset.shazamTitle;
     form.cover_art_url.value = use.dataset.shazamCover || "";
-    markDirty();
+    rereadEdits();
 
     // And the block goes, because the fields it was covering are the
     // ones that just changed — leaving it up would hide the only

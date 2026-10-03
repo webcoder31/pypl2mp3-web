@@ -506,15 +506,113 @@ async def test_save_waits_for_a_change(tmp_path):
     submit = re.search(r"<button type=\"submit\"[^>]*>Save MP3</button>", panel)
     assert submit and "disabled" in submit.group(0), submit and submit.group(0)
 
-    # Both doors have to open it: typing, and taking Shazam's answer. The
-    # second is why this is a function and not a line — it was a flag with
-    # one side effect, and a second caller was about to forget it.
-    assert "function markDirty()" in js
-    assert js.count("markDirty();") >= 2, (
-        "only one of the two ways to change the form enables Save"
+    # Both doors have to go through it: typing, and taking Shazam's
+    # answer. The second is why this is a function and not a line — it
+    # was a flag with one side effect, and a second caller was about to
+    # forget it.
+    assert "function rereadEdits()" in js
+    assert js.count("rereadEdits();") >= 2, (
+        "only one of the two ways to change the form reaches the check"
     )
-    marks = re.search(r"function markDirty\(\) \{(.*?)\n  \}", js, re.DOTALL)
-    assert "save.disabled = false" in marks.group(1), marks.group(1)
+
+    # Read, never latched. The flag only went one way before, so typing
+    # a character and deleting it again left the panel claiming it held
+    # unsaved work — Save enabled, the player no longer followed — until
+    # the panel was replaced. Measured in a browser: Save enabled after
+    # one keystroke, disabled again after deleting it.
+    reads = re.search(r"function rereadEdits\(\) \{(.*?)\n  \}", js, re.DOTALL)
+    assert "editedFields().length > 0" in reads.group(1), reads.group(1)
+    assert "save.disabled = !changed" in reads.group(1), reads.group(1)
+
+    # And what "changed" means: against what the server rendered, which
+    # is what the file holds. An input's defaultValue is its `value`
+    # attribute, so nothing is kept on the side to go stale when htmx
+    # swaps the panel for another song.
+    fields = re.search(
+        r"function editedFields\(\) \{(.*?)\n  \}", js, re.DOTALL
+    )
+    assert "field.value !== field.defaultValue" in fields.group(1), (
+        fields.group(1)
+    )
+
+
+async def test_an_edit_can_be_taken_back(tmp_path):
+    """Save was the only way out of an edit: nothing put the fields back
+    to what the file holds, so a change made by mistake had to be undone
+    by hand or saved.
+
+    Cancel reads the values the server rendered, which are still sitting
+    in every input's `value` attribute — so it fetches nothing, and it
+    cannot be out of date the way a copy kept on the side would be.
+
+    Measured in a browser: Save enabled and Cancel shown after a
+    keystroke, the field back to its old value and both gone after the
+    click.
+    """
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        panel = (await client.get(
+            f"/fragments/inspector/{_key('aaaaaaaaaaa')}", headers=HX)).text
+        js = (await client.get("/static/console.js")).text
+        css = (await client.get("/static/console.css")).text
+
+    assert "data-undo-edits" in panel, "there is no way to cancel an edit"
+
+    undo = js[js.index('closest("[data-undo-edits]")'):]
+    undo = undo[:undo.index("\n  });")]
+    assert "field.value = field.defaultValue" in undo, undo
+    assert "rereadEdits();" in undo, (
+        "cancelling does not put the panel back to rights"
+    )
+
+    # Only while something differs, so the filename beside it takes the
+    # room back when there is nothing to cancel.
+    assert ".inspector-undo { display: none; }" in css
+    assert "#inspector.editing .inspector-undo" in css
+
+
+async def test_the_held_notice_does_not_cost_the_column_a_row(tmp_path):
+    """The panel stops following the player while it holds unsaved work,
+    and says so — in silence it just looked stuck on the wrong song.
+
+    It said it on the line that carries the metadata board, where there
+    is no room: the board takes 559 pixels of 608 on a real song, so the
+    sentence wrapped, the line went from 18.7px to 37.3px and the detail
+    column from 279.5 to 298.2 against the cover's 280. An 18.2px
+    overrun, which is the budget the rules around it are written to
+    keep.
+
+    One word in the actions row instead. That row is already there and
+    the filename beside it gives way and truncates: measured, the column
+    holds at 279.5 and the row at 27.5 whether the notice is up or not,
+    and the filename goes from 508.6px to 364.6. The sentence it used to
+    be is the title attribute.
+    """
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        panel = (await client.get(
+            f"/fragments/inspector/{_key('aaaaaaaaaaa')}", headers=HX)).text
+
+    line = re.search(r'<p class="id">(.*?)</p>', panel, re.DOTALL)
+    assert line and "held" not in line.group(1), (
+        "the notice is back on the line that has no room for it"
+    )
+
+    row = re.search(r'<p class="inspector-actions">(.*?)</p>', panel, re.DOTALL)
+    assert row and 'class="held"' in row.group(1), (
+        "the notice is not in the row that has room"
+    )
+    assert ">unsaved<" in row.group(1), (
+        "the notice is a sentence again, and the row has no room for one"
+    )
+    assert "title=" in row.group(1).split('class="held"')[0][-120:] or \
+        'title="The panel stays' in row.group(1), (
+            "the sentence it used to be is nowhere"
+        )
 
 
 async def test_the_wait_wears_the_same_box_as_the_answer(tmp_path):

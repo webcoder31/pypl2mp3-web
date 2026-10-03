@@ -1267,7 +1267,23 @@ tbody tr.playing td.num { color: var(--accent); }
 }
 /* Only while the panel is refusing to follow the player, and saying so
    where it says everything else about this song. */
+/* The sign that the panel is holding edits, and the button that undoes
+   them. Both live in the actions row, where the filename gives way and
+   truncates: a row that is already there costs no height, and the line
+   above had none to give — its metadata board takes 559 pixels of 608,
+   so a sentence there wrapped and the detail column overran the cover
+   by 18.
+
+   Shown by a class rather than kept in place and made invisible, so
+   that the filename takes the room back when there is nothing to
+   cancel. */
 .held { display: none; color: var(--junk); }
+.inspector-undo { display: none; }
+#inspector.editing .inspector-undo { display: inline-block; }
+/* And never on the neighbours face, where there are no fields to put
+   back. Hiding only, never setting visible — the rule the three faces
+   above are governed by. */
+#inspector-body:not(.showing-edit) .inspector-undo { visibility: hidden; }
 /* What was typed rather than found. Muted, not amber: nothing is wrong
    here and nothing is about to be — it is a fact about the fields, and
    it only becomes a warning if you were reaching for Ask Shazam. An

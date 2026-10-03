@@ -40,12 +40,6 @@
          the shorter face is padded out to the width of the longer one so
          the slots hold still, and those trailing spaces are real. A
          middot after them floated half the panel away. #}
-      {# Shown only while the panel is holding edits nobody has saved.
-         It stops following the player then — on purpose, so a track
-         ending mid-sentence does not wipe what you were typing — and
-         used to do it in silence, which left the panel looking stuck on
-         the wrong song. #}
-      <span class="held">unsaved edits — the panel is staying here ·</span>
       {# Four faces, in the order they turn: the release, the recording
          code opened out, the playlist, then where the file came from.
          Each is labelled, because at four they can no longer be told
@@ -192,6 +186,29 @@
           <span class="save-label">MP3 file<span class="save-arrow"
             >→</span></span>
         </span>
+        {# Back to what the file holds. It reads the values the server
+           rendered, which are still sitting in every input's `value`
+           attribute, so cancelling asks the server for nothing — and
+           there is no copy kept on the side to go stale when the panel
+           is swapped. Shown only while something actually differs. #}
+        <button type="button" class="inspector-undo"
+                data-undo-edits>Cancel</button>
+        {# Shown only while the panel is holding edits nobody has saved.
+           It stops following the player then — on purpose, so a track
+           ending mid-sentence does not wipe what you were typing — and
+           used to do it in silence, which left the panel looking stuck
+           on the wrong song.
+
+           One word, and down here rather than on the line above. It was
+           a whole sentence there, and that line has no room: the
+           metadata board takes 559 pixels of 608, so the sentence
+           wrapped and the detail column overran the cover by 18. This
+           row has the room — the filename beside it gives way and
+           truncates, which costs no height. The sentence it used to be
+           is the title. #}
+        <span class="held"
+              title="The panel stays on this song until you save or cancel"
+          >unsaved</span>
         {% if saved %}<span class="job-new">Saved.</span>{% endif %}
         {# Beside the button that rewrites it: saving renames the file,
            so this is the line that is about to change. #}
