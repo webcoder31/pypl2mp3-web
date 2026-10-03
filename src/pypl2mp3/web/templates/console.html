@@ -60,10 +60,30 @@
            after a save would have quietly changed what plays next. #}
         <input type="hidden" name="order" id="order-field"
                value="{{ order }}">
-        {# Where the walk begins. Only the radio reads it, and only the
-           page ever writes it: it is the song playing when the icon was
-           pressed. #}
-        <input type="hidden" name="start" id="start-field" value="">
+        {# Where the walk begins. Only the radio reads it.
+
+           The page writes it when you choose the radio while something
+           is playing: the walk carries on from what you are listening
+           to rather than starting the library again.
+
+           The server writes it the rest of the time. Asked for the
+           radio with nothing to begin from, it picks a song at random
+           and says which — and that answer comes back here, so every
+           refetch afterwards asks for the same walk. Without it the
+           next filter keystroke would draw a new one and the listing
+           would reshuffle under the reader. #}
+        <input type="hidden" name="start" id="start-field"
+               value="{{ start }}">
+        {# What was playing. The address is this form, so putting the
+           song here is what puts it in the address — and a reload then
+           picks the music back up where it was left instead of landing
+           on an empty player beside a listing in the right order.
+
+           Cued, not resumed: a browser will not start audio in a
+           document nobody has touched yet. The transport is right
+           there, and `play()` already expects that refusal. #}
+        <input type="hidden" name="playing" id="playing-field"
+               value="{{ playing }}">
         <input type="search" name="q" value="{{ query }}"
                placeholder="Filter by artist or title">
         <label>

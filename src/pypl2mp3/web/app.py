@@ -9,6 +9,7 @@ passed the wrong flag.
 import asyncio
 import collections
 import os
+import random
 import urllib.parse
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -552,7 +553,25 @@ def create_app(repository_path: Path) -> FastAPI:
             # after any song that song's nearest among those still to
             # come — by construction, so nothing decides it when a track
             # ends.
-            walk = chain(_space(songs), [song.key for song in songs], start)
+            space = _space(songs)
+            keys = [song.key for song in songs]
+
+            # Nothing said where to begin, so the page has just been
+            # opened on the radio with nothing playing. Somewhere at
+            # random rather than the top of the listing: the top is the
+            # same song every time, and since every step after it
+            # follows from it, so is the whole walk. The library has
+            # nine hundred ways in and used to offer one.
+            #
+            # Only from the songs the space knows. A key it does not
+            # know is ignored and the walk falls back to the top, which
+            # is the behaviour this is here to avoid.
+            if not start:
+                known = [key for key in keys if space.knows(key)]
+                if known:
+                    start = random.choice(known)
+
+            walk = chain(space, keys, start)
             where = {key: at for at, key in enumerate(walk)}
 
             return sorted(songs, key=lambda song: where[song.key])
@@ -579,6 +598,7 @@ def create_app(repository_path: Path) -> FastAPI:
         match: float = DEFAULT_MATCH_THRESHOLD,
         order: str = "",
         start: str = "",
+        playing: str = "",
     ) -> HTMLResponse:
         """The whole application, in one page.
 
@@ -602,6 +622,15 @@ def create_app(repository_path: Path) -> FastAPI:
                             start)
         )
 
+        # Where the walk actually began. In radio order the first row is
+        # the start by construction, so nothing has to be handed back
+        # out of the selection to find it. Written into the form, so
+        # every refetch after this one — a filter keystroke, a save, a
+        # playlist change — carries it and gets the same walk instead of
+        # drawing a new one and reshuffling the listing under the
+        # reader.
+        begun = filtered[0].key if (order == "radio" and filtered) else start
+
         return templates.TemplateResponse(
             request,
             "console.html",
@@ -619,9 +648,17 @@ def create_app(repository_path: Path) -> FastAPI:
                 # "shuffle": a random order lives in the browser, so a
                 # page fetched afresh is not in one whatever was asked.
                 # The radio is not like that — the server can walk a
-                # selection from the top without being told where to
-                # start — so it survives a reload as the other two do.
+                # selection without being told where to start — so it
+                # survives a reload as the other two do. Where it began
+                # goes back with it, because that is the half a reload
+                # cannot work out for itself.
                 "order": order if order in ("name", "radio") else "youtube",
+                "start": begun,
+                # What was playing when the address was last written.
+                # Carried, not acted on: the server does not know
+                # whether that song is still in the selection, and the
+                # page does — the rows are right in front of it.
+                "playing": playing,
                 "total_songs": sum(s.total_songs for s in summaries),
                 "total_junk": sum(s.junk_songs for s in summaries),
                 "repository": str(app.state.repository_path),

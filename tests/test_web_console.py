@@ -651,7 +651,7 @@ async def test_the_panel_describes_the_first_song_on_arrival(tmp_path):
     # its own guard rather than from a nearby landmark, which caught the
     # rest of the file the first time this was written.
     start = script.index(
-        'if (!document.querySelector("#inspector [data-song-key]"))'
+        'if (!cued && !document.querySelector("#inspector [data-song-key]"))'
     )
     arrival = script[start:]
     arrival = arrival[: arrival.index("\n  }") + 4]
@@ -666,6 +666,72 @@ async def test_the_panel_describes_the_first_song_on_arrival(tmp_path):
     assert "audio.play" not in arrival, arrival
 
 
+async def test_the_address_remembers_what_is_playing(tmp_path):
+    """A reload used to land on an empty player: the listing came back
+    in the right order and nothing said what had been playing.
+
+    The address is the filter form, so the song goes in the form. It is
+    written where the queue's cursor moves rather than off the audio
+    element's own events — what is being remembered is which song the
+    run is on, not whether the sound is running.
+    """
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        script = (await client.get("/static/console.js")).text
+        page = (await client.get("/?playing=whatever")).text
+
+    moving = script[script.index("function play(i) {"):]
+    moving = moving[: moving.index("\n  }")]
+    assert 'getElementById("playing-field")' in moving, moving
+    assert "writeAddress();" in moving, (
+        "the song changes without the address being told"
+    )
+
+    # One place writes the address, because two things reach it now: a
+    # filter request, and the song changing.
+    assert "function writeAddress()" in script
+    assert script.count("window.history.replaceState") == 1, (
+        "the address is written in more than one place"
+    )
+
+    # And the server hands back whatever it was given, so a reload has
+    # something to pick up.
+    field = re.search(r'id="playing-field"[^>]*value="([^"]*)"', page, re.S)
+    assert field and field.group(1) == "whatever", field
+
+
+async def test_a_song_named_in_the_address_is_picked_back_up(tmp_path):
+    """Cued, not played: a browser refuses to start audio in a document
+    nobody has touched yet, which `play()` already expects — the song is
+    loaded, described and lit in the listing, and the transport is right
+    there. Measured in a browser after a reload: the audio source set to
+    that song, the row lit, the panel describing it, and paused.
+
+    The page decides, not the server. Whether the song is still in the
+    selection is a question about the rows, and the rows are here.
+    """
+
+    _make_song(tmp_path, "IAMX", "Kiss", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        script = (await client.get("/static/console.js")).text
+
+    # Bounded on the guard that follows it, not on the next closing
+    # brace: the first brace after this block closes the callback inside
+    # it, and slicing there cut the block in half — the assertions below
+    # passed on a fragment that held neither of them.
+    pickup = script[script.index("const heardField ="):]
+    pickup = pickup[: pickup.index("if (!cued && !document.querySelector")]
+
+    # Only when that song is one of the rows on screen.
+    assert "row.dataset.songKey === lastHeard" in pickup, pickup
+    assert "setQueue(entries," in pickup, (
+        "the address names a song and nothing picks it up"
+    )
+
+
 async def test_a_panel_the_server_already_filled_is_left_alone(tmp_path):
     """A reload during playback, or a bookmarked song: the shell renders
     the panel itself, and overwriting it with row one would throw that
@@ -676,8 +742,15 @@ async def test_a_panel_the_server_already_filled_is_left_alone(tmp_path):
     async with _client(create_app(tmp_path)) as client:
         script = (await client.get("/static/console.js")).text
 
-    guard = script[script.index('if (!document.querySelector("#inspector [data-song-key]"))'):]
+    guard = script[script.index(
+        'if (!cued && !document.querySelector("#inspector [data-song-key]"))'
+    ):]
     guard = guard[: guard.index("\n  }")]
     assert "rows()[0]" in guard, (
         "the first row is chosen whatever the panel already holds"
     )
+
+    # And left alone for the other reason too: the music was picked back
+    # up from the address, so row one would describe over the song that
+    # is actually cued.
+    assert "!cued" in guard, guard

@@ -82,16 +82,78 @@ async def test_the_radio_orders_the_listing_as_a_walk(tmp_path):
     assert len(found) == 6 and len(set(found)) == 6
 
 
-async def test_the_radio_without_a_starting_song_starts_at_the_top(tmp_path):
-    """Choosing the radio while nothing plays is the ordinary case: the
-    icon is there before the music is."""
+async def test_the_radio_without_a_starting_song_begins_anywhere(tmp_path):
+    """Choosing the radio while nothing plays is the ordinary case — the
+    icon is there before the music is — and it used to mean the top of
+    the listing. The same song every time, and since every step after it
+    follows from it, the same walk every time: a library with nine
+    hundred ways in offered one.
 
-    _line(tmp_path)
+    Somewhere at random instead, and only from the songs the space
+    knows. A key it does not know is ignored and the walk falls back to
+    the top, which is the thing this is here to stop.
+    """
+
+    _line(tmp_path, count=12)
+
+    seen = set()
+    async with _client(tmp_path) as client:
+        for _ in range(10):
+            page = (await client.get("/fragments/list?order=radio")).text
+            seen.add(_ids(page)[0])
+
+    assert len(seen) > 1, (
+        f"ten runs all began on {seen}, so the start is not being drawn"
+    )
+
+
+async def test_the_walk_is_the_same_whenever_it_is_told_where_to_begin(
+    tmp_path,
+):
+    """The listing is refetched for every filter keystroke, every save
+    and every playlist change. If each one drew a fresh start the rows
+    would reshuffle under the reader — so the start is drawn once and
+    carried, and asking with it must give the same walk back every
+    time."""
+
+    keys = _line(tmp_path, count=12)
 
     async with _client(tmp_path) as client:
-        page = (await client.get("/fragments/list?order=radio")).text
+        walks = [
+            _ids((await client.get(
+                f"/fragments/list?order=radio&start={keys[7]}"
+            )).text)
+            for _ in range(4)
+        ]
 
-    assert _ids(page)[0] == "00000000000"
+    assert walks[0][0] == "00000000007", walks[0][0]
+    assert all(walk == walks[0] for walk in walks), walks
+
+
+async def test_the_page_carries_back_where_the_walk_began(tmp_path):
+    """The page cannot work out where the server started: the walk is
+    drawn there and the rows arrive already in it. So the answer comes
+    back in the form, and every refetch after the first asks for that
+    walk by name.
+
+    In radio order the first row is the start by construction, so there
+    is nothing to hand back separately — the field and the first row are
+    the same key.
+    """
+
+    _line(tmp_path, count=12)
+
+    async with _client(tmp_path) as client:
+        page = (await client.get("/?order=radio")).text
+
+    field = re.search(
+        r'id="start-field"[^>]*value="([^"]*)"', page, re.S
+    )
+    assert field, "the form does not carry the start back"
+
+    rows = re.findall(r'data-song-key="(\w+)"', page)
+    assert field.group(1), "the start came back empty"
+    assert field.group(1) == rows[0], (field.group(1), rows[:2])
 
 
 async def test_a_song_with_no_vector_is_last_in_the_walk(tmp_path):

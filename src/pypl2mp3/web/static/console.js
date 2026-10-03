@@ -609,6 +609,21 @@
     });
   }
 
+  // The address is the filter form, so writing one is reading the
+  // other. Two things reach it now — a filter request, and the song
+  // changing — which is why it is a function.
+  function writeAddress() {
+    if (!filters) return;
+
+    const params = new URLSearchParams(new FormData(filters));
+    for (const [key, value] of Array.from(params)) {
+      if (!value) params.delete(key);
+    }
+
+    const query = params.toString();
+    window.history.replaceState(null, "", query ? "/?" + query : "/");
+  }
+
   function play(i) {
     if (!queue.length) return;
 
@@ -627,6 +642,16 @@
         swap: "none",
       });
     }
+    // Into the address, so a reload picks this song back up. Here
+    // rather than on the audio element's own events: this is the one
+    // place the queue's cursor moves, and the cursor is what is being
+    // remembered — not whether the sound is running.
+    const playingField = document.getElementById("playing-field");
+    if (playingField && playingField.value !== queue[index].key) {
+      playingField.value = queue[index].key;
+      writeAddress();
+    }
+
     audio.src = "/songs/" + queue[index].key + "/audio";
     loadWaveform(queue[index].key);
     warmWaveform();
@@ -2563,12 +2588,7 @@
   document.addEventListener("htmx:afterRequest", function (event) {
     if (event.target !== filters) return;
 
-    const params = new URLSearchParams(new FormData(filters));
-    for (const [key, value] of Array.from(params)) {
-      if (!value) params.delete(key);
-    }
-    const query = params.toString();
-    window.history.replaceState(null, "", query ? "/?" + query : "/");
+    writeAddress();
   });
 
   const list = document.getElementById("list");
@@ -2602,7 +2622,35 @@
   // Kept rather than dropped, because that is a template's behaviour and
   // not this function's: the day the shell ships a song, this check is
   // what stops the first row from overwriting it.
-  if (!document.querySelector("#inspector [data-song-key]")) {
+  // Where the music was when this address was last written. The page
+  // decides, not the server: whether that song is still in the
+  // selection is a question about the rows, and the rows are here.
+  //
+  // Cued rather than played — a browser refuses to start audio in a
+  // document nobody has touched yet, which play() already expects. The
+  // song is loaded, described and lit in the listing, and the transport
+  // is right there.
+  // `lastHeard` and `cued`, because `wanted`, `resuming` and `held` are
+  // all taken in this scope — and a second declaration of one of them
+  // is a name that quietly means something else a thousand lines away.
+  const heardField = document.getElementById("playing-field");
+  const lastHeard = heardField ? heardField.value : "";
+  const cued = lastHeard && rows().some(function (row) {
+    return row.dataset.songKey === lastHeard;
+  });
+
+  if (cued) {
+    const entries = queueFromRows();
+    setQueue(entries, entries.findIndex(function (entry) {
+      return entry.key === lastHeard;
+    }));
+  }
+
+  // The first row is the obvious one to describe when nothing else is,
+  // and describing a song is not playing it. Skipped when the music has
+  // just been picked back up, or it would describe row one over the
+  // song that is actually cued.
+  if (!cued && !document.querySelector("#inspector [data-song-key]")) {
     const first = rows()[0];
     if (first) inspect(first.dataset.songKey);
   }
