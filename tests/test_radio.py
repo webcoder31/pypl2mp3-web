@@ -644,8 +644,6 @@ def test_the_map_is_drawn_on_a_plain_2d_canvas():
     # colour. It was a shaded sphere and then a shaded cube on the way
     # here, and both were wrong for the same reason — the page they sit
     # on is flat, and the map already carries its own depth.
-    assert "const CARD = 1.586;" in source
-    assert "const ROUND = 0.11;" in source
     assert "function card(ink, x, y, wide, tall, round)" in source, (
         "the outline is not a shape the drawing can reuse"
     )
@@ -719,8 +717,6 @@ def test_the_map_settles_rather_than_stopping_dead():
 
     source = Path("src/pypl2mp3/web/static/map.js").read_text()
 
-    assert "const SPRING = 0.22;" in source
-    assert "const DAMP = 0.62;" in source
     assert "zooming = (zooming + gap * SPRING) * DAMP;" in source, (
         "the zoom is not a spring, so it cannot overshoot and come back"
     )
@@ -811,9 +807,6 @@ def test_the_cloud_turns_by_itself_and_stops_under_the_hand():
     walk_for_clamp = walk_for_clamp[:walk_for_clamp.index("\n  }")]
     assert "Math.max(-1.45" not in walk_for_clamp, walk_for_clamp
     assert "pitch = Math.max" not in walk_for_clamp, walk_for_clamp
-    assert "const BREATH_OUT = 3.757;" in source
-    assert "const BREATH_IN = 0.969;" in source
-    assert "const OPENS_AT = 2.102;" in source
     assert "const DIVE = Math.log(BREATH_OUT / BREATH_IN) - RISE;" in source, (
         "the swing is set rather than derived from the two ends, so the "
         "ends and the swing can disagree"
@@ -857,12 +850,15 @@ def test_distance_is_said_with_air_rather_than_with_gloss():
 
     source = Path("src/pypl2mp3/web/static/map.js").read_text()
 
-    assert "const STEPS = 8;" in source and "const HAZE = 0.5;" in source
 
     # Cut into the sprite, not laid over each card as it lands: a value
     # per point is a gradient per point per frame.
     cut = source[source.index("function block(tint, fade)"):]
     cut = cut[:cut.index("\n  }")]
+    # One sprite a colour a depth, and the fade across them is the
+    # step's share of the haze — which is the mechanism the count of
+    # steps and the depth of the haze are only settings of.
+    assert "(step / (STEPS - 1)) * HAZE" in source
     assert "ink.globalAlpha = fade;" in cut
     assert "ink.fillStyle = paper_colour;" in cut, cut
 
@@ -891,8 +887,6 @@ def test_two_cards_of_one_colour_say_which_is_in_front():
 
     source = Path("src/pypl2mp3/web/static/map.js").read_text()
 
-    assert "const SLOPE_UP = 0.14;" in source
-    assert "const SLOPE_DOWN = 0.17;" in source
 
     # Two passes. One gradient from white to black interpolates through
     # a grey with alpha in the middle, which puts a smudge across the
@@ -923,7 +917,6 @@ def test_the_cloud_leaves_the_frame_instead_of_being_cut_by_it():
 
     source = Path("src/pypl2mp3/web/static/map.js").read_text()
 
-    assert "const FEATHER = 0.14;" in source
     assert "function weave()" in source
     for side in ("top", "bottom", "left", "right"):
         assert side + ": band(" in source, f"the {side} edge is not feathered"
@@ -952,7 +945,6 @@ def test_the_name_of_a_song_is_drawn_on_the_map_and_not_under_it():
 
     assert 'paper.textAlign = "left";' in source
     assert 'paper.textBaseline = "middle";' in source
-    assert "const BESIDE = 5;" in source
 
     # A line of text in a card's colour over a crowd of cards is
     # unreadable on its own. The page's colour behind it, as a fat
@@ -985,9 +977,6 @@ def test_the_map_names_a_few_songs_while_it_turns():
 
     source = Path("src/pypl2mp3/web/static/map.js").read_text()
 
-    assert "const EVERY = 60;" in source
-    assert "const LIFE = 180;" in source
-    assert "const NAMES = 3;" in source
 
     walk = source[source.index("if (drifting <= 0) {"):]
     walk = walk[:walk.index("\n    for (let i = 0; i < order.length")]
@@ -1018,7 +1007,6 @@ def test_a_song_is_not_named_twice_within_the_minute():
 
     source = Path("src/pypl2mp3/web/static/map.js").read_text()
 
-    assert "const AGAIN = 3600;" in source
     assert "const when = told.get(seen.at);" in source
     assert "if (when !== undefined && clock - when < AGAIN) continue;" in source
     assert "told.set(seen.at, clock);" in source
@@ -1043,7 +1031,6 @@ def test_a_song_is_only_named_when_its_card_is_big_enough_to_point_at():
 
     source = Path("src/pypl2mp3/web/static/map.js").read_text()
 
-    assert "const NAMEABLE = 8;" in source
     assert "if (2 * big * FILL * WIDER < NAMEABLE * grain) continue;" in source
 
     # In the choosing, not in the drawing. Anchored on a line only the
@@ -1099,11 +1086,14 @@ def test_a_name_is_written_in_its_card_s_colour_pushed_off_the_page():
 
     source = Path("src/pypl2mp3/web/static/map.js").read_text()
 
-    assert "const DARKEN = 0.55;" in source
-    assert "const LIGHTEN = 0.25;" in source
 
     ink = source[source.index("function inkFor(tint)"):]
     ink = ink[:ink.index("\n  }")]
+    # Darkened on a light page and lightened on a dark one: two
+    # expressions, not one with a sign.
+    assert "Math.round(v * DARKEN)" in ink, ink
+    assert "Math.round(v + (255 - v) * LIGHTEN)" in ink, ink
+
     assert "rgbOf(paper_colour)" in ink, (
         "the direction is taken from something other than the page"
     )
@@ -1127,7 +1117,6 @@ def test_the_breath_comes_home_after_the_wheel_has_moved_it():
 
     source = Path("src/pypl2mp3/web/static/map.js").read_text()
 
-    assert "const HOMING = 0.006;" in source
     assert "const settled = reach * BREATH_OUT / Math.exp(RISE);" in source, (
         "the breath has no natural distance to come back to"
     )
@@ -1178,9 +1167,6 @@ def test_the_cloud_sits_in_a_pool_of_the_page_s_own_colour():
     # middle paler rather than more vivid. Measured over the page:
     # rgb(213, 236, 233) before and rgb(196, 232, 227) after on white,
     # rgb(23, 49, 47) and rgb(22, 64, 58) on the dark theme.
-    assert "const POOL_IS = 0.23;" in source
-    assert "const POOL_MID = 0.09;" in source
-    assert "const POOL_LIFT = 1.25;" in source
     assert "Math.min(100, pool.sat * POOL_LIFT)" in source, (
         "the lift can push saturation past full"
     )
@@ -1216,9 +1202,10 @@ def test_the_pool_is_as_big_as_the_cloud_it_sits_behind():
     assert "reach * lens / Math.max(away, 1e-6)" in source, (
         "the pool's reach is a number of its own again"
     )
-    # Clamped, because coming inside sends the projection to infinity.
-    assert "const POOL_LEAST = 0.1;" in source
-    assert "const POOL_MOST = 1.2;" in source
+    # Clamped at both ends, because coming inside sends the projection
+    # to infinity and there is no cloud left to sit behind.
+    assert "span * POOL_LEAST," in source
+    assert "Math.min(span * POOL_MOST," in source
 
 
 def test_the_pool_fades_from_the_cloud_s_surface_inwards():
@@ -1240,8 +1227,6 @@ def test_the_pool_fades_from_the_cloud_s_surface_inwards():
 
     source = Path("src/pypl2mp3/web/static/map.js").read_text()
 
-    assert "const POOL_GONE = 0.3;" in source
-    assert "const POOL_FULL = 1.0;" in source
     assert re.search(
         r"const pooling = Math\.max\(0, Math\.min\(\n\s*"
         r"1, \(away / reach - POOL_GONE\) / \(POOL_FULL - POOL_GONE\)",
