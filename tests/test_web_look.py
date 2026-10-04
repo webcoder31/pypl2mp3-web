@@ -1173,16 +1173,37 @@ async def test_the_imports_rows_are_centred_like_every_other_row(tmp_path):
     table claiming to differ.
     """
 
+    def dresses_a_cell(selector: str) -> bool:
+        """True when a selector ends at a cell of the playlists table.
+
+        The rule that drifted ended at the `td`. What sits inside a cell
+        — the button, the title — aligns its own line box and says
+        nothing about where the row's cells land, and a header is free
+        to sit where headers sit, so neither is this test's business.
+        """
+
+        for part in selector.split(","):
+            words = part.split()
+            if ".playlists" in part and re.fullmatch(
+                r"td([.:\[].*)?", words[-1] if words else ""
+            ):
+                return True
+        return False
+
     async with _client(create_app(tmp_path)) as client:
         css = (await client.get("/static/console.css")).text
 
     shared = re.search(r"\ntd \{([^}]*)\}", css)
     assert shared and "vertical-align: middle" in shared.group(1), shared
 
-    for rule in re.findall(r"\n(\.playlists[^\n{}]*)\{([^}]*)\}", css):
-        assert "vertical-align" not in rule[1], (
-            f"{rule[0].strip()} overrides the alignment every other "
-            f"table uses: {rule[1].strip()}"
+    for selector, body in re.findall(
+        r"\n([^\n{}]+(?:,\n[^\n{}]+)*)\{([^}]*)\}", css
+    ):
+        if not dresses_a_cell(selector):
+            continue
+        assert "vertical-align" not in body, (
+            f"{' '.join(selector.split())} overrides the alignment every "
+            f"other table uses: {body.strip()}"
         )
 
 
