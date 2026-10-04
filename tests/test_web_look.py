@@ -777,6 +777,39 @@ async def test_spacing_comes_from_a_scale(tmp_path):
     )
 
 
+async def test_motion_comes_from_a_scale(tmp_path):
+    """The same argument a third time, for the one axis that had no
+    named values at all: a duration written into a rule is a number
+    nobody can reconcile with the one in the rule beside it. Two of them
+    were the same length spelled two different ways before the scale
+    existed.
+
+    Animations are counted as well as transitions, because the blanket
+    rule that neutralises motion for a reader who asked for less only
+    reaches transitions — a keyframe runs straight through it and has to
+    be stopped by name.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    steps = set(re.findall(r"(--pace-[\w-]+):", css))
+    assert 3 <= len(steps) <= 8, steps
+
+    scale = set(re.findall(r"--pace-[\w-]+:\s*([\d.]+m?s)", css))
+    timed = re.findall(r"\b(?:transition|animation):\s*([^;}]+)", css)
+    literal = {
+        value
+        for declaration in timed
+        for value in declaration.split()
+        if re.fullmatch(r"[\d.]+m?s", value)
+    }
+    assert literal <= scale, (
+        f"motion written outside the scale: {sorted(literal - scale)}"
+    )
+    assert timed, "nothing on the page moves at all — the scan is blind"
+
+
 async def test_every_main_block_shares_one_inset(tmp_path):
     """Four panels with four different margins read as four boxes that
     happen to touch, rather than as one page."""
@@ -1101,13 +1134,14 @@ async def test_both_themes_define_the_same_colours(tmp_path):
     assert dark <= light, f"only in dark: {sorted(dark - light)}"
 
     # Every colour the light block names must have a dark value; the
-    # scale and the spacing are shared on purpose.
+    # scales, the spacing and the dimensions are shared on purpose. The
+    # prefix is what says so, which is why every shared family has one.
     colours = {
         name for name in light
-        if not name.startswith(("--fs-", "--space-", "--font", "--pane-",
-                                "--row-", "--nav-", "--btn-", "--field-",
-                                "--toolbar-", "--block-", "--cover-",
-                                "--wave-"))
+        if not name.startswith(("--fs-", "--space-", "--pace-", "--font",
+                                "--pane-", "--row-", "--nav-", "--btn-",
+                                "--field-", "--toolbar-", "--block-",
+                                "--cover-", "--wave-"))
     }
     assert colours <= dark, f"no dark value for: {sorted(colours - dark)}"
 
@@ -1836,9 +1870,28 @@ async def test_a_landed_character_cools_from_the_accent_to_the_line(
         css = (await client.get("/static/console.css")).text
         js = (await client.get("/static/console.js")).text
 
+    root = re.search(
+        r':root, :root\[data-theme="light"\] \{(.*?)\n\}', css, re.DOTALL
+    )
+    assert root, "no light block"
+    pace = dict(re.findall(r"(--pace-[\w-]+):\s*([\d.]+)s", root.group(1)))
+    assert pace, "the motion scale is gone"
+
     slot = re.search(r"\n\.slot \{([^}]*)\}", css).group(1)
-    turn = float(re.search(r"transform ([\d.]+)s", slot).group(1))
-    cool = float(re.search(r"color ([\d.]+)s", slot).group(1))
+
+    def seconds(prop):
+        """How long one property of the flap takes, through the scale.
+
+        Timed from a token rather than a number written here, so this
+        reads the name out of the rule and the length off the scale.
+        """
+
+        named = re.search(rf"{prop} var\((--pace-[\w-]+)\)", slot)
+        assert named, f"{prop} is not timed from the scale: {slot}"
+        return float(pace[named.group(1)])
+
+    turn = seconds("transform")
+    cool = seconds("color")
     assert cool > turn * 3, (
         f"the colour settles as fast as the flap turns, so there is "
         f"nothing left to read: {turn}s turn, {cool}s cool"

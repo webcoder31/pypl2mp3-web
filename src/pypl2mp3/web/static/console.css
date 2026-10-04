@@ -146,6 +146,22 @@
   --space-4: 1rem;
   --space-5: 1.5rem;
 
+  /* Motion, on a scale for the same reason the sizes and the spaces
+     are, and named by what the motion is for rather than by how long it
+     takes: a duration written into a rule is a number nobody can
+     reconcile with the one in the rule beside it, and two of these were
+     the same length spelled two different ways.
+
+     A tenth of a second is the house pace. The flap is quicker, being a
+     mechanism rather than an answer. The three slow ones are each asked
+     to be looked at rather than used, which is the whole of what makes
+     them long. Anything that moves takes one of these. */
+  --pace-snap: 0.09s;
+  --pace-answer: 0.12s;
+  --pace-cool: 0.6s;
+  --pace-dissolve: 0.75s;
+  --pace-waiting: 0.9s;
+
   /* One horizontal inset for every main block, so the panels share a
      margin and read as one page rather than four boxes that happen to
      touch. The vertical is theirs to choose. */
@@ -286,8 +302,9 @@ button {
   padding: var(--btn-pad);
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.12s ease, color 0.12s ease,
-              border-color 0.12s ease;
+  transition: background var(--pace-answer) ease,
+              color var(--pace-answer) ease,
+              border-color var(--pace-answer) ease;
 }
 button:hover { background: var(--hover); color: var(--text); }
 button:active { background: var(--active); }
@@ -927,7 +944,7 @@ body[data-tab="map"] #list { display: none; }
   background: repeating-linear-gradient(
     90deg, var(--accent) 0 8px, transparent 8px 16px
   );
-  animation: crawl 0.9s linear infinite;
+  animation: crawl var(--pace-waiting) linear infinite;
 }
 @keyframes crawl { to { background-position: 16px 0; } }
 @media (prefers-reduced-motion: reduce) {
@@ -992,7 +1009,7 @@ body[data-tab="map"] #list { display: none; }
    looking at are still true, they are just about to be replaced, and
    dimming says that without taking the page away from you. */
 #list.htmx-request { opacity: 0.55; }
-#list { transition: opacity 0.12s ease-out; }
+#list { transition: opacity var(--pace-answer) ease-out; }
 
 #list .empty { padding: 1.5rem; color: var(--text-3); }
 
@@ -1168,7 +1185,7 @@ tbody tr.playing td.num { color: var(--accent); }
      the middle of is a cut with extra steps, and a fifth of a second,
      then half of one, both were that. The script reads this number back
      rather than carrying its own. */
-  transition: opacity 0.75s ease;
+  transition: opacity var(--pace-dissolve) ease;
 }
 .inspector-cover .cover.arriving, .workbench-cover .cover.arriving {
   opacity: 0;
@@ -1244,11 +1261,12 @@ tbody tr.playing td.num { color: var(--accent); }
   display: inline-block;
   transform-origin: 50% 0;
   /* The turn is quick and the colour is not: the flap lands in a
-     twentieth of a second and then spends half of one cooling back to
+     tenth of a second and then spends six times that cooling back to
      the line's own grey, which is what makes the change legible on a
      line this quiet. */
-  transition: transform 0.09s ease-in, opacity 0.09s ease-in,
-              color 0.6s ease-out;
+  transition: transform var(--pace-snap) ease-in,
+              opacity var(--pace-snap) ease-in,
+              color var(--pace-cool) ease-out;
 }
 .slot.turning { transform: rotateX(-90deg); opacity: 0; }
 
@@ -1592,7 +1610,7 @@ tbody tr.playing td.num { color: var(--accent); }
 .pulse rect {
   transform-box: fill-box;
   transform-origin: center;
-  animation: pulse-bar 900ms ease-in-out infinite;
+  animation: pulse-bar var(--pace-waiting) ease-in-out infinite;
 }
 .pulse rect:nth-child(2) { animation-delay: 110ms; }
 .pulse rect:nth-child(3) { animation-delay: 220ms; }
@@ -1868,7 +1886,7 @@ tbody tr.playing td.num { color: var(--accent); }
      the other. */
   padding: 0 var(--space-3) 0 var(--space-2);
   border-radius: 2px;
-  transition: background 0.12s ease;
+  transition: background var(--pace-answer) ease;
 }
 /* One unit, so it lights as one. The speaker and the track are two
    halves of the same act — how loud, and whether at all — and framing
