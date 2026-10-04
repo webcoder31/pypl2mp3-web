@@ -246,6 +246,68 @@ async def test_every_control_is_drawn_by_the_stylesheet(tmp_path):
     assert "box-shadow" not in field.group(1), field.group(1)
 
 
+async def test_the_page_reaches_no_host_it_does_not_serve(tmp_path):
+    """A web font, a script from a CDN, a picture held elsewhere: each
+    one is an address the page goes to on its own, before anyone has
+    asked it for anything. This console runs against a library on a
+    disk, on a machine that may have no way out at all.
+
+    What separates the two cases is who decides. A subresource is
+    fetched by the page itself, so it has to come from here. A link is
+    followed only when somebody clicks it, and the ones to YouTube are
+    the point of several rows — they are deliberately not covered.
+
+    The stylesheet's header has said a test enforced this since before
+    there was one.
+    """
+
+    _make_song(tmp_path, "ARTIST", "Song", "aaaaaaaaaaa")
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+        pages = [
+            (await client.get("/")).text,
+            (await client.get(f"/fragments/inspector/{_key('aaaaaaaaaaa')}")).text,
+            (await client.get(f"/fragments/workbench/{_key('aaaaaaaaaaa')}")).text,
+        ]
+
+    def leaves(address: str) -> bool:
+        """Whether an address names a host rather than this server.
+
+        A scheme, or the protocol-relative form that borrows the page's.
+        `data:` carries its own bytes and reaches nobody.
+        """
+
+        return address.startswith("//") or bool(
+            re.match(r"(?!data:)[a-z][a-z0-9+.-]*:", address)
+        )
+
+    # The tags a browser fetches without being told to. <a> is not among
+    # them, and that absence is the whole distinction being drawn here.
+    fetching = re.compile(
+        r"<(?:link|script|img|iframe|embed|source|track|video|audio)\b"
+        r'[^>]*\b(?:src|href)="([^"]*)"'
+    )
+
+    asked = [address for page in pages for address in fetching.findall(page)]
+    assert asked, "no subresource seen at all — the pattern has gone blind"
+    for address in asked:
+        assert not leaves(address), (
+            f"{address} is a host the page goes to without being asked"
+        )
+
+    # A face is the one that gets in with no tag of its own, which is why
+    # the rule was written about fonts in the first place.
+    assert "@font-face" not in css, "a face the console does not serve"
+    assert "@import" not in css, "a stylesheet fetched by the stylesheet"
+
+    # Nothing paints from off the host either. There is no url() in the
+    # file today, so this holds over an empty set — the counter-proof is
+    # that putting a remote one in turns it red.
+    for address in re.findall(r"url\(\s*[\'\"]?\s*([^)\'\"]*)", css):
+        assert not leaves(address), f"{address} is fetched while painting"
+
+
 async def test_the_page_has_designed_surfaces(tmp_path):
     """`Canvas` is the browser's own white. A flat white page with 1px
     grey hairlines is the look this pass exists to leave behind."""
