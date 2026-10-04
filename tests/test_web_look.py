@@ -1155,6 +1155,37 @@ async def test_a_playlist_button_is_filled_like_save(tmp_path):
     assert shared, "they are filled by two separate rules that can drift"
 
 
+async def test_the_imports_rows_are_centred_like_every_other_row(tmp_path):
+    """A playlist's row is two lines — the name, and the owner with the
+    link under it — while the counts, the date and the button beside it
+    are one. `.playlists td` set `vertical-align: baseline`, so those
+    four sat on the name's baseline instead of in the middle of the row
+    they share.
+
+    Measured in a browser: each of them 6.7 pixels above the row's
+    centre, the button 6.4, and the row 57.4 tall. Without the override
+    the shared rule applies and they land within 0.2 of the centre, the
+    button exactly on it — and the row comes to 53.4, four pixels that
+    baseline alignment was holding open below the text.
+
+    So the fix is a line removed rather than one written: `td` already
+    says `middle` for every table on the page, and this was the one
+    table claiming to differ.
+    """
+
+    async with _client(create_app(tmp_path)) as client:
+        css = (await client.get("/static/console.css")).text
+
+    shared = re.search(r"\ntd \{([^}]*)\}", css)
+    assert shared and "vertical-align: middle" in shared.group(1), shared
+
+    for rule in re.findall(r"\n(\.playlists[^\n{}]*)\{([^}]*)\}", css):
+        assert "vertical-align" not in rule[1], (
+            f"{rule[0].strip()} overrides the alignment every other "
+            f"table uses: {rule[1].strip()}"
+        )
+
+
 async def test_ordinary_buttons_sit_back(tmp_path):
     """Secondary chrome: a hairline and the text, no surface of its own
     and no shadow lifting it off the page."""

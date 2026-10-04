@@ -826,7 +826,6 @@ body[data-tab="map"] #list { display: none; }
   border-bottom: 1px solid var(--line);
 }
 .playlists th.num { text-align: right; }
-.playlists td { vertical-align: baseline; }
 .playlists td.num { text-align: right; font-variant-numeric: tabular-nums;
                     white-space: nowrap; }
 /* The listing's rows are clickable and say so. These are not: the one
