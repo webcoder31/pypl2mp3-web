@@ -23,6 +23,14 @@ c'est une décision, pas un dépassement local.
 **Espacement — cinq pas.** `--space-1` 0.25 · `--space-2` 0.5 ·
 `--space-3` 0.75 · `--space-4` 1 · `--space-5` 1.5 rem.
 
+**Mouvement — cinq rôles**, nommés par ce à quoi ils servent et non par
+leur longueur. `--pace-snap` 0.09s, un mécanisme qui claque ·
+`--pace-answer` 0.12s, un contrôle qui répond au pointeur et la liste
+qui se ternit · `--pace-cool` 0.6s, une marque qui retombe après coup ·
+`--pace-dissolve` 0.75s, la seule transition qu'on demande de regarder ·
+`--pace-waiting` 0.9s, la période de ce qui tourne en attendant. Rien ne
+bouge sans prendre l'un des cinq.
+
 **Rayon.** Trois valeurs, pas une de plus : `2px` par défaut, `50%` pour
 une pastille, `0` pour un bouton qui n'a ni fond ni bordure et dont le
 rayon ne décrirait rien. Rien entre les deux, et jamais de pilule.
@@ -45,6 +53,18 @@ permet au sens de s'inverser d'un thème à l'autre en un seul endroit.
 Les surfaces diffèrent par la clarté, pas par une bordure. Pour séparer,
 `--line`, ou `--line-strong` quand une séparation doit se voir.
 
+Le retour au pointeur ne se peint pas à la main : `--hover` au survol,
+`--active` au clic, par-dessus la surface que l'élément a déjà. Ce sont
+les deux seuls degrés.
+
+`--shadow` n'habille pas du chrome. Elle est réservée à ce qui est
+vraiment soulevé de la page — une rangée qu'on déplace, une image qui est
+un objet. Un bouton n'en porte pas.
+
+`--header-bg` pour l'en-tête d'une liste : teinté plutôt que seulement
+plus clair, parce qu'entre deux surfaces une simple différence de clarté
+se lit comme un défaut de rendu.
+
 Un champ se pose sur `--sunken` : il reste distinct de la surface qui le
 porte, dans les deux thèmes, et sa bordure doit avoir de quoi tenir.
 
@@ -59,10 +79,37 @@ Accent : `--accent` et `--accent-text`, avec `--accent-soft`,
 États : `--junk` et `--junk-soft`, `--ok`, `--bad`, `--busy`, et les trois
 bandes `--score-high`, `--score-mid`, `--score-low`.
 
-## Les boîtes fixes
+Le dessin du son a ses propres rôles : `--wave-played` pour la crête,
+`--level` et `--level-rest` pour la piste de volume, pleine et vide.
+
+## Le texte
+
+L'interligne se resserre à mesure que le corps grandit : `1.5` pour une
+note en petit corps, `1.45` pour le texte courant, `1.35` pour le texte
+d'un contrôle, `1.25` pour un titre. Une ligne qui ne porte qu'un glyphe
+ou qu'un nombre prend `1`.
+
+Le monospace, `--font-mono`, est pour ce qui s'épelle plutôt que se lit :
+un identifiant, une durée qui défile. Jamais pour du texte.
+
+Ce qui tronque le dit par `text-overflow: ellipsis`, et ne tronque jamais
+seul : un nom qu'on coupe garde à côté de lui quelque chose qui ne se
+coupe pas — un compte, un identifiant, un lien.
+
+## Les boîtes, les ruptures et les plans
 
 `--cover-size`, `--wave-height`, `--pane-nav`. Une dimension qui doit
 tenir se nomme ici, pas dans la règle qui l'utilise.
+
+Deux ruptures existent : `62rem`, où l'inspecteur resserre son espacement
+et sa pochette, et `60rem`, où l'établi passe en colonne et où la colonne
+latérale cède la place à la liste. Une règle responsive neuve prend l'une
+des deux. Une troisième est une décision, pas un choix local.
+
+L'empilement ne va pas plus haut que `2` : `1` pour ce qui doit passer
+devant sa voisine, `2` pour une rangée qu'on déplace au-dessus des
+autres. Il n'y a pas de troisième plan, et rien ne justifie d'en ouvrir
+un.
 
 ---
 
@@ -158,6 +205,11 @@ Un contrôle qui commande répond aussi. Une case « tout sélectionner » qui
 ne se décoche pas quand on décoche les lignes dit le contraire de ce que
 la liste montre.
 
+Le curseur dit s'il y a quelque chose à faire ici : `pointer` sur ce qui
+agit, `grab` sur ce qui se traîne, et `default` posé exprès sur ce qui
+n'agit pas — y compris à l'intérieur d'une zone qui agit ailleurs. Une
+rangée de playlist ne fait rien ; c'est le bouton au bout qui fait.
+
 ## 7. Ce qu'on dit, on le dit près de ce dont on parle
 
 Un libellé, un compteur, un avertissement se placent contre l'élément
@@ -238,3 +290,45 @@ taille que cette police a décidée.
 
 Un dessin posé sur un contrôle qui fonctionne est décoratif : il ne
 s'annonce pas une seconde fois, le contrôle le fait déjà.
+
+## 14. Le mouvement se laisse refuser
+
+Tout ce qui bouge prend une durée de l'échelle, et répond à qui a demandé
+moins de mouvement.
+
+Le piège est que la règle générale qui neutralise le mouvement ne porte
+que sur les transitions : elle met leur durée à presque rien, et une
+`@keyframes` la traverse intacte. **Toute animation ajoutée se coupe
+nommément** sous `prefers-reduced-motion`, en lui laissant sa forme — une
+barre qui cessait de ramper doit rester une barre, pas disparaître.
+
+Une durée longue se justifie par le fait qu'on demande de regarder. Tout
+le reste est au dixième de seconde.
+
+## 15. Le son ne traverse jamais un échange de fragment
+
+`#player` est une zone de grille à lui seul, et aucun fragment échangé ne
+doit contenir l'élément `<audio>`. Un échange qui le contiendrait le
+recréerait, et la lecture s'arrêterait net au milieu du morceau.
+
+C'est la contrainte la plus chère à violer de ce dépôt, parce qu'elle ne
+se voit pas en lisant le balisage : elle ne se manifeste qu'à
+l'exécution, et seulement si quelqu'un écoutait. Un fragment neuf se
+dessine donc en demandant d'abord ce qu'il englobe.
+
+## 16. Un écran a quatre états, pas un
+
+Le plein n'est qu'un cas. Trois autres se dessinent avec lui :
+
+- **Vide** — une phrase qui dit pourquoi, pas un cadre nu. « Up to date —
+  nothing to import » plutôt qu'une liste de zéro ligne. En `--text-3` :
+  c'est une réponse, pas un défaut.
+- **Échoué** — `--bad`, la raison en clair, et le détail dans le `title`
+  quand la ligne ne peut pas le porter.
+- **Abouti** — `--ok`, et ce qui a été fait, compté.
+- **Sans nom** — ce que la source n'a pas fourni se dit comme tel, en
+  `--text-3` et en italique, plutôt que par un blanc qui ressemble à une
+  panne.
+
+Un panneau qui ne dessine que le plein est un panneau dont trois états
+sur quatre seront découverts en production.
